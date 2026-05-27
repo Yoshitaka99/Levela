@@ -1,0 +1,66 @@
+name: Levela automation trigger
+
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "Space-separated URLs to process"
+        required: false
+        type: string
+      memo:
+        description: "Extra Discord/context text"
+        required: false
+        type: string
+      instruction:
+        description: "Image direction"
+        required: false
+        type: string
+  schedule:
+    - cron: "0 * * * *"
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deployed automation endpoint
+        env:
+          AUTOMATION_ENDPOINT: ${{ secrets.AUTOMATION_ENDPOINT }}
+          AUTOMATION_TRIGGER_SECRET: ${{ secrets.AUTOMATION_TRIGGER_SECRET }}
+          SCHEDULE_URLS: ${{ secrets.SCHEDULE_URLS }}
+          SCHEDULE_MEMO: ${{ secrets.SCHEDULE_MEMO }}
+          SCHEDULE_INSTRUCTION: ${{ secrets.SCHEDULE_INSTRUCTION }}
+          URLS: ${{ inputs.urls }}
+          MEMO: ${{ inputs.memo }}
+          INSTRUCTION: ${{ inputs.instruction }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          endpoint = os.environ["AUTOMATION_ENDPOINT"]
+          secret = os.environ["AUTOMATION_TRIGGER_SECRET"]
+          urls_text = os.environ.get("URLS") or os.environ.get("SCHEDULE_URLS", "")
+          urls = [url for url in urls_text.split() if url]
+          memo = os.environ.get("MEMO") or os.environ.get("SCHEDULE_MEMO", "")
+          instruction = os.environ.get("INSTRUCTION") or os.environ.get("SCHEDULE_INSTRUCTION", "")
+
+          payload = json.dumps({
+              "urls": urls,
+              "discordText": memo,
+              "instruction": instruction,
+              "trigger": "schedule",
+          }).encode("utf-8")
+
+          request = urllib.request.Request(
+              endpoint,
+              data=payload,
+              headers={
+                  "content-type": "application/json",
+                  "authorization": f"Bearer {secret}",
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(request, timeout=60) as response:
+              print(response.read().decode("utf-8"))
+          PY
