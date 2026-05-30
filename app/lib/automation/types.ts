@@ -20,6 +20,16 @@ export type AutomationResult = {
   imageUrl: string;
   imagePath: string;
   imageDataUrl?: string;
+  extraImages?: AutomationImage[];
   usedAiImage: boolean;
   sources: AutomationSource[];
+};
+
+export type AutomationImage = {
+  label: string;
+  fileName: string;
+  imagePath: string;
+  imageUrl: string;
+  imageDataUrl?: string;
+  usedAiImage: boolean;
 };

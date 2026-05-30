@@ -20,6 +20,9 @@ export async function POST(request: NextRequest) {
     targetMembers: body.targetMembers,
     roundStart: body.roundStart,
     roundStartDate: body.roundStartDate,
+    phase: body.phase,
+    dayStart: body.dayStart,
+    gitDaysLeft: body.gitDaysLeft,
     skipDiscordPost: Boolean(body.skipDiscordPost),
   });
   return NextResponse.json(result);

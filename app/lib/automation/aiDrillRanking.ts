@@ -1,5 +1,5 @@
 import { postDiscordResult } from "./discord";
-import { renderAutomationImage } from "./renderImage";
+import { renderAiDrillRankingImages } from "./renderImage";
 import type { AutomationResult } from "./types";
 
 type RankingMember = {
@@ -54,6 +54,9 @@ export type AiDrillRankingOptions = {
   targetMembers?: string;
   roundStart?: string | number;
   roundStartDate?: string;
+  phase?: string | number;
+  dayStart?: string | number;
+  gitDaysLeft?: string | number;
   skipDiscordPost?: boolean;
 };
 
@@ -73,10 +76,28 @@ export async function runAiDrillRankingAutomation(options: AiDrillRankingOptions
     throw new Error("No target members matched the AI drill ranking data.");
   }
 
-  const title = `${getRoundLabel(options)} AIドリルランキング`;
-  const summary = buildRankingSummary(title, filteredMembers);
+  const meta = getPhaseMeta(options);
+  const title = `PHASE${meta.phase} ${meta.day}日目 AIドリルランキング`;
+  const dailyRanking = buildDailyRanking(filteredMembers);
+  const totalRanking = buildTotalRanking(filteredMembers);
+  const summary = buildRankingAnnouncement(meta, dailyRanking, totalRanking);
   const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-ai-drill`;
-  const image = await renderAutomationImage(id, summary);
+  const images = await renderAiDrillRankingImages({
+    id,
+    phase: meta.phase,
+    day: meta.day,
+    gitDaysLeft: meta.gitDaysLeft,
+    daily: dailyRanking.map((member, index) => ({
+      name: member.name,
+      points: member.dailyPoints,
+      rank: member.dailyRank ?? index + 1,
+    })),
+    total: totalRanking.map((member, index) => ({
+      name: member.name,
+      points: member.totalPoints,
+      rank: member.totalRank ?? index + 1,
+    })),
+  });
 
   const result: AutomationResult = {
     id,
@@ -89,7 +110,11 @@ export async function runAiDrillRankingAutomation(options: AiDrillRankingOptions
         text: summary,
       },
     ],
-    ...image,
+    imagePath: images.primary.imagePath,
+    imageUrl: images.primary.imageUrl,
+    imageDataUrl: images.primary.imageDataUrl,
+    usedAiImage: images.primary.usedAiImage,
+    extraImages: images.extraImages,
   };
 
   if (!options.skipDiscordPost) {
@@ -274,31 +299,152 @@ function normalizeName(name: string) {
     .toLowerCase();
 }
 
-function getRoundLabel(options: AiDrillRankingOptions) {
+function getPhaseMeta(options: AiDrillRankingOptions) {
   const startDate = options.roundStartDate || process.env.LEVELA_AI_DRILL_ROUND_START_DATE;
-  const startRound = Number(options.roundStart || process.env.LEVELA_AI_DRILL_ROUND_START || "9");
-  if (!startDate || !Number.isFinite(startRound)) {
-    return `第${Number.isFinite(startRound) ? startRound : 9}回`;
+  const phase = Number(options.phase || process.env.LEVELA_AI_DRILL_PHASE || "2");
+  const dayStart = Number(options.dayStart || options.roundStart || process.env.LEVELA_AI_DRILL_DAY_START || process.env.LEVELA_AI_DRILL_ROUND_START || "8");
+  const gitDaysLeft = Number(options.gitDaysLeft || process.env.LEVELA_AI_DRILL_GIT_DAYS_LEFT || "4");
+  if (!startDate || !Number.isFinite(dayStart)) {
+    return {
+      phase: Number.isFinite(phase) ? phase : 2,
+      day: Number.isFinite(dayStart) ? dayStart : 8,
+      gitDaysLeft: Number.isFinite(gitDaysLeft) ? gitDaysLeft : 4,
+    };
   }
 
   const today = new Date();
   const start = new Date(`${startDate}T00:00:00+09:00`);
   const diffDays = Math.max(0, Math.floor((today.getTime() - start.getTime()) / 86_400_000));
-  return `第${startRound + diffDays}回`;
+  return {
+    phase: Number.isFinite(phase) ? phase : 2,
+    day: dayStart + diffDays,
+    gitDaysLeft: Math.max(0, (Number.isFinite(gitDaysLeft) ? gitDaysLeft : 4) - diffDays),
+  };
 }
 
-function buildRankingSummary(title: string, members: RankingMember[]) {
-  const daily = [...members]
+function buildDailyRanking(members: RankingMember[]) {
+  return [...members]
     .sort((a, b) => (b.dailyPoints || 0) - (a.dailyPoints || 0))
-    .slice(0, 12)
-    .map((member, index) => `${member.dailyRank ?? index + 1}. ${member.name} ${member.dailyPoints}pt`)
-    .join("\n");
+    .map((member, index) => ({ ...member, dailyRank: member.dailyRank ?? index + 1 }));
+}
 
-  const total = [...members]
+function buildTotalRanking(members: RankingMember[]) {
+  return [...members]
     .sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0))
-    .slice(0, 12)
-    .map((member, index) => `${member.totalRank ?? index + 1}. ${member.name} ${member.totalPoints}pt`)
-    .join("\n");
+    .map((member, index) => ({ ...member, totalRank: member.totalRank ?? index + 1 }));
+}
 
-  return [title, "", "デイリーランキング", daily || "対象データなし", "", "総合ポイントランキング", total || "対象データなし"].join("\n");
+function buildRankingAnnouncement(
+  meta: { phase: number; day: number; gitDaysLeft: number },
+  dailyRanking: RankingMember[],
+  totalRanking: RankingMember[],
+) {
+  const top3 = totalRanking.slice(0, 3);
+  const dailyMvp = dailyRanking[0];
+  const growthMembers = dailyRanking.filter((member) => member.dailyPoints > 0).slice(1, 4);
+  const under1200 = totalRanking.filter((member) => member.totalPoints < 1200);
+
+  return [
+    `# 👹🔥《PHASE${meta.phase}｜${meta.day}日目ランキング速報》🔥👹`,
+    "",
+    "@snsclub営業メンバー",
+    "",
+    `PHASE${meta.phase}、`,
+    "どんどん熱くなってきてます🔥🔥🔥",
+    "",
+    "まずは皆さん、",
+    "本当にナイス積み上げです👏",
+    "",
+    "━━━━━━━━━━━━━━━",
+    "",
+    "# 👑 総合ランキング TOP3",
+    "",
+    ...top3.map((member, index) => `${["🥇", "🥈", "🥉"][index]} ${member.name}　${member.totalPoints.toLocaleString()}XP`),
+    "",
+    top3.some((member) => member.totalPoints >= 3000) ? "3000XP超えメンバーが出ています🔥" : "TOP3の積み上げがどんどん厚くなっています🔥",
+    "",
+    "ここまで積み上げてきた努力、",
+    "本当に素晴らしいです🔥",
+    "",
+    "━━━━━━━━━━━━━━━",
+    "",
+    `# 🚀 本日のMVPは${dailyMvp?.name || "対象メンバー"}さん！！`,
+    "",
+    `🔥 +${(dailyMvp?.dailyPoints || 0).toLocaleString()}XP 🔥`,
+    "",
+    "今回のデイリーランキング1位👑",
+    "",
+    "勢いが止まりません🔥",
+    "",
+    "━━━━━━━━━━━━━━━",
+    "",
+    "# 👹 今日大きく伸びたメンバー！！！",
+    "",
+    growthMembers.length
+      ? growthMembers.map((member) => `🔥 ${member.name}　+${member.dailyPoints.toLocaleString()}XP`).join("\n")
+      : "今日は全員、次の一歩へ向けて力をためる日です🔥",
+    "",
+    "最初の頃と比べると",
+    "本当に別人レベルです🔥",
+    "",
+    "━━━━━━━━━━━━━━━",
+    "",
+    "# 📈 皆、本当に成長してます。",
+    "",
+    "数日前まで小さな一歩だった積み上げが、",
+    "今では確実にランキングを動かしています。",
+    "",
+    "これは本当に凄いことです👏",
+    "",
+    "━━━━━━━━━━━━━━━",
+    "",
+    "# ⚔️ この行動力は必ずアポの成果に繋がる ⚔️",
+    "",
+    "AIドリルを継続できる人は",
+    "",
+    "✅ 行動できる",
+    "✅ 修正できる",
+    "✅ 継続できる",
+    "✅ 改善できる",
+    "",
+    "人です。",
+    "",
+    "つまり営業で結果を出す人の特徴そのもの🔥",
+    "",
+    "今積み上げていることは、",
+    "必ず未来のアポ・成約・成果に繋がります👹",
+    "",
+    under1200.length ? "━━━━━━━━━━━━━━━" : "",
+    under1200.length ? "" : "",
+    under1200.length ? "# ⚡ 1200XP未満メンバーもここから！！！" : "",
+    under1200.length ? "" : "",
+    under1200.length ? `${under1200.map((member) => member.name).join("、")}、ここから一気に巻き返せます🔥` : "",
+    under1200.length ? "PHASE2はまだ始まったばかり。積み上げた人から景色が変わります👹" : "",
+    under1200.length ? "" : "",
+    "━━━━━━━━━━━━━━━",
+    "",
+    `# 🔥 Git編終了まであと${meta.gitDaysLeft}日！！！🔥`,
+    "",
+    `ここからの${meta.gitDaysLeft}日で`,
+    "順位はまだまだ変わります⚡️",
+    "",
+    "最後まで積み上げた人が勝つ。",
+    "",
+    `PHASE${meta.phase}、`,
+    "最後まで駆け抜けましょう👹🔥",
+    "",
+    "━━━━━━━━━━━━━━━",
+    "",
+    "# 🌅 そして！！！",
+    "",
+    "朝のAIドリル勉強会、",
+    "みんな参加してくれよな！！🔥🔥🔥",
+    "",
+    "参加するだけでも学びになります。",
+    "",
+    "積み上げる人同士で刺激し合って、",
+    "さらに強くなっていきましょう👹⚔️",
+    "",
+    "明日も全力でいくぞーーーーー！！！！🔥🔥🔥",
+  ].join("\n");
 }

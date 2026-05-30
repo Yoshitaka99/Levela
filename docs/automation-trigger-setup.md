@@ -65,10 +65,11 @@ Repository secrets に次を入れます。
 
 `.github/workflows/automation-trigger.yml` は毎日09:00 JSTの定期実行と `workflow_dispatch` の手動実行に対応しています。
 
-AIドリルランキングでは、既定でDiscordへ自動投稿しません。GitHub Actionsの実行結果に `ai-drill-ranking-manual-post` Artifact が作成され、次の2ファイルを本人がDiscordへ投稿します。
+AIドリルランキングでは、既定でDiscordへ自動投稿しません。GitHub Actionsの実行結果に `ai-drill-ranking-manual-post` Artifact が作成され、次のファイルを本人がDiscordへ投稿します。
 
 - `discord-post.txt`: 投稿文
-- `ai-drill-ranking.png`: 投稿画像
+- `ai-drill-total-ranking.png`: 総合ポイントランキング画像
+- `ai-drill-daily-ranking.png`: デイリーランキング画像
 
 Webhook自動投稿に戻したい場合だけ、Repository secret `DISCORD_AUTO_POST=true` を設定します。
 
@@ -83,8 +84,10 @@ Webhook自動投稿に戻したい場合だけ、Repository secret `DISCORD_AUTO
 
 ```bash
 LEVELA_AI_DRILL_TARGET_MEMBERS=和佐田舞緒,関口愛里,田仲由敬,早川大貴,河上まちこ,加藤陸,持木玲那,笠松佑衣,五十嵐凌大
-LEVELA_AI_DRILL_ROUND_START=9
+LEVELA_AI_DRILL_PHASE=2
+LEVELA_AI_DRILL_DAY_START=8
 LEVELA_AI_DRILL_ROUND_START_DATE=2026-05-30
+LEVELA_AI_DRILL_GIT_DAYS_LEFT=4
 ```
 
 Vercel側の環境変数を直接触らなくても、GitHub Actions がこれらのRepository secretsをAPIへ渡します。

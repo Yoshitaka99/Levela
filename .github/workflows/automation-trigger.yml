@@ -42,6 +42,9 @@ jobs:
           LEVELA_AI_DRILL_TARGET_MEMBERS: ${{ secrets.LEVELA_AI_DRILL_TARGET_MEMBERS }}
           LEVELA_AI_DRILL_ROUND_START: ${{ secrets.LEVELA_AI_DRILL_ROUND_START }}
           LEVELA_AI_DRILL_ROUND_START_DATE: ${{ secrets.LEVELA_AI_DRILL_ROUND_START_DATE }}
+          LEVELA_AI_DRILL_PHASE: ${{ secrets.LEVELA_AI_DRILL_PHASE }}
+          LEVELA_AI_DRILL_DAY_START: ${{ secrets.LEVELA_AI_DRILL_DAY_START }}
+          LEVELA_AI_DRILL_GIT_DAYS_LEFT: ${{ secrets.LEVELA_AI_DRILL_GIT_DAYS_LEFT }}
           DISCORD_AUTO_POST: ${{ secrets.DISCORD_AUTO_POST }}
           SCHEDULE_URLS: ${{ secrets.SCHEDULE_URLS }}
           SCHEDULE_MEMO: ${{ secrets.SCHEDULE_MEMO }}
@@ -72,6 +75,9 @@ jobs:
                   "targetMembers": os.environ.get("LEVELA_AI_DRILL_TARGET_MEMBERS", ""),
                   "roundStart": os.environ.get("LEVELA_AI_DRILL_ROUND_START", ""),
                   "roundStartDate": os.environ.get("LEVELA_AI_DRILL_ROUND_START_DATE", ""),
+                  "phase": os.environ.get("LEVELA_AI_DRILL_PHASE", ""),
+                  "dayStart": os.environ.get("LEVELA_AI_DRILL_DAY_START", ""),
+                  "gitDaysLeft": os.environ.get("LEVELA_AI_DRILL_GIT_DAYS_LEFT", ""),
                   "skipDiscordPost": os.environ.get("DISCORD_AUTO_POST", "").lower() != "true",
               }).encode("utf-8")
           else:
@@ -112,12 +118,17 @@ jobs:
               with open("automation-output/discord-post.txt", "w", encoding="utf-8") as file:
                   file.write(result.get("summary", ""))
                   file.write("\n")
-              image_data_url = result.get("imageDataUrl", "")
-              if image_data_url.startswith("data:image/png;base64,"):
+              def write_png(file_name, image_data_url):
+                  if not image_data_url.startswith("data:image/png;base64,"):
+                      return
                   import base64
                   image_bytes = base64.b64decode(image_data_url.split(",", 1)[1])
-                  with open("automation-output/ai-drill-ranking.png", "wb") as file:
+                  with open(f"automation-output/{file_name}", "wb") as file:
                       file.write(image_bytes)
+
+              write_png("ai-drill-total-ranking.png", result.get("imageDataUrl", ""))
+              for image in result.get("extraImages", []):
+                  write_png(image.get("fileName", "ai-drill-extra-ranking.png"), image.get("imageDataUrl", ""))
           PY
       - name: Upload manual posting draft
         uses: actions/upload-artifact@v4
