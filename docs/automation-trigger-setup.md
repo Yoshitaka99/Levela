@@ -55,8 +55,8 @@ Repository secrets に次を入れます。
 
 - `AUTOMATION_ENDPOINT`: `https://your-domain.example/api/automation/trigger`
 - `AUTOMATION_TRIGGER_SECRET`: アプリ側と同じ値
-- `DISCORD_WEBHOOK_URL`: 手動素材生成では不要
-- `DISCORD_THREAD_ID`: 手動素材生成では不要
+- `DISCORD_WEBHOOK_URL`: GitHub Actions素材生成では使いません
+- `DISCORD_THREAD_ID`: GitHub Actions素材生成では使いません
 - `SCHEDULE_URLS`: 通常処理したいURL。空白区切り
 - `SCHEDULE_MEMO`: 通常処理に足す文章
 - `SCHEDULE_INSTRUCTION`: 通常処理の画像方向性
@@ -64,7 +64,7 @@ Repository secrets に次を入れます。
 
 `.github/workflows/automation-trigger.yml` は `workflow_dispatch` の手動実行だけに対応しています。定期実行は停止済みです。
 
-AIドリルランキングではDiscordへ自動投稿しません。GitHub Actionsの実行結果に `ai-drill-ranking-manual-post` Artifact が作成され、次のファイルを本人がiPhoneからDiscordへ投稿します。
+AIドリルランキングではDiscordへ自動投稿しません。GitHub ActionsからWebhook URLも渡しません。実行結果に `ai-drill-ranking-manual-post` Artifact が作成され、次のファイルを本人がiPhoneからDiscordへ投稿します。
 
 - `discord-post.txt`: 投稿文
 - `ai-drill-total-ranking.png`: 総合ポイントランキング画像

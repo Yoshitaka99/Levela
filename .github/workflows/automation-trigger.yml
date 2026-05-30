@@ -32,8 +32,6 @@ jobs:
         env:
           AUTOMATION_ENDPOINT: ${{ secrets.AUTOMATION_ENDPOINT }}
           AUTOMATION_TRIGGER_SECRET: ${{ secrets.AUTOMATION_TRIGGER_SECRET }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          DISCORD_THREAD_ID: ${{ secrets.DISCORD_THREAD_ID }}
           LEVELA_AI_DRILL_RANKING_JSON_URL: ${{ secrets.LEVELA_AI_DRILL_RANKING_JSON_URL }}
           LEVELA_AI_DRILL_COOKIE: ${{ secrets.LEVELA_AI_DRILL_COOKIE }}
           LEVELA_AI_DRILL_AUTHORIZATION: ${{ secrets.LEVELA_AI_DRILL_AUTHORIZATION }}
@@ -64,8 +62,6 @@ jobs:
           if mode == "ai-drill-ranking":
               endpoint = endpoint.rstrip("/").replace("/api/automation/trigger", "/api/automation/ai-drill-ranking")
               payload = json.dumps({
-                  "discordWebhookUrl": os.environ.get("DISCORD_WEBHOOK_URL", ""),
-                  "discordThreadId": os.environ.get("DISCORD_THREAD_ID", ""),
                   "rankingJsonUrl": os.environ.get("LEVELA_AI_DRILL_RANKING_JSON_URL", ""),
                   "rankingCookie": os.environ.get("LEVELA_AI_DRILL_COOKIE", ""),
                   "rankingAuthorization": os.environ.get("LEVELA_AI_DRILL_AUTHORIZATION", ""),
@@ -90,8 +86,6 @@ jobs:
               payload = json.dumps({
                   "urls": urls,
                   "discordText": memo,
-                  "discordWebhookUrl": os.environ.get("DISCORD_WEBHOOK_URL", ""),
-                  "discordThreadId": os.environ.get("DISCORD_THREAD_ID", ""),
                   "instruction": instruction,
                   "skipDiscordPost": True,
                   "trigger": "schedule",
