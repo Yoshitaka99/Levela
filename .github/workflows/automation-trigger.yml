@@ -15,6 +15,14 @@ on:
         description: "Image direction"
         required: false
         type: string
+      mode:
+        description: "generic or ai-drill-ranking"
+        required: false
+        default: "generic"
+        type: choice
+        options:
+          - generic
+          - ai-drill-ranking
   schedule:
     - cron: "0 * * * *"
 
@@ -29,9 +37,11 @@ jobs:
           SCHEDULE_URLS: ${{ secrets.SCHEDULE_URLS }}
           SCHEDULE_MEMO: ${{ secrets.SCHEDULE_MEMO }}
           SCHEDULE_INSTRUCTION: ${{ secrets.SCHEDULE_INSTRUCTION }}
+          AUTOMATION_MODE: ${{ secrets.AUTOMATION_MODE }}
           URLS: ${{ inputs.urls }}
           MEMO: ${{ inputs.memo }}
           INSTRUCTION: ${{ inputs.instruction }}
+          MODE: ${{ inputs.mode }}
         run: |
           python - <<'PY'
           import json
@@ -40,21 +50,27 @@ jobs:
 
           endpoint = os.environ["AUTOMATION_ENDPOINT"]
           secret = os.environ["AUTOMATION_TRIGGER_SECRET"]
-          urls_text = os.environ.get("URLS") or os.environ.get("SCHEDULE_URLS", "")
-          urls = [url for url in urls_text.split() if url]
-          memo = os.environ.get("MEMO") or os.environ.get("SCHEDULE_MEMO", "")
-          instruction = os.environ.get("INSTRUCTION") or os.environ.get("SCHEDULE_INSTRUCTION", "")
+          mode = os.environ.get("MODE") or os.environ.get("AUTOMATION_MODE") or "generic"
 
-          if not urls and not memo:
-              print("No URLs or memo configured; skipping trigger.")
-              raise SystemExit(0)
+          if mode == "ai-drill-ranking":
+              endpoint = endpoint.rstrip("/").replace("/api/automation/trigger", "/api/automation/ai-drill-ranking")
+              payload = b"{}"
+          else:
+              urls_text = os.environ.get("URLS") or os.environ.get("SCHEDULE_URLS", "")
+              urls = [url for url in urls_text.split() if url]
+              memo = os.environ.get("MEMO") or os.environ.get("SCHEDULE_MEMO", "")
+              instruction = os.environ.get("INSTRUCTION") or os.environ.get("SCHEDULE_INSTRUCTION", "")
 
-          payload = json.dumps({
-              "urls": urls,
-              "discordText": memo,
-              "instruction": instruction,
-              "trigger": "schedule",
-          }).encode("utf-8")
+              if not urls and not memo:
+                  print("No URLs or memo configured; skipping trigger.")
+                  raise SystemExit(0)
+
+              payload = json.dumps({
+                  "urls": urls,
+                  "discordText": memo,
+                  "instruction": instruction,
+                  "trigger": "schedule",
+              }).encode("utf-8")
 
           request = urllib.request.Request(
               endpoint,

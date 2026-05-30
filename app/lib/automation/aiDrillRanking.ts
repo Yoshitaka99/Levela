@@ -1,0 +1,194 @@
+import { postDiscordResult } from "./discord";
+import { renderAutomationImage } from "./renderImage";
+import type { AutomationResult } from "./types";
+
+type RankingMember = {
+  name: string;
+  dailyPoints: number;
+  totalPoints: number;
+  dailyRank?: number;
+  totalRank?: number;
+};
+
+type RankingPayload = {
+  updatedAt?: string;
+  members?: RankingMember[];
+  daily?: RankingMember[];
+  total?: RankingMember[];
+};
+
+const DEFAULT_RANKING_URL = "https://app.levela.co.jp/ai-drill/ranking";
+
+export async function runAiDrillRankingAutomation(): Promise<AutomationResult> {
+  const payload = await fetchRankingPayload();
+  const members = normalizeRankingMembers(payload);
+  if (!members.length) {
+    throw new Error("AI drill ranking data was empty. Set LEVELA_AI_DRILL_COOKIE or LEVELA_AI_DRILL_RANKING_JSON_URL.");
+  }
+
+  const targetMembers = getTargetMembers();
+  const filteredMembers = targetMembers.length
+    ? members.filter((member) => targetMembers.some((target) => sameName(target, member.name)))
+    : members;
+
+  if (!filteredMembers.length) {
+    throw new Error("No target members matched the AI drill ranking data.");
+  }
+
+  const title = `${getRoundLabel()} AIドリルランキング`;
+  const summary = buildRankingSummary(title, filteredMembers);
+  const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-ai-drill`;
+  const image = await renderAutomationImage(id, summary);
+
+  const result: AutomationResult = {
+    id,
+    title,
+    summary,
+    sources: [
+      {
+        url: process.env.LEVELA_AI_DRILL_RANKING_URL || DEFAULT_RANKING_URL,
+        title: "withAIドリルランキング",
+        text: summary,
+      },
+    ],
+    ...image,
+  };
+
+  await postDiscordResult(result);
+  return result;
+}
+
+async function fetchRankingPayload(): Promise<RankingPayload | string> {
+  const jsonUrl = process.env.LEVELA_AI_DRILL_RANKING_JSON_URL;
+  if (jsonUrl) {
+    const response = await fetch(jsonUrl, {
+      cache: "no-store",
+      headers: buildRankingHeaders("application/json"),
+    });
+    if (!response.ok) throw new Error(`Ranking JSON fetch failed: ${response.status}`);
+    return response.json() as Promise<RankingPayload>;
+  }
+
+  const response = await fetch(DEFAULT_RANKING_URL, {
+    cache: "no-store",
+    headers: buildRankingHeaders("text/html"),
+  });
+  if (!response.ok) throw new Error(`Ranking page fetch failed: ${response.status}`);
+  return response.text();
+}
+
+function buildRankingHeaders(accept: string) {
+  const headers: Record<string, string> = {
+    accept,
+    "user-agent": "LevelaAutomation/1.0",
+  };
+  if (process.env.LEVELA_AI_DRILL_COOKIE) headers.cookie = process.env.LEVELA_AI_DRILL_COOKIE;
+  if (process.env.LEVELA_AI_DRILL_AUTHORIZATION) headers.authorization = process.env.LEVELA_AI_DRILL_AUTHORIZATION;
+  return headers;
+}
+
+function normalizeRankingMembers(payload: RankingPayload | string): RankingMember[] {
+  if (typeof payload === "string") return parseRankingText(payload);
+
+  const byName = new Map<string, RankingMember>();
+  for (const member of payload.members || []) upsertMember(byName, member);
+  for (const [index, member] of (payload.daily || []).entries()) {
+    upsertMember(byName, { ...member, dailyRank: member.dailyRank ?? index + 1 });
+  }
+  for (const [index, member] of (payload.total || []).entries()) {
+    upsertMember(byName, { ...member, totalRank: member.totalRank ?? index + 1 });
+  }
+
+  return [...byName.values()].sort((a, b) => (a.totalRank ?? 9999) - (b.totalRank ?? 9999));
+}
+
+function upsertMember(byName: Map<string, RankingMember>, member: RankingMember) {
+  const name = String(member.name || "").trim();
+  if (!name) return;
+  const current = byName.get(name) || { name, dailyPoints: 0, totalPoints: 0 };
+  byName.set(name, {
+    ...current,
+    ...member,
+    name,
+    dailyPoints: Number(member.dailyPoints ?? current.dailyPoints ?? 0),
+    totalPoints: Number(member.totalPoints ?? current.totalPoints ?? 0),
+  });
+}
+
+function parseRankingText(html: string): RankingMember[] {
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, "\n")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
+
+  const members: RankingMember[] = [];
+  const linePattern = /(?:#|第)?\s*(\d{1,3})\s*(?:位|rank)?\s+([^\n\r\d]{2,40}?)\s+(\d{1,7})\s*(?:pt|ポイント|点)/gi;
+  for (const match of text.matchAll(linePattern)) {
+    const rank = Number(match[1]);
+    const name = match[2].trim();
+    const points = Number(match[3]);
+    if (!name || !Number.isFinite(points)) continue;
+    members.push({
+      name,
+      dailyPoints: points,
+      totalPoints: points,
+      dailyRank: rank,
+      totalRank: rank,
+    });
+  }
+  return members;
+}
+
+function getTargetMembers() {
+  return (process.env.LEVELA_AI_DRILL_TARGET_MEMBERS || "")
+    .split(/[,\n]/)
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
+function sameName(target: string, actual: string) {
+  return normalizeName(target) === normalizeName(actual);
+}
+
+function normalizeName(name: string) {
+  return name.replace(/\s+/g, "").toLowerCase();
+}
+
+function getRoundLabel() {
+  const startDate = process.env.LEVELA_AI_DRILL_ROUND_START_DATE;
+  const startRound = Number(process.env.LEVELA_AI_DRILL_ROUND_START || "9");
+  if (!startDate || !Number.isFinite(startRound)) {
+    return `第${Number.isFinite(startRound) ? startRound : 9}回`;
+  }
+
+  const today = new Date();
+  const start = new Date(`${startDate}T00:00:00+09:00`);
+  const diffDays = Math.max(0, Math.floor((today.getTime() - start.getTime()) / 86_400_000));
+  return `第${startRound + diffDays}回`;
+}
+
+function buildRankingSummary(title: string, members: RankingMember[]) {
+  const daily = [...members]
+    .sort((a, b) => (b.dailyPoints || 0) - (a.dailyPoints || 0))
+    .slice(0, 12)
+    .map((member, index) => `${index + 1}. ${member.name} ${member.dailyPoints}pt`)
+    .join("\n");
+
+  const total = [...members]
+    .sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0))
+    .slice(0, 12)
+    .map((member, index) => `${index + 1}. ${member.name} ${member.totalPoints}pt`)
+    .join("\n");
+
+  return [
+    title,
+    "",
+    "デイリーランキング",
+    daily || "対象データなし",
+    "",
+    "総合ポイントランキング",
+    total || "対象データなし",
+  ].join("\n");
+}

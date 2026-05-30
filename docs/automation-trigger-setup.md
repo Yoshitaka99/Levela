@@ -58,8 +58,30 @@ Repository secrets に次を入れます。
 - `SCHEDULE_URLS`: 毎時処理したいURL。空白区切り
 - `SCHEDULE_MEMO`: 毎時処理に足す文脈
 - `SCHEDULE_INSTRUCTION`: 毎時画像の方向性
+- `AUTOMATION_MODE`: `ai-drill-ranking` にするとAIドリルランキング専用処理
 
 `.github/workflows/automation-trigger.yml` は毎時実行と `workflow_dispatch` の一撃実行に対応しています。
+
+## AIドリルランキング自動投稿
+
+`https://app.levela.co.jp/ai-drill/ranking` はログインが必要です。完全自動にするには、Vercel側に次のどちらかを設定します。
+
+- `LEVELA_AI_DRILL_COOKIE`: ログイン済みセッションCookie
+- `LEVELA_AI_DRILL_RANKING_JSON_URL`: ランキングJSONを返す内部/公開API URL
+
+追加設定:
+
+```bash
+LEVELA_AI_DRILL_TARGET_MEMBERS=山田太郎,佐藤花子
+LEVELA_AI_DRILL_ROUND_START=9
+LEVELA_AI_DRILL_ROUND_START_DATE=2026-05-30
+```
+
+GitHub Actionsで定期実行する場合はRepository secretsに次を追加します。
+
+```bash
+AUTOMATION_MODE=ai-drill-ranking
+```
 
 ## Discord slash command
 
