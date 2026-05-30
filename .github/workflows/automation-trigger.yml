@@ -18,13 +18,11 @@ on:
       mode:
         description: "generic or ai-drill-ranking"
         required: false
-        default: "generic"
+        default: "ai-drill-ranking"
         type: choice
         options:
           - generic
           - ai-drill-ranking
-  schedule:
-    - cron: "0 0 * * *"
 
 jobs:
   trigger:
@@ -45,7 +43,6 @@ jobs:
           LEVELA_AI_DRILL_PHASE: ${{ secrets.LEVELA_AI_DRILL_PHASE }}
           LEVELA_AI_DRILL_DAY_START: ${{ secrets.LEVELA_AI_DRILL_DAY_START }}
           LEVELA_AI_DRILL_GIT_DAYS_LEFT: ${{ secrets.LEVELA_AI_DRILL_GIT_DAYS_LEFT }}
-          DISCORD_AUTO_POST: ${{ secrets.DISCORD_AUTO_POST }}
           SCHEDULE_URLS: ${{ secrets.SCHEDULE_URLS }}
           SCHEDULE_MEMO: ${{ secrets.SCHEDULE_MEMO }}
           SCHEDULE_INSTRUCTION: ${{ secrets.SCHEDULE_INSTRUCTION }}
@@ -78,7 +75,7 @@ jobs:
                   "phase": os.environ.get("LEVELA_AI_DRILL_PHASE", ""),
                   "dayStart": os.environ.get("LEVELA_AI_DRILL_DAY_START", ""),
                   "gitDaysLeft": os.environ.get("LEVELA_AI_DRILL_GIT_DAYS_LEFT", ""),
-                  "skipDiscordPost": os.environ.get("DISCORD_AUTO_POST", "").lower() != "true",
+                  "skipDiscordPost": True,
               }).encode("utf-8")
           else:
               urls_text = os.environ.get("URLS") or os.environ.get("SCHEDULE_URLS", "")
@@ -96,6 +93,7 @@ jobs:
                   "discordWebhookUrl": os.environ.get("DISCORD_WEBHOOK_URL", ""),
                   "discordThreadId": os.environ.get("DISCORD_THREAD_ID", ""),
                   "instruction": instruction,
+                  "skipDiscordPost": True,
                   "trigger": "schedule",
               }).encode("utf-8")
 

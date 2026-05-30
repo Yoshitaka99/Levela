@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
     discordWebhookUrl: body.discordWebhookUrl,
     discordThreadId: body.discordThreadId,
     instruction: body.instruction,
+    skipDiscordPost: Boolean(body.skipDiscordPost),
     trigger: body.trigger || "manual",
   });
 

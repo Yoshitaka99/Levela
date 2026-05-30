@@ -10,6 +10,7 @@ export type AutomationRequest = {
   discordWebhookUrl?: string;
   discordThreadId?: string;
   instruction?: string;
+  skipDiscordPost?: boolean;
   trigger?: "manual" | "discord" | "schedule" | "cli";
 };
 

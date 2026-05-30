@@ -1,12 +1,12 @@
 # Levela automation trigger setup
 
-URL、Discordメモ、追加指示をまとめて処理し、画像を生成してDiscordへ投稿するための入口です。
+URL、Discordメモ、追加指示をまとめて処理し、画像と投稿文を生成するための入口です。
 
 ## できること
 
 - `POST /api/automation/trigger` で通常の一撃実行
-- `POST /api/automation/ai-drill-ranking` でAIドリルランキング投稿
-- GitHub Actions の手動実行と定期実行
+- `POST /api/automation/ai-drill-ranking` でAIドリルランキングの投稿素材を生成
+- GitHub Actions の手動実行
 - Discord slash command の受信口 `/api/discord/interactions`
 - `OPENAI_API_KEY` と `OPENAI_IMAGE_MODEL` があればAI画像生成
 - AI画像生成が使えない場合も、`sharp` でPNGカードを生成
@@ -16,8 +16,8 @@ URL、Discordメモ、追加指示をまとめて処理し、画像を生成し�
 ```bash
 AUTOMATION_TRIGGER_SECRET=長いランダム文字列
 NEXT_PUBLIC_APP_URL=https://your-domain.example
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-DISCORD_THREAD_ID=任意。Discordスレッドへ投稿する場合のID
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/... # 手動素材生成では不要
+DISCORD_THREAD_ID=任意。Discordスレッドへ投稿する場合のID # 手動素材生成では不要
 DISCORD_PUBLIC_KEY=Discord Developer Portal の Public Key
 DISCORD_BOT_TOKEN=slash command 登録時だけ必要
 DISCORD_APPLICATION_ID=Discord Developer Portal の Application ID
@@ -55,27 +55,26 @@ Repository secrets に次を入れます。
 
 - `AUTOMATION_ENDPOINT`: `https://your-domain.example/api/automation/trigger`
 - `AUTOMATION_TRIGGER_SECRET`: アプリ側と同じ値
-- `DISCORD_WEBHOOK_URL`: 投稿先Discord webhook
-- `DISCORD_THREAD_ID`: 投稿先がスレッドの場合のID。例: Discord URLが `/channels/1172020927047942154/1501611169000198175` なら `1501611169000198175`
-- `DISCORD_AUTO_POST`: `true` の場合だけDiscordへ自動投稿。未設定なら本人投稿用のArtifactだけ作成
+- `DISCORD_WEBHOOK_URL`: 手動素材生成では不要
+- `DISCORD_THREAD_ID`: 手動素材生成では不要
 - `SCHEDULE_URLS`: 通常処理したいURL。空白区切り
 - `SCHEDULE_MEMO`: 通常処理に足す文章
 - `SCHEDULE_INSTRUCTION`: 通常処理の画像方向性
 - `AUTOMATION_MODE`: `ai-drill-ranking` にするとAIドリルランキング専用処理
 
-`.github/workflows/automation-trigger.yml` は毎日09:00 JSTの定期実行と `workflow_dispatch` の手動実行に対応しています。
+`.github/workflows/automation-trigger.yml` は `workflow_dispatch` の手動実行だけに対応しています。定期実行は停止済みです。
 
-AIドリルランキングでは、既定でDiscordへ自動投稿しません。GitHub Actionsの実行結果に `ai-drill-ranking-manual-post` Artifact が作成され、次のファイルを本人がDiscordへ投稿します。
+AIドリルランキングではDiscordへ自動投稿しません。GitHub Actionsの実行結果に `ai-drill-ranking-manual-post` Artifact が作成され、次のファイルを本人がiPhoneからDiscordへ投稿します。
 
 - `discord-post.txt`: 投稿文
 - `ai-drill-total-ranking.png`: 総合ポイントランキング画像
 - `ai-drill-daily-ranking.png`: デイリーランキング画像
 
-Webhook自動投稿に戻したい場合だけ、Repository secret `DISCORD_AUTO_POST=true` を設定します。
+ArtifactはGitHub Actionsの実行結果画面からZIPとしてダウンロードできます。iPhoneではZIPを開き、画像2枚を保存して、`discord-post.txt` の本文と一緒にDiscordへ貼り付けます。
 
-## AIドリルランキング自動投稿
+## AIドリルランキング素材生成
 
-`https://app.levela.co.jp/ai-drill/ranking` はログインが必要です。完全自動にするには、Repository secrets に次のどちらかを設定します。
+`https://app.levela.co.jp/ai-drill/ranking` はログインが必要です。素材生成するには、Repository secrets に次のどちらかを設定します。
 
 - `LEVELA_AI_DRILL_COOKIE`: ログイン済みセッションCookie
 - `LEVELA_AI_DRILL_RANKING_JSON_URL`: ランキングJSONを返す内部/公開API URL
@@ -118,4 +117,4 @@ $env:DISCORD_GUILD_ID="..." # 任意
 npm run discord:register-command
 ```
 
-Discordから実行すると即時に受領メッセージを返し、処理後に `DISCORD_WEBHOOK_URL` へ画像付きで投稿します。
+現在の運用ではDiscord自動投稿は使わず、GitHub ActionsのArtifactを本人が投稿します。
