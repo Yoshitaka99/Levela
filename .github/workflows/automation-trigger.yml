@@ -42,6 +42,7 @@ jobs:
           LEVELA_AI_DRILL_TARGET_MEMBERS: ${{ secrets.LEVELA_AI_DRILL_TARGET_MEMBERS }}
           LEVELA_AI_DRILL_ROUND_START: ${{ secrets.LEVELA_AI_DRILL_ROUND_START }}
           LEVELA_AI_DRILL_ROUND_START_DATE: ${{ secrets.LEVELA_AI_DRILL_ROUND_START_DATE }}
+          DISCORD_AUTO_POST: ${{ secrets.DISCORD_AUTO_POST }}
           SCHEDULE_URLS: ${{ secrets.SCHEDULE_URLS }}
           SCHEDULE_MEMO: ${{ secrets.SCHEDULE_MEMO }}
           SCHEDULE_INSTRUCTION: ${{ secrets.SCHEDULE_INSTRUCTION }}
@@ -71,6 +72,7 @@ jobs:
                   "targetMembers": os.environ.get("LEVELA_AI_DRILL_TARGET_MEMBERS", ""),
                   "roundStart": os.environ.get("LEVELA_AI_DRILL_ROUND_START", ""),
                   "roundStartDate": os.environ.get("LEVELA_AI_DRILL_ROUND_START_DATE", ""),
+                  "skipDiscordPost": os.environ.get("DISCORD_AUTO_POST", "").lower() != "true",
               }).encode("utf-8")
           else:
               urls_text = os.environ.get("URLS") or os.environ.get("SCHEDULE_URLS", "")
@@ -101,5 +103,25 @@ jobs:
               method="POST",
           )
           with urllib.request.urlopen(request, timeout=60) as response:
-              print(response.read().decode("utf-8"))
+              response_text = response.read().decode("utf-8")
+              print(response_text)
+
+          if mode == "ai-drill-ranking":
+              result = json.loads(response_text)
+              os.makedirs("automation-output", exist_ok=True)
+              with open("automation-output/discord-post.txt", "w", encoding="utf-8") as file:
+                  file.write(result.get("summary", ""))
+                  file.write("\n")
+              image_data_url = result.get("imageDataUrl", "")
+              if image_data_url.startswith("data:image/png;base64,"):
+                  import base64
+                  image_bytes = base64.b64decode(image_data_url.split(",", 1)[1])
+                  with open("automation-output/ai-drill-ranking.png", "wb") as file:
+                      file.write(image_bytes)
           PY
+      - name: Upload manual posting draft
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-drill-ranking-manual-post
+          path: automation-output/
+          if-no-files-found: ignore

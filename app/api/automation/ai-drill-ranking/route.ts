@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
     targetMembers: body.targetMembers,
     roundStart: body.roundStart,
     roundStartDate: body.roundStartDate,
+    skipDiscordPost: Boolean(body.skipDiscordPost),
   });
   return NextResponse.json(result);
 }

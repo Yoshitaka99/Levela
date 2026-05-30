@@ -57,12 +57,20 @@ Repository secrets に次を入れます。
 - `AUTOMATION_TRIGGER_SECRET`: アプリ側と同じ値
 - `DISCORD_WEBHOOK_URL`: 投稿先Discord webhook
 - `DISCORD_THREAD_ID`: 投稿先がスレッドの場合のID。例: Discord URLが `/channels/1172020927047942154/1501611169000198175` なら `1501611169000198175`
+- `DISCORD_AUTO_POST`: `true` の場合だけDiscordへ自動投稿。未設定なら本人投稿用のArtifactだけ作成
 - `SCHEDULE_URLS`: 通常処理したいURL。空白区切り
 - `SCHEDULE_MEMO`: 通常処理に足す文章
 - `SCHEDULE_INSTRUCTION`: 通常処理の画像方向性
 - `AUTOMATION_MODE`: `ai-drill-ranking` にするとAIドリルランキング専用処理
 
 `.github/workflows/automation-trigger.yml` は毎日09:00 JSTの定期実行と `workflow_dispatch` の手動実行に対応しています。
+
+AIドリルランキングでは、既定でDiscordへ自動投稿しません。GitHub Actionsの実行結果に `ai-drill-ranking-manual-post` Artifact が作成され、次の2ファイルを本人がDiscordへ投稿します。
+
+- `discord-post.txt`: 投稿文
+- `ai-drill-ranking.png`: 投稿画像
+
+Webhook自動投稿に戻したい場合だけ、Repository secret `DISCORD_AUTO_POST=true` を設定します。
 
 ## AIドリルランキング自動投稿
 

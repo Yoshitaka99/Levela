@@ -54,6 +54,7 @@ export type AiDrillRankingOptions = {
   targetMembers?: string;
   roundStart?: string | number;
   roundStartDate?: string;
+  skipDiscordPost?: boolean;
 };
 
 export async function runAiDrillRankingAutomation(options: AiDrillRankingOptions = {}): Promise<AutomationResult> {
@@ -91,7 +92,9 @@ export async function runAiDrillRankingAutomation(options: AiDrillRankingOptions
     ...image,
   };
 
-  await postDiscordResult(result, options.discordWebhookUrl, options.discordThreadId);
+  if (!options.skipDiscordPost) {
+    await postDiscordResult(result, options.discordWebhookUrl, options.discordThreadId);
+  }
   return result;
 }
 
