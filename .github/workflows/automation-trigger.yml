@@ -110,6 +110,18 @@ jobs:
               with open("automation-output/discord-post.txt", "w", encoding="utf-8") as file:
                   file.write(result.get("summary", ""))
                   file.write("\n")
+              with open("automation-output/discord-post.md", "w", encoding="utf-8") as file:
+                  file.write(result.get("summary", ""))
+                  file.write("\n")
+              with open("automation-output/README_iPhone.txt", "w", encoding="utf-8") as file:
+                  file.write("AIドリルランキング投稿素材\n")
+                  file.write("==========================\n\n")
+                  file.write("Discordへ自動送信はしていません。このZIPの中身を本人が投稿してください。\n\n")
+                  file.write("1. ai-drill-total-ranking.png をDiscordに添付\n")
+                  file.write("2. ai-drill-daily-ranking.png をDiscordに添付\n")
+                  file.write("3. discord-post.txt の本文をコピーしてDiscord本文に貼り付け\n")
+                  file.write("4. 内容を確認して送信\n\n")
+                  file.write("iPhoneの場合: ZIPをファイルアプリで開き、画像を長押し保存してからDiscordに添付してください。\n")
               def write_png(file_name, image_data_url):
                   if not image_data_url.startswith("data:image/png;base64,"):
                       return
@@ -121,6 +133,14 @@ jobs:
               write_png("ai-drill-total-ranking.png", result.get("imageDataUrl", ""))
               for image in result.get("extraImages", []):
                   write_png(image.get("fileName", "ai-drill-extra-ranking.png"), image.get("imageDataUrl", ""))
+
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as file:
+                  file.write("## AIドリルランキング投稿素材を作成しました\n\n")
+                  file.write("Discordへは自動送信していません。\n\n")
+                  file.write("Artifacts の `ai-drill-ranking-manual-post` をダウンロードして、以下を本人がDiscordへ投稿してください。\n\n")
+                  file.write("- `discord-post.txt` または `discord-post.md`: 投稿本文\n")
+                  file.write("- `ai-drill-total-ranking.png`: 総合ポイントランキング画像\n")
+                  file.write("- `ai-drill-daily-ranking.png`: デイリーランキング画像\n")
           PY
       - name: Upload manual posting draft
         uses: actions/upload-artifact@v4
@@ -128,3 +148,4 @@ jobs:
           name: ai-drill-ranking-manual-post
           path: automation-output/
           if-no-files-found: ignore
+          retention-days: 14

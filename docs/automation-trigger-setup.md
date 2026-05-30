@@ -67,10 +67,12 @@ Repository secrets に次を入れます。
 AIドリルランキングではDiscordへ自動投稿しません。GitHub ActionsからWebhook URLも渡しません。実行結果に `ai-drill-ranking-manual-post` Artifact が作成され、次のファイルを本人がiPhoneからDiscordへ投稿します。
 
 - `discord-post.txt`: 投稿文
+- `discord-post.md`: 投稿文。Markdownとして確認したい場合用
 - `ai-drill-total-ranking.png`: 総合ポイントランキング画像
 - `ai-drill-daily-ranking.png`: デイリーランキング画像
+- `README_iPhone.txt`: iPhone投稿手順
 
-ArtifactはGitHub Actionsの実行結果画面からZIPとしてダウンロードできます。iPhoneではZIPを開き、画像2枚を保存して、`discord-post.txt` の本文と一緒にDiscordへ貼り付けます。
+ArtifactはGitHub Actionsの実行結果画面からZIPとしてダウンロードできます。iPhoneではZIPをファイルアプリで開き、画像2枚を保存して、`discord-post.txt` の本文と一緒にDiscordへ貼り付けます。Artifactは14日間保持します。
 
 ## AIドリルランキング素材生成
 
