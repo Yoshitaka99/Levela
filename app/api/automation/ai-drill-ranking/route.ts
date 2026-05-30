@@ -11,6 +11,14 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const result = await runAiDrillRankingAutomation(body.discordWebhookUrl);
+  const result = await runAiDrillRankingAutomation({
+    discordWebhookUrl: body.discordWebhookUrl,
+    rankingJsonUrl: body.rankingJsonUrl,
+    rankingCookie: body.rankingCookie,
+    rankingAuthorization: body.rankingAuthorization,
+    targetMembers: body.targetMembers,
+    roundStart: body.roundStart,
+    roundStartDate: body.roundStartDate,
+  });
   return NextResponse.json(result);
 }

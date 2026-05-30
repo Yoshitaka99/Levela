@@ -35,6 +35,12 @@ jobs:
           AUTOMATION_ENDPOINT: ${{ secrets.AUTOMATION_ENDPOINT }}
           AUTOMATION_TRIGGER_SECRET: ${{ secrets.AUTOMATION_TRIGGER_SECRET }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          LEVELA_AI_DRILL_RANKING_JSON_URL: ${{ secrets.LEVELA_AI_DRILL_RANKING_JSON_URL }}
+          LEVELA_AI_DRILL_COOKIE: ${{ secrets.LEVELA_AI_DRILL_COOKIE }}
+          LEVELA_AI_DRILL_AUTHORIZATION: ${{ secrets.LEVELA_AI_DRILL_AUTHORIZATION }}
+          LEVELA_AI_DRILL_TARGET_MEMBERS: ${{ secrets.LEVELA_AI_DRILL_TARGET_MEMBERS }}
+          LEVELA_AI_DRILL_ROUND_START: ${{ secrets.LEVELA_AI_DRILL_ROUND_START }}
+          LEVELA_AI_DRILL_ROUND_START_DATE: ${{ secrets.LEVELA_AI_DRILL_ROUND_START_DATE }}
           SCHEDULE_URLS: ${{ secrets.SCHEDULE_URLS }}
           SCHEDULE_MEMO: ${{ secrets.SCHEDULE_MEMO }}
           SCHEDULE_INSTRUCTION: ${{ secrets.SCHEDULE_INSTRUCTION }}
@@ -57,6 +63,12 @@ jobs:
               endpoint = endpoint.rstrip("/").replace("/api/automation/trigger", "/api/automation/ai-drill-ranking")
               payload = json.dumps({
                   "discordWebhookUrl": os.environ.get("DISCORD_WEBHOOK_URL", ""),
+                  "rankingJsonUrl": os.environ.get("LEVELA_AI_DRILL_RANKING_JSON_URL", ""),
+                  "rankingCookie": os.environ.get("LEVELA_AI_DRILL_COOKIE", ""),
+                  "rankingAuthorization": os.environ.get("LEVELA_AI_DRILL_AUTHORIZATION", ""),
+                  "targetMembers": os.environ.get("LEVELA_AI_DRILL_TARGET_MEMBERS", ""),
+                  "roundStart": os.environ.get("LEVELA_AI_DRILL_ROUND_START", ""),
+                  "roundStartDate": os.environ.get("LEVELA_AI_DRILL_ROUND_START_DATE", ""),
               }).encode("utf-8")
           else:
               urls_text = os.environ.get("URLS") or os.environ.get("SCHEDULE_URLS", "")
