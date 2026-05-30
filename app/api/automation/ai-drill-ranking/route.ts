@@ -10,6 +10,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await runAiDrillRankingAutomation();
+  const body = await request.json().catch(() => ({}));
+  const result = await runAiDrillRankingAutomation(body.discordWebhookUrl);
   return NextResponse.json(result);
 }

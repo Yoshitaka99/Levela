@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import type { AutomationResult } from "./types";
 
-export async function postDiscordResult(result: AutomationResult) {
-  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+export async function postDiscordResult(result: AutomationResult, overrideWebhookUrl?: string) {
+  const webhookUrl = overrideWebhookUrl || process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
 
   if (!result.imageUrl) {

@@ -19,7 +19,7 @@ type RankingPayload = {
 
 const DEFAULT_RANKING_URL = "https://app.levela.co.jp/ai-drill/ranking";
 
-export async function runAiDrillRankingAutomation(): Promise<AutomationResult> {
+export async function runAiDrillRankingAutomation(discordWebhookUrl?: string): Promise<AutomationResult> {
   const payload = await fetchRankingPayload();
   const members = normalizeRankingMembers(payload);
   if (!members.length) {
@@ -54,7 +54,7 @@ export async function runAiDrillRankingAutomation(): Promise<AutomationResult> {
     ...image,
   };
 
-  await postDiscordResult(result);
+  await postDiscordResult(result, discordWebhookUrl);
   return result;
 }
 

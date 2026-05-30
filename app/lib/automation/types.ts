@@ -7,6 +7,7 @@ export type AutomationSource = {
 export type AutomationRequest = {
   urls: string[];
   discordText?: string;
+  discordWebhookUrl?: string;
   instruction?: string;
   trigger?: "manual" | "discord" | "schedule" | "cli";
 };

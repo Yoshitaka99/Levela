@@ -34,6 +34,7 @@ jobs:
         env:
           AUTOMATION_ENDPOINT: ${{ secrets.AUTOMATION_ENDPOINT }}
           AUTOMATION_TRIGGER_SECRET: ${{ secrets.AUTOMATION_TRIGGER_SECRET }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           SCHEDULE_URLS: ${{ secrets.SCHEDULE_URLS }}
           SCHEDULE_MEMO: ${{ secrets.SCHEDULE_MEMO }}
           SCHEDULE_INSTRUCTION: ${{ secrets.SCHEDULE_INSTRUCTION }}
@@ -54,7 +55,9 @@ jobs:
 
           if mode == "ai-drill-ranking":
               endpoint = endpoint.rstrip("/").replace("/api/automation/trigger", "/api/automation/ai-drill-ranking")
-              payload = b"{}"
+              payload = json.dumps({
+                  "discordWebhookUrl": os.environ.get("DISCORD_WEBHOOK_URL", ""),
+              }).encode("utf-8")
           else:
               urls_text = os.environ.get("URLS") or os.environ.get("SCHEDULE_URLS", "")
               urls = [url for url in urls_text.split() if url]
@@ -68,6 +71,7 @@ jobs:
               payload = json.dumps({
                   "urls": urls,
                   "discordText": memo,
+                  "discordWebhookUrl": os.environ.get("DISCORD_WEBHOOK_URL", ""),
                   "instruction": instruction,
                   "trigger": "schedule",
               }).encode("utf-8")

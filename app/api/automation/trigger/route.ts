@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
   const result = await runAutomation({
     urls: Array.isArray(body.urls) && body.urls.length ? body.urls : body.url ? [body.url] : defaultUrls,
     discordText: body.discordText,
+    discordWebhookUrl: body.discordWebhookUrl,
     instruction: body.instruction,
     trigger: body.trigger || "manual",
   });
