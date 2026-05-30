@@ -33,6 +33,17 @@ type RankingPayload = {
 };
 
 const DEFAULT_RANKING_URL = "https://app.levela.co.jp/ai-drill/ranking";
+const DEFAULT_TARGET_MEMBERS = [
+  "和佐田舞緒",
+  "関口愛里",
+  "田仲由敬",
+  "早川大貴",
+  "河上まちこ",
+  "加藤陸",
+  "持木玲那",
+  "笠松佑衣",
+  "五十嵐凌大",
+];
 
 export type AiDrillRankingOptions = {
   discordWebhookUrl?: string;
@@ -172,6 +183,9 @@ function parseRankingText(html: string): RankingMember[] {
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&");
 
+  const fromVisibleText = parseVisibleRankingText(text);
+  if (fromVisibleText.length) return fromVisibleText;
+
   const members: RankingMember[] = [];
   const linePattern = /(?:#|第)?\s*(\d{1,3})\s*(?:位|rank)?\s+([^\n\r\d]{2,40}?)\s+(\d{1,7})\s*(?:pt|ポイント|XP)/gi;
   for (const match of text.matchAll(linePattern)) {
@@ -185,6 +199,24 @@ function parseRankingText(html: string): RankingMember[] {
       totalPoints: points,
       dailyRank: rank,
       totalRank: rank,
+    });
+  }
+  return members;
+}
+
+function parseVisibleRankingText(text: string): RankingMember[] {
+  const members: RankingMember[] = [];
+  const pattern = /【[^】]+】\s*([^\n\r]+?)\s*(?:\(あなた\))?\s*[\r\n\s]+([\d,]+)\s*XP/gi;
+  for (const match of text.matchAll(pattern)) {
+    const name = match[1].trim();
+    const points = Number(match[2].replace(/,/g, ""));
+    if (!name || !Number.isFinite(points)) continue;
+    members.push({
+      name,
+      dailyPoints: points,
+      totalPoints: points,
+      dailyRank: members.length + 1,
+      totalRank: members.length + 1,
     });
   }
   return members;
@@ -216,7 +248,10 @@ function parseNextFlightRanking(html: string): RankingMember[] {
 }
 
 function getTargetMembers(options: AiDrillRankingOptions) {
-  return (options.targetMembers || process.env.LEVELA_AI_DRILL_TARGET_MEMBERS || "")
+  const configuredTargets = options.targetMembers || process.env.LEVELA_AI_DRILL_TARGET_MEMBERS;
+  if (!configuredTargets) return DEFAULT_TARGET_MEMBERS;
+
+  return configuredTargets
     .split(/[,\n]/)
     .map((name) => name.trim())
     .filter(Boolean);
@@ -227,7 +262,12 @@ function sameName(target: string, actual: string) {
 }
 
 function normalizeName(name: string) {
-  return name.replace(/\s+/g, "").toLowerCase();
+  return name
+    .replace(/【[^】]+】/g, "")
+    .replace(/\(あなた\)/g, "")
+    .replace(/[()（）]/g, "")
+    .replace(/[\s　]+/g, "")
+    .toLowerCase();
 }
 
 function getRoundLabel(options: AiDrillRankingOptions) {

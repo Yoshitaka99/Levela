@@ -72,12 +72,14 @@ Repository secrets に次を入れます。
 追加設定:
 
 ```bash
-LEVELA_AI_DRILL_TARGET_MEMBERS=山田太郎,佐藤花子
+LEVELA_AI_DRILL_TARGET_MEMBERS=和佐田舞緒,関口愛里,田仲由敬,早川大貴,河上まちこ,加藤陸,持木玲那,笠松佑衣,五十嵐凌大
 LEVELA_AI_DRILL_ROUND_START=9
 LEVELA_AI_DRILL_ROUND_START_DATE=2026-05-30
 ```
 
 Vercel側の環境変数を直接触らなくても、GitHub Actions がこれらのRepository secretsをAPIへ渡します。
+
+`LEVELA_AI_DRILL_TARGET_MEMBERS` を未設定にした場合は、上記9名を既定の対象メンバーとして使います。
 
 ## Discord slash command
 
