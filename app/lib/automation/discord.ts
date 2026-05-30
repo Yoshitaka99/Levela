@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import type { AutomationResult } from "./types";
 
+const DEFAULT_DISCORD_THREAD_ID = "1501611169000198175";
+
 export async function postDiscordResult(result: AutomationResult, overrideWebhookUrl?: string, overrideThreadId?: string) {
   const webhookUrl = buildDiscordWebhookUrl(overrideWebhookUrl, overrideThreadId);
   if (!webhookUrl) return;
@@ -57,7 +59,7 @@ export async function postDiscordResult(result: AutomationResult, overrideWebhoo
 
 function buildDiscordWebhookUrl(overrideWebhookUrl?: string, overrideThreadId?: string) {
   const webhookUrl = overrideWebhookUrl || process.env.DISCORD_WEBHOOK_URL;
-  const threadId = overrideThreadId || process.env.DISCORD_THREAD_ID;
+  const threadId = overrideThreadId || process.env.DISCORD_THREAD_ID || DEFAULT_DISCORD_THREAD_ID;
   if (!webhookUrl || !threadId) return webhookUrl;
 
   const url = new URL(webhookUrl);
