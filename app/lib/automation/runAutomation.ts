@@ -24,7 +24,7 @@ export async function runAutomation(request: AutomationRequest): Promise<Automat
     ...image,
   };
 
-  await postDiscordResult(result, request.discordWebhookUrl);
+  await postDiscordResult(result, request.discordWebhookUrl, request.discordThreadId);
   return result;
 }
 

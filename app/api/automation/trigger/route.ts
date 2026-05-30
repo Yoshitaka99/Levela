@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
     urls: Array.isArray(body.urls) && body.urls.length ? body.urls : body.url ? [body.url] : defaultUrls,
     discordText: body.discordText,
     discordWebhookUrl: body.discordWebhookUrl,
+    discordThreadId: body.discordThreadId,
     instruction: body.instruction,
     trigger: body.trigger || "manual",
   });

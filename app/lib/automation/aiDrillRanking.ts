@@ -47,6 +47,7 @@ const DEFAULT_TARGET_MEMBERS = [
 
 export type AiDrillRankingOptions = {
   discordWebhookUrl?: string;
+  discordThreadId?: string;
   rankingJsonUrl?: string;
   rankingCookie?: string;
   rankingAuthorization?: string;
@@ -90,7 +91,7 @@ export async function runAiDrillRankingAutomation(options: AiDrillRankingOptions
     ...image,
   };
 
-  await postDiscordResult(result, options.discordWebhookUrl);
+  await postDiscordResult(result, options.discordWebhookUrl, options.discordThreadId);
   return result;
 }
 

@@ -8,6 +8,7 @@ export type AutomationRequest = {
   urls: string[];
   discordText?: string;
   discordWebhookUrl?: string;
+  discordThreadId?: string;
   instruction?: string;
   trigger?: "manual" | "discord" | "schedule" | "cli";
 };

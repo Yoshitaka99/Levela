@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const result = await runAiDrillRankingAutomation({
     discordWebhookUrl: body.discordWebhookUrl,
+    discordThreadId: body.discordThreadId,
     rankingJsonUrl: body.rankingJsonUrl,
     rankingCookie: body.rankingCookie,
     rankingAuthorization: body.rankingAuthorization,

@@ -17,6 +17,7 @@ URL、Discordメモ、追加指示をまとめて処理し、画像を生成し�
 AUTOMATION_TRIGGER_SECRET=長いランダム文字列
 NEXT_PUBLIC_APP_URL=https://your-domain.example
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+DISCORD_THREAD_ID=任意。Discordスレッドへ投稿する場合のID
 DISCORD_PUBLIC_KEY=Discord Developer Portal の Public Key
 DISCORD_BOT_TOKEN=slash command 登録時だけ必要
 DISCORD_APPLICATION_ID=Discord Developer Portal の Application ID
@@ -55,6 +56,7 @@ Repository secrets に次を入れます。
 - `AUTOMATION_ENDPOINT`: `https://your-domain.example/api/automation/trigger`
 - `AUTOMATION_TRIGGER_SECRET`: アプリ側と同じ値
 - `DISCORD_WEBHOOK_URL`: 投稿先Discord webhook
+- `DISCORD_THREAD_ID`: 投稿先がスレッドの場合のID。例: Discord URLが `/channels/1172020927047942154/1501611169000198175` なら `1501611169000198175`
 - `SCHEDULE_URLS`: 通常処理したいURL。空白区切り
 - `SCHEDULE_MEMO`: 通常処理に足す文章
 - `SCHEDULE_INSTRUCTION`: 通常処理の画像方向性
