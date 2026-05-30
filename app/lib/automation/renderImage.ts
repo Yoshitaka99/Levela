@@ -1,31 +1,37 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import OpenAI from "openai";
 import sharp from "sharp";
 import { publicBaseUrl } from "./env";
 
-const OUTPUT_DIR = path.join(process.cwd(), "public", "generated", "automation");
+const PUBLIC_OUTPUT_DIR = path.join(process.cwd(), "public", "generated", "automation");
 
 export async function renderAutomationImage(id: string, summary: string) {
-  await fs.mkdir(OUTPUT_DIR, { recursive: true });
+  const outputDir = process.env.VERCEL
+    ? path.join(os.tmpdir(), "levela-automation")
+    : PUBLIC_OUTPUT_DIR;
+  await fs.mkdir(outputDir, { recursive: true });
 
   if (process.env.OPENAI_API_KEY && process.env.OPENAI_IMAGE_MODEL) {
-    const aiImage = await tryRenderOpenAiImage(id, summary);
+    const aiImage = await tryRenderOpenAiImage(id, summary, outputDir);
     if (aiImage) {
       return aiImage;
     }
   }
 
-  const filePath = path.join(OUTPUT_DIR, `${id}.png`);
-  await sharp(Buffer.from(makeSummarySvg(summary))).png().toFile(filePath);
+  const filePath = path.join(outputDir, `${id}.png`);
+  const png = await sharp(Buffer.from(makeSummarySvg(summary))).png().toBuffer();
+  await fs.writeFile(filePath, png);
   return {
     imagePath: filePath,
-    imageUrl: `${publicBaseUrl()}/generated/automation/${id}.png`,
+    imageUrl: process.env.VERCEL ? "" : `${publicBaseUrl()}/generated/automation/${id}.png`,
+    imageDataUrl: `data:image/png;base64,${png.toString("base64")}`,
     usedAiImage: false,
   };
 }
 
-async function tryRenderOpenAiImage(id: string, summary: string) {
+async function tryRenderOpenAiImage(id: string, summary: string, outputDir: string) {
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await client.images.generate({
@@ -41,11 +47,13 @@ async function tryRenderOpenAiImage(id: string, summary: string) {
     const b64 = response.data?.[0]?.b64_json;
     if (!b64) return null;
 
-    const filePath = path.join(OUTPUT_DIR, `${id}.png`);
-    await fs.writeFile(filePath, Buffer.from(b64, "base64"));
+    const imageBuffer = Buffer.from(b64, "base64");
+    const filePath = path.join(outputDir, `${id}.png`);
+    await fs.writeFile(filePath, imageBuffer);
     return {
       imagePath: filePath,
-      imageUrl: `${publicBaseUrl()}/generated/automation/${id}.png`,
+      imageUrl: process.env.VERCEL ? "" : `${publicBaseUrl()}/generated/automation/${id}.png`,
+      imageDataUrl: `data:image/png;base64,${imageBuffer.toString("base64")}`,
       usedAiImage: true,
     };
   } catch (error) {

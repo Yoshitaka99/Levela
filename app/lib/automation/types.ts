@@ -17,6 +17,7 @@ export type AutomationResult = {
   summary: string;
   imageUrl: string;
   imagePath: string;
+  imageDataUrl?: string;
   usedAiImage: boolean;
   sources: AutomationSource[];
 };
