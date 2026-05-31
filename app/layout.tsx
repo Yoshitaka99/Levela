@@ -16,13 +16,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ドーモ！ | 寮特化のリユース・シェアアプリ",
+  title: "オロチーム",
   manifest: "/manifest.json",
   themeColor: "#0a0a0a",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "ドーモ！"
+    title: "オロチーム"
   }
 };
 
