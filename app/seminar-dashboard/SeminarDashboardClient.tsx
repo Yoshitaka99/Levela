@@ -116,8 +116,8 @@ function ReasonList({ title, icon: Icon, reasons, tone }: {
         {reasons.length ? (
           reasons.map((reason) => (
             <div key={reason.label}>
-              <div className="mb-1 flex items-center justify-between gap-4 text-sm">
-                <span className="truncate text-slate-300">{reason.label}</span>
+              <div className="mb-1 flex items-start justify-between gap-4 text-sm">
+                <span className="min-w-0 whitespace-normal break-words leading-6 text-slate-300">{reason.label}</span>
                 <span className="shrink-0 font-semibold text-white">{reason.count}件</span>
               </div>
               <ProgressBar value={(reason.count / total) * 100} tone={tone} />
@@ -916,15 +916,15 @@ function ReasonMatrix({ members }: { members: MemberKpi[] }) {
             <div className="mt-3 grid gap-2">
               <div className="rounded-md border border-rose-300/15 bg-rose-500/10 px-3 py-2">
                 <p className="text-[11px] text-rose-100/70">失注理由TOP</p>
-                <div className="mt-1 flex items-center justify-between gap-3 text-sm">
-                  <span className="min-w-0 truncate text-slate-100">{topReason(member.lostReasons)}</span>
+                <div className="mt-1 flex items-start justify-between gap-3 text-sm">
+                  <span className="min-w-0 whitespace-normal break-words leading-6 text-slate-100">{topReason(member.lostReasons)}</span>
                   <span className="shrink-0 font-semibold text-rose-100">{sumReasons(member.lostReasons)}件</span>
                 </div>
               </div>
               <div className="rounded-md border border-amber-300/15 bg-amber-500/10 px-3 py-2">
                 <p className="text-[11px] text-amber-100/70">保留理由TOP</p>
-                <div className="mt-1 flex items-center justify-between gap-3 text-sm">
-                  <span className="min-w-0 truncate text-slate-100">{topReason(member.holdReasons)}</span>
+                <div className="mt-1 flex items-start justify-between gap-3 text-sm">
+                  <span className="min-w-0 whitespace-normal break-words leading-6 text-slate-100">{topReason(member.holdReasons)}</span>
                   <span className="shrink-0 font-semibold text-amber-100">{sumReasons(member.holdReasons)}件</span>
                 </div>
               </div>
@@ -932,24 +932,28 @@ function ReasonMatrix({ members }: { members: MemberKpi[] }) {
           </div>
         ))}
       </div>
-      <div className="mt-4 hidden overflow-x-auto lg:block">
-        <table className="w-full min-w-[720px] border-collapse text-sm">
+      <div className="mt-4 hidden lg:block">
+        <table className="w-full table-fixed border-collapse text-sm">
           <thead className="bg-slate-900 text-xs text-slate-400">
             <tr>
-              <th className="px-3 py-3 text-left">メンバー</th>
-              <th className="px-3 py-3 text-left">失注理由TOP</th>
-              <th className="px-3 py-3 text-right">失注理由数</th>
-              <th className="px-3 py-3 text-left">保留理由TOP</th>
-              <th className="px-3 py-3 text-right">保留数</th>
+              <th className="w-[14%] px-3 py-3 text-left">メンバー</th>
+              <th className="w-[34%] px-3 py-3 text-left">失注理由TOP</th>
+              <th className="w-[10%] px-3 py-3 text-right">失注理由数</th>
+              <th className="w-[34%] px-3 py-3 text-left">保留理由TOP</th>
+              <th className="w-[8%] px-3 py-3 text-right">保留数</th>
             </tr>
           </thead>
           <tbody>
             {members.map((member) => (
               <tr key={member.name} className="border-t border-white/10 odd:bg-white/[0.02]">
-                <td className="px-3 py-3 font-medium text-white">{member.name}</td>
-                <td className="px-3 py-3 text-slate-300">{topReason(member.lostReasons)}</td>
+                <td className="px-3 py-3 align-top font-medium text-white">{member.name}</td>
+                <td className="px-3 py-3 align-top text-slate-300">
+                  <span className="block whitespace-normal break-words leading-6">{topReason(member.lostReasons)}</span>
+                </td>
                 <td className="px-3 py-3 text-right text-rose-100">{sumReasons(member.lostReasons)}</td>
-                <td className="px-3 py-3 text-slate-300">{topReason(member.holdReasons)}</td>
+                <td className="px-3 py-3 align-top text-slate-300">
+                  <span className="block whitespace-normal break-words leading-6">{topReason(member.holdReasons)}</span>
+                </td>
                 <td className="px-3 py-3 text-right text-amber-100">{sumReasons(member.holdReasons)}</td>
               </tr>
             ))}
