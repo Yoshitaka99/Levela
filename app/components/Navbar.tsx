@@ -23,6 +23,7 @@ export function Navbar() {
   }, []);
 
   if (pathname.startsWith("/auth")) return null; // 認証画面では出さない
+  if (pathname.startsWith("/seminar-dashboard")) return null;
 
   return (
     <nav className="fixed top-0 inset-x-0 h-16 bg-black/50 backdrop-blur-xl border-b border-white/10 z-50 transition-all px-4">
