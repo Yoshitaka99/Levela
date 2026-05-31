@@ -5,6 +5,15 @@ import { defaultDashboardData } from "./data";
 
 export const metadata: Metadata = {
   title: "オロチーム セミナーKPI",
+  description: " ",
+  openGraph: {
+    title: "オロチーム セミナーKPI",
+    description: " ",
+  },
+  twitter: {
+    title: "オロチーム セミナーKPI",
+    description: " ",
+  },
   robots: {
     index: false,
     follow: false,
