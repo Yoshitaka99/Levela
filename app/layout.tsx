@@ -17,7 +17,6 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "ドーモ！ | 寮特化のリユース・シェアアプリ",
-  description: "寮内でかんたん取引。不要になったものを寮の仲間に譲ろう。",
   manifest: "/manifest.json",
   themeColor: "#0a0a0a",
   appleWebApp: {
