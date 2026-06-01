@@ -83,6 +83,7 @@ export default function BottomNav() {
   // Hide on auth pages and individual chat pages
   if (pathname.startsWith("/auth")) return null;
   if (pathname.startsWith("/seminar-dashboard")) return null;
+  if (pathname.startsWith("/team-sales-dashboard")) return null;
   if (/^\/messages\/.+/.test(pathname)) return null;
 
   return (
