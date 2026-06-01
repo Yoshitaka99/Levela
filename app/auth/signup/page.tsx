@@ -50,7 +50,7 @@ function SignupForm() {
             <h1 className="text-3xl font-extrabold tracking-tight text-white mb-2">
               新しく始める ✨
             </h1>
-            <p className="text-sm text-gray-400">無料でドーモ！のアカウントを作成します</p>
+            <p className="text-sm text-gray-400">無料でアカウントを作成します</p>
           </>
         )}
       </div>

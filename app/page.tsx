@@ -38,7 +38,7 @@ export default function Home() {
 
       {/* Features Section */}
       <div className="z-10 mt-24 mb-16 w-full max-w-3xl">
-        <h2 className="text-sm font-semibold text-gray-400 mb-6 px-2">ドーモ！の特徴</h2>
+        <h2 className="text-sm font-semibold text-gray-400 mb-6 px-2">サービスの特徴</h2>
         <div className="grid gap-4">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex items-start gap-4 backdrop-blur-sm">
             <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center text-xl shrink-0">📍</div>
