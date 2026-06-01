@@ -235,7 +235,7 @@ function aggregateRows(
   const statusCounts = new Map<string, number>();
 
   scopedRows.forEach((row) => {
-    const status = getValue(row, 7, "2回目/実施後ステータス").trim();
+    const status = getValue(row, 7, "2回目/実施後ステータス", ["ステータス"]).trim();
     if (status) increment(statusCounts, status);
   });
 
@@ -251,7 +251,7 @@ function aggregateRows(
 
     memberRows.forEach((row) => {
       const seat = getValue(row, 6, "着席").trim();
-      const status = getValue(row, 7, "2回目/実施後ステータス").trim();
+      const status = getValue(row, 7, "2回目/実施後ステータス", ["ステータス"]).trim();
       const paymentDate = getValue(row, 13, "決済日(着金日)", ["決着日(着金日)"]).trim();
       const lostReason = getValue(row, 16, "失注理由");
       const holdReason = getValue(row, 17, "保留理由") || getValue(row, 19, "保留理由2");
