@@ -102,10 +102,12 @@ function TeamGoalPanel({
   closeRate,
   seated,
   closed,
+  leads,
 }: {
   closeRate: number;
   seated: number;
   closed: number;
+  leads: number;
 }) {
   const plusFiveRate = closeRate + 5;
   const targetRate = 40;
@@ -113,31 +115,76 @@ function TeamGoalPanel({
   const targetClosed = seated ? Math.ceil((targetRate / 100) * seated) : 0;
   const requiredClosed = Math.max(targetClosed - closed, 0);
   const isTargetReached = gapToTarget <= 0;
+  const monthlyLaunchTarget = {
+    leads: 50 + 50 + 75 * 3,
+    seatRate: 75,
+    closeRate: 35,
+  };
+  const monthlyTargetSeatedExact = monthlyLaunchTarget.leads * (monthlyLaunchTarget.seatRate / 100);
+  const monthlyTargetSeated = Math.ceil(monthlyTargetSeatedExact);
+  const monthlyTargetClosedExact = monthlyTargetSeatedExact * (monthlyLaunchTarget.closeRate / 100);
+  const monthlyTargetClosed = Math.ceil(monthlyTargetClosedExact);
+  const leadGap = leads - monthlyLaunchTarget.leads;
+  const seatedGap = seated - monthlyTargetSeated;
+  const closedGap = closed - monthlyTargetClosed;
+  const formatGap = (value: number) => (value >= 0 ? `+${value}件` : `${value}件`);
 
   return (
     <section className="mt-3 rounded-lg border border-teal-300/20 bg-white/[0.03] p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold text-teal-100">チーム目標値</p>
-          <h2 className="mt-1 text-lg font-semibold text-white">選択ローンチ分の全体成約率</h2>
+          <h2 className="mt-1 text-lg font-semibold text-white">選択ローンチ分の現在値と月間目標</h2>
         </div>
         <p className="text-xs text-slate-400">
-          成約 {closed}件 / 着座 {seated}件 基準
+          オロ・早川は50件、その他メンバーは75件発送の目標設計
         </p>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-4">
-        <SmallMetric label="現在の実成約率" value={formatPercent(closeRate)} />
-        <SmallMetric label="+5pt改善後" value={formatPercent(plusFiveRate)} />
-        <SmallMetric
-          label="40%までの差分"
-          value={isTargetReached ? `+${formatPercent(Math.abs(gapToTarget))}` : `-${formatPercent(gapToTarget)}`}
-          tone={isTargetReached ? "teal" : "amber"}
-        />
-        <SmallMetric
-          label="40%到達に必要な成約"
-          value={requiredClosed ? `あと${requiredClosed}件` : "達成中"}
-          tone={requiredClosed ? "amber" : "teal"}
-        />
+
+      <div className="mt-4 space-y-3">
+        <div className="grid gap-3 md:grid-cols-4">
+          <SmallMetric label="現在の実成約率" value={formatPercent(closeRate)} />
+          <SmallMetric label="+5pt改善後" value={formatPercent(plusFiveRate)} />
+          <SmallMetric
+            label="40%までの差分"
+            value={isTargetReached ? `+${formatPercent(Math.abs(gapToTarget))}` : `-${formatPercent(gapToTarget)}`}
+            tone={isTargetReached ? "teal" : "amber"}
+          />
+          <SmallMetric
+            label="40%到達に必要な成約"
+            value={requiredClosed ? `あと${requiredClosed}件` : "達成中"}
+            tone={requiredClosed ? "amber" : "teal"}
+          />
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-4">
+          <SmallMetric label="月間発送目標" value={`${monthlyLaunchTarget.leads}件`} sub="50件×2名 / 75件×3名" />
+          <SmallMetric label="着座75%目標" value={`${monthlyTargetSeated}件`} sub={`指数 ${monthlyTargetSeatedExact.toFixed(1)}件`} />
+          <SmallMetric
+            label="成約35%の月間指数"
+            value={`${monthlyTargetClosedExact.toFixed(1)}件`}
+            sub={`実数目安 ${monthlyTargetClosed}件`}
+            tone="teal"
+          />
+          <SmallMetric label="目標前提" value="75% × 35%" sub="発送から着座、着座から成約" />
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-4">
+          <SmallMetric label="選択中の発送数" value={`${leads}件`} sub={`目標差分 ${formatGap(leadGap)}`} tone={leadGap >= 0 ? "teal" : "amber"} />
+          <SmallMetric
+            label="選択中の着座数"
+            value={`${seated}件`}
+            sub={`75%目標差分 ${formatGap(seatedGap)}`}
+            tone={seatedGap >= 0 ? "teal" : "amber"}
+          />
+          <SmallMetric
+            label="選択中の実成約数"
+            value={`${closed}件`}
+            sub={`35%指数差分 ${formatGap(closedGap)}`}
+            tone={closedGap >= 0 ? "teal" : "amber"}
+          />
+          <SmallMetric label="選択中の着座率" value={formatPercent(leads ? (seated / leads) * 100 : 0)} sub="発送数に対する現在値" />
+        </div>
       </div>
     </section>
   );
@@ -536,7 +583,7 @@ export function SeminarDashboardClient({
           />
         </div>
 
-        <TeamGoalPanel closeRate={closeRate} seated={totals.seated} closed={totals.closed} />
+        <TeamGoalPanel closeRate={closeRate} seated={totals.seated} closed={totals.closed} leads={totals.leads} />
 
         <nav className="mt-5 flex flex-wrap gap-2 border-b border-white/10 pb-3">
           {tabs.map((tab) => (
@@ -742,10 +789,12 @@ export function SeminarDashboardClient({
 function SmallMetric({
   label,
   value,
+  sub,
   tone = "slate",
 }: {
   label: string;
   value: string;
+  sub?: string;
   tone?: "slate" | "teal" | "amber";
 }) {
   const toneClass = {
@@ -758,6 +807,7 @@ function SmallMetric({
     <div className="rounded-md border border-white/10 bg-slate-950/50 px-3 py-3">
       <p className="text-xs text-slate-400">{label}</p>
       <p className={`mt-1 text-lg font-semibold ${toneClass}`}>{value}</p>
+      {sub ? <p className="mt-1 text-xs leading-5 text-slate-500">{sub}</p> : null}
     </div>
   );
 }
