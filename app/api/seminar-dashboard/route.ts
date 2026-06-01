@@ -15,16 +15,11 @@ const CUSTOMER_SHEET_CSV_URL =
 const DEFAULT_SEMINAR_TEXT = "5月セミナー";
 
 const TARGET_MEMBERS = [
-  "和佐田舞緒",
-  "関口愛里",
   "田仲由敬",
   "早川大貴",
   "河上まちこ",
-  "加藤陸",
-  "持木玲那",
-  "笠松佑衣",
-  "五十嵐凌大",
   "苙隼人",
+  "折原加純",
 ];
 
 type SourceRow = Record<string, string>;

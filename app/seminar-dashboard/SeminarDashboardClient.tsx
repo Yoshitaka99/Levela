@@ -98,6 +98,51 @@ function MetricTile({
   );
 }
 
+function TeamGoalPanel({
+  closeRate,
+  seated,
+  closed,
+}: {
+  closeRate: number;
+  seated: number;
+  closed: number;
+}) {
+  const plusFiveRate = closeRate + 5;
+  const targetRate = 40;
+  const gapToTarget = targetRate - closeRate;
+  const targetClosed = seated ? Math.ceil((targetRate / 100) * seated) : 0;
+  const requiredClosed = Math.max(targetClosed - closed, 0);
+  const isTargetReached = gapToTarget <= 0;
+
+  return (
+    <section className="mt-3 rounded-lg border border-teal-300/20 bg-white/[0.03] p-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold text-teal-100">チーム目標値</p>
+          <h2 className="mt-1 text-lg font-semibold text-white">選択ローンチ分の全体成約率</h2>
+        </div>
+        <p className="text-xs text-slate-400">
+          成約 {closed}件 / 着座 {seated}件 基準
+        </p>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <SmallMetric label="現在の実成約率" value={formatPercent(closeRate)} />
+        <SmallMetric label="+5pt改善後" value={formatPercent(plusFiveRate)} />
+        <SmallMetric
+          label="40%までの差分"
+          value={isTargetReached ? `+${formatPercent(Math.abs(gapToTarget))}` : `-${formatPercent(gapToTarget)}`}
+          tone={isTargetReached ? "teal" : "amber"}
+        />
+        <SmallMetric
+          label="40%到達に必要な成約"
+          value={requiredClosed ? `あと${requiredClosed}件` : "達成中"}
+          tone={requiredClosed ? "amber" : "teal"}
+        />
+      </div>
+    </section>
+  );
+}
+
 function ReasonList({ title, icon: Icon, reasons, tone }: {
   title: string;
   icon: typeof CircleDot;
@@ -489,6 +534,8 @@ export function SeminarDashboardClient({
           />
         </div>
 
+        <TeamGoalPanel closeRate={closeRate} seated={totals.seated} closed={totals.closed} />
+
         <nav className="mt-5 flex flex-wrap gap-2 border-b border-white/10 pb-3">
           {tabs.map((tab) => (
             <a
@@ -690,11 +737,25 @@ export function SeminarDashboardClient({
   );
 }
 
-function SmallMetric({ label, value }: { label: string; value: string }) {
+function SmallMetric({
+  label,
+  value,
+  tone = "slate",
+}: {
+  label: string;
+  value: string;
+  tone?: "slate" | "teal" | "amber";
+}) {
+  const toneClass = {
+    slate: "text-white",
+    teal: "text-teal-100",
+    amber: "text-amber-100",
+  }[tone];
+
   return (
     <div className="rounded-md border border-white/10 bg-slate-950/50 px-3 py-3">
       <p className="text-xs text-slate-400">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-white">{value}</p>
+      <p className={`mt-1 text-lg font-semibold ${toneClass}`}>{value}</p>
     </div>
   );
 }
