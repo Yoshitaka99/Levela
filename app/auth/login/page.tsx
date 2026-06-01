@@ -51,7 +51,7 @@ function LoginForm() {
             <h1 className="text-3xl font-extrabold tracking-tight text-white mb-2">
               おかえりなさい 👋
             </h1>
-            <p className="text-sm text-gray-400">ドーモ！にログインして出品・購入を始めましょう</p>
+            <p className="text-sm text-gray-400">ログインして利用を始めましょう</p>
           </>
         )}
       </div>
