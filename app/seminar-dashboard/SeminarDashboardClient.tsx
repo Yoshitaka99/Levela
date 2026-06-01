@@ -358,7 +358,9 @@ export function SeminarDashboardClient({
             <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
               <CalendarDays className="h-4 w-4" />
               <span>{data.selectedSeminar || selectedSeminar}</span>
-              <span className="rounded-full border border-slate-600 px-2 py-0.5 text-xs">指定10名</span>
+              <span className="rounded-full border border-slate-600 px-2 py-0.5 text-xs">
+                指定{data.members.length}名
+              </span>
               <span className="rounded-full border border-teal-300/25 bg-teal-300/10 px-2 py-0.5 text-xs text-teal-100">
                 {data.source === "sample" ? "未接続: サンプル" : "顧客管理シート連携中"}
               </span>
