@@ -181,7 +181,7 @@ function TeamGoalPanel({
   const selectedSeatRate = leads ? (seated / leads) * 100 : 0;
   const seatRateGap = selectedSeatRate - targetSeatRate;
   const formatGap = (value: number) => (value >= 0 ? `+${value}件` : `${value}件`);
-  const formatPointGap = (value: number) => `${value >= 0 ? "+" : ""}${value.toFixed(1)}pt`;
+  const formatPercentGap = (value: number) => `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 
   return (
     <section className="mt-3 rounded-lg border border-teal-300/20 bg-white/[0.03] p-4">
@@ -290,7 +290,7 @@ function TeamGoalPanel({
             <SmallMetric
               label="選択中の着座率"
               value={formatPercent(selectedSeatRate)}
-              sub={`${targetSeatRate}%目標差分 ${formatPointGap(seatRateGap)}`}
+              sub={`${targetSeatRate}%目標差分 ${formatPercentGap(seatRateGap)}`}
               tone={seatRateGap >= 0 ? "teal" : "amber"}
             />
           </div>
