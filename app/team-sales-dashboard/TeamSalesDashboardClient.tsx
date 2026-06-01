@@ -13,7 +13,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReasonCount, TeamMemberKpi, TeamSalesDashboardData } from "./data";
 
 type TabKey = "overview" | "members" | "reasons" | "alerts";
@@ -169,26 +169,35 @@ export function TeamSalesDashboardClient({
   );
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshRequestRef = useRef(0);
 
   const refreshData = useCallback(async () => {
+    const requestId = refreshRequestRef.current + 1;
+    refreshRequestRef.current = requestId;
+    const requestedSeminar = selectedSeminar;
+    const requestedTeam = selectedTeam;
+
     setIsRefreshing(true);
     try {
       const params = new URLSearchParams();
-      if (selectedSeminar) params.set("seminar", selectedSeminar);
-      if (selectedTeam) params.set("team", selectedTeam);
+      if (requestedSeminar) params.set("seminar", requestedSeminar);
+      if (requestedTeam) params.set("team", requestedTeam);
       const response = await fetch(`/api/team-sales-dashboard?${params.toString()}`, { cache: "no-store" });
       const nextData = (await response.json()) as TeamSalesDashboardData;
+
+      if (requestId !== refreshRequestRef.current) return;
+
       setData(nextData);
-      setSelectedSeminar(nextData.selectedSeminar || selectedSeminar);
-      setSelectedTeam(nextData.selectedTeam || selectedTeam);
+      setSelectedSeminar(nextData.selectedSeminar || requestedSeminar);
+      setSelectedTeam(nextData.selectedTeam || requestedTeam);
       setLastSyncedAt(new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }));
-      if (!nextData.members.some((member) => member.name === selectedMember)) {
-        setSelectedMember(nextData.members[0]?.name ?? "");
-      }
+      setSelectedMember((currentMember) =>
+        nextData.members.some((member) => member.name === currentMember) ? currentMember : nextData.members[0]?.name ?? "",
+      );
     } finally {
-      setIsRefreshing(false);
+      if (requestId === refreshRequestRef.current) setIsRefreshing(false);
     }
-  }, [selectedMember, selectedSeminar, selectedTeam]);
+  }, [selectedSeminar, selectedTeam]);
 
   useEffect(() => {
     refreshData();
@@ -298,12 +307,14 @@ export function TeamSalesDashboardClient({
   }
 
   function changeSeminar(nextSeminar: string) {
+    refreshRequestRef.current += 1;
     setSelectedSeminar(nextSeminar);
     setSelectedMember("");
     window.history.replaceState(null, "", dashboardHref({ seminar: nextSeminar, member: null }));
   }
 
   function changeTeam(nextTeam: string) {
+    refreshRequestRef.current += 1;
     setSelectedTeam(nextTeam);
     setSelectedMember("");
     window.history.replaceState(null, "", dashboardHref({ team: nextTeam, member: null }));
