@@ -39,8 +39,51 @@ const sortButtons: { key: SortKey; label: string }[] = [
   { key: "hold", label: "保留理由" },
 ];
 
+const DEFAULT_OPEN_SLOT_TARGET = 75;
+const MEMBER_OPEN_SLOT_TARGETS: Record<string, number> = {
+  早川大貴: 50,
+  苙隼人: 50,
+};
+
 function formatPercent(value: number) {
   return `${value.toFixed(1)}%`;
+}
+
+function normalizeTargetRate(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+function getOpenSlotTarget(memberName: string) {
+  return MEMBER_OPEN_SLOT_TARGETS[memberName] ?? DEFAULT_OPEN_SLOT_TARGET;
+}
+
+function getGoalMetrics({
+  openSlots,
+  seated,
+  closed,
+  targetSeatRate,
+  targetCloseRate,
+}: {
+  openSlots: number;
+  seated: number;
+  closed: number;
+  targetSeatRate: number;
+  targetCloseRate: number;
+}) {
+  const targetSeatedExact = openSlots * (targetSeatRate / 100);
+  const targetSeated = Math.ceil(targetSeatedExact);
+  const targetClosedExact = targetSeatedExact * (targetCloseRate / 100);
+  const targetClosed = Math.ceil(targetClosedExact);
+
+  return {
+    targetSeatedExact,
+    targetSeated,
+    targetClosedExact,
+    targetClosed,
+    seatedGap: seated - targetSeated,
+    closedGap: closed - targetClosed,
+  };
 }
 
 function sumReasons(reasons: ReasonCount[]) {
@@ -103,11 +146,19 @@ function TeamGoalPanel({
   seated,
   closed,
   leads,
+  targetSeatRate,
+  targetCloseRate,
+  onTargetSeatRateChange,
+  onTargetCloseRateChange,
 }: {
   closeRate: number;
   seated: number;
   closed: number;
   leads: number;
+  targetSeatRate: number;
+  targetCloseRate: number;
+  onTargetSeatRateChange: (value: number) => void;
+  onTargetCloseRateChange: (value: number) => void;
 }) {
   const plusFiveRate = closeRate + 5;
   const targetRate = 40;
@@ -115,75 +166,126 @@ function TeamGoalPanel({
   const targetClosed = seated ? Math.ceil((targetRate / 100) * seated) : 0;
   const requiredClosed = Math.max(targetClosed - closed, 0);
   const isTargetReached = gapToTarget <= 0;
-  const monthlyLaunchTarget = {
-    leads: 50 + 50 + 75 * 3,
-    seatRate: 75,
-    closeRate: 35,
-  };
-  const monthlyTargetSeatedExact = monthlyLaunchTarget.leads * (monthlyLaunchTarget.seatRate / 100);
-  const monthlyTargetSeated = Math.ceil(monthlyTargetSeatedExact);
-  const monthlyTargetClosedExact = monthlyTargetSeatedExact * (monthlyLaunchTarget.closeRate / 100);
-  const monthlyTargetClosed = Math.ceil(monthlyTargetClosedExact);
-  const leadGap = leads - monthlyLaunchTarget.leads;
-  const seatedGap = seated - monthlyTargetSeated;
-  const closedGap = closed - monthlyTargetClosed;
+  const monthlyOpenSlotTarget = Object.values(MEMBER_OPEN_SLOT_TARGETS).reduce(
+    (sum, value) => sum + value,
+    DEFAULT_OPEN_SLOT_TARGET * 3,
+  );
+  const monthlyGoal = getGoalMetrics({
+    openSlots: monthlyOpenSlotTarget,
+    seated,
+    closed,
+    targetSeatRate,
+    targetCloseRate,
+  });
+  const openSlotGap = leads - monthlyOpenSlotTarget;
   const formatGap = (value: number) => (value >= 0 ? `+${value}件` : `${value}件`);
 
   return (
     <section className="mt-3 rounded-lg border border-teal-300/20 bg-white/[0.03] p-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-semibold text-teal-100">チーム目標値</p>
           <h2 className="mt-1 text-lg font-semibold text-white">選択ローンチ分の現在値と月間目標</h2>
         </div>
-        <p className="text-xs text-slate-400">
-          オロ・早川は50件、その他メンバーは75件発送の目標設計
-        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label htmlFor="target-seat-rate" className="rounded-md border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-50">
+            <span className="block text-cyan-100/80">着座率目標</span>
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                id="target-seat-rate"
+                aria-label="着座率目標"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={targetSeatRate}
+                onChange={(event) => onTargetSeatRateChange(normalizeTargetRate(Number(event.target.value)))}
+                className="h-8 w-20 rounded-md border border-cyan-300/20 bg-slate-950/70 px-2 text-base font-semibold text-white outline-none"
+              />
+              <span className="font-semibold">%</span>
+            </div>
+          </label>
+          <label htmlFor="target-close-rate" className="rounded-md border border-teal-300/20 bg-teal-300/10 px-3 py-2 text-xs text-teal-50">
+            <span className="block text-teal-100/80">成約率目標</span>
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                id="target-close-rate"
+                aria-label="成約率目標"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={targetCloseRate}
+                onChange={(event) => onTargetCloseRateChange(normalizeTargetRate(Number(event.target.value)))}
+                className="h-8 w-20 rounded-md border border-teal-300/20 bg-slate-950/70 px-2 text-base font-semibold text-white outline-none"
+              />
+              <span className="font-semibold">%</span>
+            </div>
+          </label>
+        </div>
       </div>
 
       <div className="mt-4 space-y-3">
-        <div className="grid gap-3 md:grid-cols-4">
-          <SmallMetric label="現在の実成約率" value={formatPercent(closeRate)} />
-          <SmallMetric label="+5pt改善後" value={formatPercent(plusFiveRate)} />
-          <SmallMetric
-            label="40%までの差分"
-            value={isTargetReached ? `+${formatPercent(Math.abs(gapToTarget))}` : `-${formatPercent(gapToTarget)}`}
-            tone={isTargetReached ? "teal" : "amber"}
-          />
-          <SmallMetric
-            label="40%到達に必要な成約"
-            value={requiredClosed ? `あと${requiredClosed}件` : "達成中"}
-            tone={requiredClosed ? "amber" : "teal"}
-          />
+        <div className="rounded-lg border border-white/10 bg-slate-950/35 p-3">
+          <p className="mb-3 text-xs font-semibold text-slate-300">現在値と40%ライン</p>
+          <div className="grid gap-3 md:grid-cols-4">
+            <SmallMetric label="現在の実成約率" value={formatPercent(closeRate)} />
+            <SmallMetric label="+5pt改善後" value={formatPercent(plusFiveRate)} />
+            <SmallMetric
+              label="40%までの差分"
+              value={isTargetReached ? `+${formatPercent(Math.abs(gapToTarget))}` : `-${formatPercent(gapToTarget)}`}
+              tone={isTargetReached ? "teal" : "amber"}
+            />
+            <SmallMetric
+              label="40%到達に必要な成約"
+              value={requiredClosed ? `あと${requiredClosed}件` : "達成中"}
+              tone={requiredClosed ? "amber" : "teal"}
+            />
+          </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <SmallMetric label="月間発送目標" value={`${monthlyLaunchTarget.leads}件`} sub="50件×2名 / 75件×3名" />
-          <SmallMetric label="着座75%目標" value={`${monthlyTargetSeated}件`} sub={`指数 ${monthlyTargetSeatedExact.toFixed(1)}件`} />
-          <SmallMetric
-            label="成約35%の月間指数"
-            value={`${monthlyTargetClosedExact.toFixed(1)}件`}
-            sub={`実数目安 ${monthlyTargetClosed}件`}
-            tone="teal"
-          />
-          <SmallMetric label="目標前提" value="75% × 35%" sub="発送から着座、着座から成約" />
+        <div className="rounded-lg border border-cyan-300/15 bg-cyan-300/[0.07] p-3">
+          <p className="mb-3 text-xs font-semibold text-cyan-100">月間目標設計</p>
+          <div className="grid gap-3 md:grid-cols-4">
+            <SmallMetric label="月間開放枠" value={`${monthlyOpenSlotTarget}件`} sub="50件×2名 / 75件×3名" />
+            <SmallMetric
+              label={`着座${targetSeatRate}%目標`}
+              value={`${monthlyGoal.targetSeated}件`}
+              sub={`指数 ${monthlyGoal.targetSeatedExact.toFixed(1)}件`}
+            />
+            <SmallMetric
+              label={`成約${targetCloseRate}%の月間指数`}
+              value={`${monthlyGoal.targetClosedExact.toFixed(1)}件`}
+              sub={`実数目安 ${monthlyGoal.targetClosed}件`}
+              tone="teal"
+            />
+            <SmallMetric label="目標前提" value={`${targetSeatRate}% × ${targetCloseRate}%`} sub="開放枠から着座、着座から成約" />
+          </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <SmallMetric label="選択中の発送数" value={`${leads}件`} sub={`目標差分 ${formatGap(leadGap)}`} tone={leadGap >= 0 ? "teal" : "amber"} />
-          <SmallMetric
-            label="選択中の着座数"
-            value={`${seated}件`}
-            sub={`75%目標差分 ${formatGap(seatedGap)}`}
-            tone={seatedGap >= 0 ? "teal" : "amber"}
-          />
-          <SmallMetric
-            label="選択中の実成約数"
-            value={`${closed}件`}
-            sub={`35%指数差分 ${formatGap(closedGap)}`}
-            tone={closedGap >= 0 ? "teal" : "amber"}
-          />
-          <SmallMetric label="選択中の着座率" value={formatPercent(leads ? (seated / leads) * 100 : 0)} sub="発送数に対する現在値" />
+        <div className="rounded-lg border border-amber-300/15 bg-amber-300/[0.07] p-3">
+          <p className="mb-3 text-xs font-semibold text-amber-100">選択中ローンチとの差分</p>
+          <div className="grid gap-3 md:grid-cols-4">
+            <SmallMetric
+              label="選択中のアポ数"
+              value={`${leads}件`}
+              sub={`開放枠差分 ${formatGap(openSlotGap)}`}
+              tone={openSlotGap >= 0 ? "teal" : "amber"}
+            />
+            <SmallMetric
+              label="選択中の着座数"
+              value={`${seated}件`}
+              sub={`${targetSeatRate}%目標差分 ${formatGap(monthlyGoal.seatedGap)}`}
+              tone={monthlyGoal.seatedGap >= 0 ? "teal" : "amber"}
+            />
+            <SmallMetric
+              label="選択中の実成約数"
+              value={`${closed}件`}
+              sub={`${targetCloseRate}%指数差分 ${formatGap(monthlyGoal.closedGap)}`}
+              tone={monthlyGoal.closedGap >= 0 ? "teal" : "amber"}
+            />
+            <SmallMetric label="選択中の着座率" value={formatPercent(leads ? (seated / leads) * 100 : 0)} sub="アポ数に対する現在値" />
+          </div>
         </div>
       </div>
     </section>
@@ -256,6 +358,8 @@ export function SeminarDashboardClient({
       ? initialMember ?? ""
       : initialData.members[0]?.name ?? "",
   );
+  const [targetSeatRate, setTargetSeatRate] = useState(75);
+  const [targetCloseRate, setTargetCloseRate] = useState(35);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -329,6 +433,16 @@ export function SeminarDashboardClient({
   }, [filteredMembers, selectedMember]);
 
   const selected = data.members.find((member) => member.name === selectedMember) ?? data.members[0];
+  const selectedOpenSlots = selected ? getOpenSlotTarget(selected.name) : 0;
+  const selectedGoal = selected
+    ? getGoalMetrics({
+        openSlots: selectedOpenSlots,
+        seated: selected.seated,
+        closed: selected.closed,
+        targetSeatRate,
+        targetCloseRate,
+      })
+    : null;
   const selectedInFiltered = filteredMembers.some((member) => member.name === selected?.name);
   const alertMembers = data.members.filter((member) => member.alert > 0 || member.hold > 0);
   const activeFilterCount = Number(onlyAlerts) + Number(onlyHold) + Number(Boolean(query.trim()));
@@ -583,7 +697,16 @@ export function SeminarDashboardClient({
           />
         </div>
 
-        <TeamGoalPanel closeRate={closeRate} seated={totals.seated} closed={totals.closed} leads={totals.leads} />
+        <TeamGoalPanel
+          closeRate={closeRate}
+          seated={totals.seated}
+          closed={totals.closed}
+          leads={totals.leads}
+          targetSeatRate={targetSeatRate}
+          targetCloseRate={targetCloseRate}
+          onTargetSeatRateChange={setTargetSeatRate}
+          onTargetCloseRateChange={setTargetCloseRate}
+        />
 
         <nav className="mt-5 flex flex-wrap gap-2 border-b border-white/10 pb-3">
           {tabs.map((tab) => (
@@ -646,7 +769,13 @@ export function SeminarDashboardClient({
 
         {activeTab === "overview" ? (
           <div className="mt-5 space-y-5">
-            <MemberTable members={filteredMembers} onSelect={selectMember} selectedMember={selected?.name} />
+            <MemberTable
+              members={filteredMembers}
+              onSelect={selectMember}
+              selectedMember={selected?.name}
+              targetSeatRate={targetSeatRate}
+              targetCloseRate={targetCloseRate}
+            />
             <aside className="grid gap-5 xl:grid-cols-[1fr_1fr]">
               <FocusPanel totals={totals} members={data.members} />
               <StatusPanel statusMix={data.statusMix} />
@@ -727,6 +856,29 @@ export function SeminarDashboardClient({
                 <SmallMetric label="着座率" value={formatPercent(selected.seatRate)} />
                 <SmallMetric label="成約予定" value={`${selected.pending}件`} />
               </div>
+              {selectedGoal ? (
+                <div className="mt-3 grid gap-3 rounded-lg border border-cyan-300/15 bg-cyan-300/[0.06] p-3 sm:grid-cols-4">
+                  <SmallMetric label="開放枠" value={`${selectedOpenSlots}件`} sub="メンバー別の目標枠" />
+                  <SmallMetric
+                    label={`目標着座 ${targetSeatRate}%`}
+                    value={`${selectedGoal.targetSeated}件`}
+                    sub={`現在差分 ${selectedGoal.seatedGap >= 0 ? "+" : ""}${selectedGoal.seatedGap}件`}
+                    tone={selectedGoal.seatedGap >= 0 ? "teal" : "amber"}
+                  />
+                  <SmallMetric
+                    label={`目標成約 ${targetCloseRate}%`}
+                    value={`${selectedGoal.targetClosed}件`}
+                    sub={`現在差分 ${selectedGoal.closedGap >= 0 ? "+" : ""}${selectedGoal.closedGap}件`}
+                    tone={selectedGoal.closedGap >= 0 ? "teal" : "amber"}
+                  />
+                  <SmallMetric
+                    label="月間成約指数"
+                    value={`${selectedGoal.targetClosedExact.toFixed(1)}件`}
+                    sub="開放枠 × 着座目標 × 成約目標"
+                    tone="teal"
+                  />
+                </div>
+              ) : null}
               <div className="mt-5">
                 <h3 className="mb-2 text-sm font-semibold text-white">KPIバランス</h3>
                 <div className="space-y-3 rounded-lg border border-white/10 bg-slate-950/35 p-3">
@@ -846,64 +998,96 @@ function MemberTable({
   members,
   onSelect,
   selectedMember,
+  targetSeatRate,
+  targetCloseRate,
   compact = false,
 }: {
   members: MemberKpi[];
   onSelect: (member: string) => void;
   selectedMember?: string;
+  targetSeatRate: number;
+  targetCloseRate: number;
   compact?: boolean;
 }) {
+  const formatGap = (value: number) => (value >= 0 ? `+${value}` : `${value}`);
+
   return (
     <section className="min-w-0 overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
         <div>
           <h2 className="text-base font-semibold text-white">メンバー別KPI</h2>
-          <p className="text-xs text-slate-400">行を押すと個別の理由分析に切り替わります。</p>
+          <p className="text-xs text-slate-400">開放枠と目標率に対する成約ギャップも確認できます。</p>
         </div>
         <TrendingUp className="h-5 w-5 text-teal-300" />
       </div>
       <div className="grid gap-3 p-3 lg:hidden">
-        {members.map((member) => (
-          <button
-            key={member.name}
-            type="button"
-            onClick={() => onSelect(member.name)}
-            className={`rounded-lg border p-3 text-left ${
-              selectedMember === member.name
-                ? "border-teal-300/60 bg-teal-300/10"
-                : "border-white/10 bg-slate-950/35"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold text-white">{member.name}</p>
-                <p className="mt-1 text-xs text-slate-400">抽出 {member.leads}件 / 着座 {member.seated}件</p>
+        {members.map((member) => {
+          const openSlots = getOpenSlotTarget(member.name);
+          const goal = getGoalMetrics({
+            openSlots,
+            seated: member.seated,
+            closed: member.closed,
+            targetSeatRate,
+            targetCloseRate,
+          });
+
+          return (
+            <button
+              key={member.name}
+              type="button"
+              onClick={() => onSelect(member.name)}
+              className={`rounded-lg border p-3 text-left ${
+                selectedMember === member.name
+                  ? "border-teal-300/60 bg-teal-300/10"
+                  : "border-white/10 bg-slate-950/35"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-white">{member.name}</p>
+                  <p className="mt-1 text-xs text-slate-400">抽出 {member.leads}件 / 着座 {member.seated}件</p>
+                </div>
+                {member.alert > 0 ? (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-100">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    {member.alert}
+                  </span>
+                ) : null}
               </div>
-              {member.alert > 0 ? (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-100">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  {member.alert}
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <MemberStat label="着座率" value={formatPercent(member.seatRate)} tone="cyan" />
-              <MemberStat label="実成約率" value={formatPercent(member.closeRate)} tone="teal" />
-              <MemberStat label="予定込率" value={formatPercent(member.projectedRate)} tone="amber" />
-              <MemberStat label="成約 / 予定 / 保留" value={`${member.closed} / ${member.pending} / ${member.hold}`} tone="violet" />
-            </div>
-          </button>
-        ))}
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <MemberStat label="着座率" value={formatPercent(member.seatRate)} tone="cyan" />
+                <MemberStat label="実成約率" value={formatPercent(member.closeRate)} tone="teal" />
+                <MemberStat label="予定込率" value={formatPercent(member.projectedRate)} tone="amber" />
+                <MemberStat label="成約 / 予定 / 保留" value={`${member.closed} / ${member.pending} / ${member.hold}`} tone="violet" />
+                <MemberStat label="開放枠" value={`${openSlots}件`} tone="cyan" />
+                <MemberStat label="目標成約" value={`${goal.targetClosed}件`} tone="teal" />
+                <MemberStat
+                  label="成約ギャップ"
+                  value={`${formatGap(goal.closedGap)}件`}
+                  tone={goal.closedGap >= 0 ? "teal" : "amber"}
+                />
+                <MemberStat
+                  label="着座ギャップ"
+                  value={`${formatGap(goal.seatedGap)}件`}
+                  tone={goal.seatedGap >= 0 ? "teal" : "amber"}
+                />
+              </div>
+            </button>
+          );
+        })}
       </div>
       <div className="hidden overflow-x-auto lg:block">
-        <table className={`w-full border-collapse text-sm ${compact ? "min-w-[820px]" : "min-w-[1040px]"}`}>
+        <table className={`w-full border-collapse text-sm ${compact ? "min-w-[980px]" : "min-w-[1220px]"}`}>
           <thead className="bg-slate-900 text-xs uppercase text-slate-400">
             <tr>
               <th className="px-4 py-3 text-left">メンバー</th>
+              <th className="px-3 py-3 text-right">開放枠</th>
               <th className="px-3 py-3 text-right">抽出</th>
               <th className="px-3 py-3 text-right">着座</th>
               <th className="px-3 py-3 text-left">着座率</th>
               <th className="px-3 py-3 text-right">成約</th>
+              <th className="px-3 py-3 text-right">目標成約</th>
+              <th className="px-3 py-3 text-right">差分</th>
               <th className="px-3 py-3 text-right">実成約率</th>
               <th className="px-3 py-3 text-right">予定込率</th>
               <th className="px-3 py-3 text-right">予定</th>
@@ -912,42 +1096,58 @@ function MemberTable({
             </tr>
           </thead>
           <tbody>
-            {members.map((member) => (
-              <tr
-                key={member.name}
-                onClick={() => onSelect(member.name)}
-                className={`cursor-pointer border-t border-white/10 odd:bg-white/[0.02] hover:bg-teal-300/5 ${
-                  selectedMember === member.name ? "bg-teal-300/10" : ""
-                }`}
-              >
-                <td className="px-4 py-3 font-medium text-white">{member.name}</td>
-                <td className="px-3 py-3 text-right text-slate-300">{member.leads}</td>
-                <td className="px-3 py-3 text-right text-slate-300">{member.seated}</td>
-                <td className="px-3 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-12 text-right text-slate-200">{formatPercent(member.seatRate)}</span>
-                    <ProgressBar value={member.seatRate} />
-                  </div>
-                </td>
-                <td className="px-3 py-3 text-right text-slate-200">{member.closed}</td>
-                <td className="px-3 py-3 text-right font-medium text-teal-100">{formatPercent(member.closeRate)}</td>
-                <td className="px-3 py-3 text-right font-semibold text-cyan-100">{formatPercent(member.projectedRate)}</td>
-                <td className="px-3 py-3 text-right text-amber-100">{member.pending}</td>
-                <td className="px-3 py-3 text-right text-violet-100">{member.hold}</td>
-                <td className="px-3 py-3 text-right">
-                  {member.alert > 0 ? (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-100">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      {member.alert}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-                      <CheckCircle2 className="h-3.5 w-3.5" />0
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {members.map((member) => {
+              const openSlots = getOpenSlotTarget(member.name);
+              const goal = getGoalMetrics({
+                openSlots,
+                seated: member.seated,
+                closed: member.closed,
+                targetSeatRate,
+                targetCloseRate,
+              });
+
+              return (
+                <tr
+                  key={member.name}
+                  onClick={() => onSelect(member.name)}
+                  className={`cursor-pointer border-t border-white/10 odd:bg-white/[0.02] hover:bg-teal-300/5 ${
+                    selectedMember === member.name ? "bg-teal-300/10" : ""
+                  }`}
+                >
+                  <td className="px-4 py-3 font-medium text-white">{member.name}</td>
+                  <td className="px-3 py-3 text-right text-cyan-100">{openSlots}</td>
+                  <td className="px-3 py-3 text-right text-slate-300">{member.leads}</td>
+                  <td className="px-3 py-3 text-right text-slate-300">{member.seated}</td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-12 text-right text-slate-200">{formatPercent(member.seatRate)}</span>
+                      <ProgressBar value={member.seatRate} />
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-right text-slate-200">{member.closed}</td>
+                  <td className="px-3 py-3 text-right font-semibold text-teal-100">{goal.targetClosed}</td>
+                  <td className={`px-3 py-3 text-right font-semibold ${goal.closedGap >= 0 ? "text-teal-100" : "text-amber-100"}`}>
+                    {formatGap(goal.closedGap)}
+                  </td>
+                  <td className="px-3 py-3 text-right font-medium text-teal-100">{formatPercent(member.closeRate)}</td>
+                  <td className="px-3 py-3 text-right font-semibold text-cyan-100">{formatPercent(member.projectedRate)}</td>
+                  <td className="px-3 py-3 text-right text-amber-100">{member.pending}</td>
+                  <td className="px-3 py-3 text-right text-violet-100">{member.hold}</td>
+                  <td className="px-3 py-3 text-right">
+                    {member.alert > 0 ? (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-100">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        {member.alert}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                        <CheckCircle2 className="h-3.5 w-3.5" />0
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
