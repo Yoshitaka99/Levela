@@ -5,7 +5,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        disallow: ["/seminar-dashboard", "/api/seminar-dashboard"],
+        disallow: ["/seminar-dashboard", "/team-sales-dashboard", "/team", "/api/seminar-dashboard", "/api/team-sales-dashboard"],
       },
     ],
   };

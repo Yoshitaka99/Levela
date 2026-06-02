@@ -28,6 +28,7 @@ const EXCLUDED_MEMBER_KEYWORDS = [
 
 const EXCLUDED_RAW_MEMBERS = new Set(["中島 絵美"]);
 const EXCLUDED_EXACT_MEMBERS = new Set(["池上翔太", "有川薫", "中村珠梨"]);
+const EXCLUDED_SEAT_STATUSES = new Set(["担当者変更", "重複予約", "無効アポ"]);
 
 const IMAGE_TEAM_DEFINITIONS: Record<string, string[]> = {
   [ALL_TEAMS]: [],
@@ -101,6 +102,41 @@ function getValue(row: SourceRow, index: number, fallbackHeader?: string, aliase
   return row[`__col_${index}`] ?? "";
 }
 
+function getMappedValue(row: SourceRow, headers: string[], sanitizedIndex: number, sourceIndex: number) {
+  for (const header of headers) {
+    if (row[header] !== undefined) return row[header];
+  }
+  return row[`__col_${sanitizedIndex}`] ?? row[`__col_${sourceIndex}`] ?? "";
+}
+
+function getMember(row: SourceRow) {
+  return getMappedValue(row, ["担当者名"], 0, 1).trim();
+}
+
+function getSeminar(row: SourceRow) {
+  return getMappedValue(row, ["セミナー"], 1, 2).trim();
+}
+
+function getSeat(row: SourceRow) {
+  return getMappedValue(row, ["着席", "着座"], 2, 6).trim();
+}
+
+function getStatus(row: SourceRow) {
+  return getMappedValue(row, ["ステータス", "2回目/実施後ステータス"], 3, 7).trim();
+}
+
+function getPaymentDate(row: SourceRow) {
+  return getMappedValue(row, ["決済日(着金日)", "決着日(着金日)", "決着日（着金日）"], 4, 13).trim();
+}
+
+function getLostReason(row: SourceRow) {
+  return getMappedValue(row, ["失注理由"], 5, 16);
+}
+
+function getHoldReason(row: SourceRow) {
+  return getMappedValue(row, ["保留理由"], 6, 17) || getMappedValue(row, ["保留理由2"], 7, 19);
+}
+
 function increment(map: Map<string, number>, rawLabel: string) {
   const label = rawLabel.trim() || "未記入";
   map.set(label, (map.get(label) ?? 0) + 1);
@@ -143,11 +179,20 @@ function isHoldStatus(status: string) {
   return status.trim() === "保留";
 }
 
+function isExcludedFromSeatBase(seat: string) {
+  return EXCLUDED_SEAT_STATUSES.has(seat.trim());
+}
+
+function isSeated(seat: string) {
+  const normalized = seat.trim();
+  return normalized === "着座" || normalized === "着席";
+}
+
 function getSeminarOptions(rows: SourceRow[]) {
   return [
     ...new Set(
       rows
-        .map((row) => getValue(row, 2, "セミナー").trim())
+        .map((row) => getSeminar(row))
         .filter((seminar) => seminar.includes("セミナー")),
     ),
   ].sort((a, b) => a.localeCompare(b, "ja", { numeric: true }));
@@ -214,14 +259,13 @@ function aggregateRows(
   const selectedSeminar = resolveSelectedSeminar(seminars, requestedSeminar);
 
   const seminarRows = rows.filter((row) => {
-    const member = getValue(row, 1, "担当者名").trim();
-    const seminar = getValue(row, 2, "セミナー").trim();
-    return member && !isExcludedMember(member) && seminar === selectedSeminar;
+    const member = getMember(row);
+    const seminar = getSeminar(row);
+    const seat = getSeat(row);
+    return member && !isExcludedMember(member) && seminar === selectedSeminar && !isExcludedFromSeatBase(seat);
   });
 
-  const memberNames = [...new Set(seminarRows.map((row) => getValue(row, 1, "担当者名").trim()))].sort((a, b) =>
-    compareMembersByTeamOrder(a, b, teamDefinitions),
-  );
+  const memberNames = [...new Set(seminarRows.map((row) => getMember(row)))].sort((a, b) => compareMembersByTeamOrder(a, b, teamDefinitions));
   const teams = getTeamOptions(teamDefinitions, memberNames);
   const selectedTeam = resolveSelectedTeam(teams, requestedTeam);
   const scopedMemberNames = memberNames.filter((member) => {
@@ -229,18 +273,18 @@ function aggregateRows(
     return resolveTeamForMember(member, teamDefinitions) === selectedTeam;
   });
 
-  const scopedRows = seminarRows.filter((row) => scopedMemberNames.includes(getValue(row, 1, "担当者名").trim()));
+  const scopedRows = seminarRows.filter((row) => scopedMemberNames.includes(getMember(row)));
   const allLostReasons = new Map<string, number>();
   const allHoldReasons = new Map<string, number>();
   const statusCounts = new Map<string, number>();
 
   scopedRows.forEach((row) => {
-    const status = getValue(row, 7, "2回目/実施後ステータス", ["ステータス"]).trim();
+    const status = getStatus(row);
     if (status) increment(statusCounts, status);
   });
 
   const members: TeamMemberKpi[] = scopedMemberNames.map((name) => {
-    const memberRows = scopedRows.filter((row) => getValue(row, 1, "担当者名").trim() === name);
+    const memberRows = scopedRows.filter((row) => getMember(row) === name);
     const lostReasons = new Map<string, number>();
     const holdReasons = new Map<string, number>();
     let seated = 0;
@@ -250,13 +294,13 @@ function aggregateRows(
     let alert = 0;
 
     memberRows.forEach((row) => {
-      const seat = getValue(row, 6, "着席").trim();
-      const status = getValue(row, 7, "2回目/実施後ステータス", ["ステータス"]).trim();
-      const paymentDate = getValue(row, 13, "決済日(着金日)", ["決着日(着金日)"]).trim();
-      const lostReason = getValue(row, 16, "失注理由");
-      const holdReason = getValue(row, 17, "保留理由") || getValue(row, 19, "保留理由2");
+      const seat = getSeat(row);
+      const status = getStatus(row);
+      const paymentDate = getPaymentDate(row);
+      const lostReason = getLostReason(row);
+      const holdReason = getHoldReason(row);
 
-      if (seat === "着座" || seat === "着席") seated += 1;
+      if (isSeated(seat)) seated += 1;
       if (isClosedStatus(status)) {
         closed += 1;
         if (!paymentDate) alert += 1;
