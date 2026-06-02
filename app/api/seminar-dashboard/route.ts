@@ -22,6 +22,8 @@ const TARGET_MEMBERS = [
   "折原加純",
 ];
 
+const EXCLUDED_APPOINTMENT_STATUSES = ["担当者変更", "重複予約", "無効アポ"];
+
 type SourceRow = Record<string, string>;
 
 function toNumber(value: unknown) {
@@ -56,6 +58,14 @@ function isLostStatus(status: string) {
 
 function isHoldStatus(status: string) {
   return status.trim() === "保留";
+}
+
+function isExcludedAppointment(seatStatus: string, followUpStatus: string) {
+  const normalizedSeatStatus = seatStatus.trim();
+  const normalizedFollowUpStatus = followUpStatus.trim();
+  return EXCLUDED_APPOINTMENT_STATUSES.some(
+    (status) => normalizedSeatStatus === status || normalizedFollowUpStatus === status,
+  );
 }
 
 function getValue(row: SourceRow, index: number, fallbackHeader?: string) {
@@ -104,6 +114,7 @@ function aggregateCustomerRows(rows: SourceRow[], requestedSeminar?: string | nu
 
   const members: MemberKpi[] = TARGET_MEMBERS.map((name) => {
     const scopedRows = memberRows.get(name) ?? [];
+    let leads = 0;
     const lostReasons = new Map<string, number>();
     const holdReasons = new Map<string, number>();
     let seated = 0;
@@ -115,6 +126,9 @@ function aggregateCustomerRows(rows: SourceRow[], requestedSeminar?: string | nu
     scopedRows.forEach((row) => {
       const seat = getValue(row, 6, "着席").trim();
       const status = getValue(row, 7, "2回目/実施後ステータス").trim();
+      if (isExcludedAppointment(seat, status)) return;
+
+      leads += 1;
       const paymentDate = getValue(row, 13, "決着日(着金日)").trim();
       const lostReason = getValue(row, 16, "失注理由");
       const holdReason = getValue(row, 17, "保留理由") || getValue(row, 19, "保留理由");
@@ -137,7 +151,6 @@ function aggregateCustomerRows(rows: SourceRow[], requestedSeminar?: string | nu
       if (status) increment(statusCounts, status);
     });
 
-    const leads = scopedRows.length;
     totalLeads += leads;
     const projected = closed + pending;
 
