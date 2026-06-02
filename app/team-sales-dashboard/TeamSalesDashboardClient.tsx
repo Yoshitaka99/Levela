@@ -143,6 +143,7 @@ export function TeamSalesDashboardClient({
   initialTeam,
   initialOnlyAlerts,
   initialOnlyHold,
+  basePath = "/team-sales-dashboard",
 }: {
   initialData: TeamSalesDashboardData;
   initialTab: TabKey;
@@ -153,6 +154,7 @@ export function TeamSalesDashboardClient({
   initialTeam?: string;
   initialOnlyAlerts: boolean;
   initialOnlyHold: boolean;
+  basePath?: string;
 }) {
   const [data, setData] = useState(initialData);
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
@@ -285,7 +287,7 @@ export function TeamSalesDashboardClient({
     if (nextQuery) params.set("q", nextQuery);
     if (nextAlerts) params.set("alerts", "1");
     if (nextHold) params.set("hold", "1");
-    return `/team-sales-dashboard?${params.toString()}`;
+    return `${basePath}?${params.toString()}`;
   }
 
   function changeTab(nextTab: TabKey) {
@@ -368,7 +370,7 @@ export function TeamSalesDashboardClient({
                 </option>
               ))}
             </select>
-            <form action="/team-sales-dashboard" className="inline-flex h-10 w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-slate-200 sm:w-[260px]">
+            <form action={basePath} className="inline-flex h-10 w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-slate-200 sm:w-[260px]">
               <input type="hidden" name="tab" value={activeTab} />
               <input type="hidden" name="sort" value={sortKey} />
               <input type="hidden" name="seminar" value={selectedSeminar} />
