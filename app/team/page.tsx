@@ -4,8 +4,8 @@ import { defaultTeamSalesDashboardData } from "../team-sales-dashboard/data";
 import { TeamSalesDashboardClient } from "../team-sales-dashboard/TeamSalesDashboardClient";
 
 export const metadata: Metadata = {
-  title: "チームセールスダッシュボード",
-  description: "チーム専用のセールスKPIダッシュボードです。",
+  title: "チーム専用ダッシュボード",
+  description: "チーム閲覧用のセールスKPIダッシュボードです。",
   robots: {
     index: false,
     follow: false,
@@ -32,7 +32,7 @@ function pickParam<T extends readonly string[]>(
   return allowed.includes(raw ?? "") ? (raw as T[number]) : fallback;
 }
 
-export default async function TeamPage({
+export default async function TeamAccountPage({
   searchParams,
 }: {
   searchParams: PageSearchParams;
