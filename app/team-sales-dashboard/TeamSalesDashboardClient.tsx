@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReasonCount, TeamMemberKpi, TeamSalesDashboardData } from "./data";
 
 type TabKey = "overview" | "members" | "reasons" | "alerts";
-type SortKey = "projectedRate" | "closeRate" | "seatRate" | "seated" | "lost" | "hold";
+type SortKey = "projectedRate" | "closeRate" | "seatRate" | "seated" | "closed" | "projected" | "lost" | "hold";
 
 const ALL_SEMINARS_LABEL = "全期間";
 const SEMINAR_SEPARATOR = ",";
@@ -34,6 +34,8 @@ const sortButtons: { key: SortKey; label: string }[] = [
   { key: "closeRate", label: "実成約率" },
   { key: "seatRate", label: "着座率" },
   { key: "seated", label: "着座数" },
+  { key: "closed", label: "実成約数" },
+  { key: "projected", label: "予定込み成約数" },
   { key: "lost", label: "失注理由数" },
   { key: "hold", label: "保留理由数" },
 ];

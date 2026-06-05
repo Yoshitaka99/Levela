@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 const validTabs = ["overview", "members", "reasons", "alerts"] as const;
-const validSorts = ["projectedRate", "closeRate", "seatRate", "seated", "lost", "hold"] as const;
+const validSorts = ["projectedRate", "closeRate", "seatRate", "seated", "closed", "projected", "lost", "hold"] as const;
 
 type PageSearchParams = Promise<Record<string, string | string[] | undefined>>;
 
