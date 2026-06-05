@@ -15,6 +15,7 @@ const SANITIZED_SOURCE_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1kkL_gysoXKq0Kh8ttFeMmG6pljzv1iwum2k2DxvJ96s/gviz/tq?tqx=out:csv&gid=2051214579&tq=select%20B%2CC%2CG%2CH%2CN%2CQ%2CR%2CT%20where%20B%20is%20not%20null%20label%20H%20%27%E3%82%B9%E3%83%86%E3%83%BC%E3%82%BF%E3%82%B9%27%2C%20T%20%27%E4%BF%9D%E7%95%99%E7%90%86%E7%94%B12%27";
 
 const DEFAULT_SEMINAR_TEXT = "5月セミナー";
+const ALL_SEMINARS = "全期間";
 const ALL_TEAMS = "全チーム";
 const SALES_AGENCY_TEAM = "営業代行チーム";
 
@@ -189,17 +190,19 @@ function isSeated(seat: string) {
 }
 
 function getSeminarOptions(rows: SourceRow[]) {
-  return [
+  const seminars = [
     ...new Set(
       rows
         .map((row) => getSeminar(row))
         .filter((seminar) => seminar.includes("セミナー")),
     ),
   ].sort((a, b) => a.localeCompare(b, "ja", { numeric: true }));
+  return [ALL_SEMINARS, ...seminars];
 }
 
 function resolveSelectedSeminar(options: string[], requestedSeminar?: string | null) {
   const requested = requestedSeminar?.trim();
+  if (requested === ALL_SEMINARS) return ALL_SEMINARS;
   if (requested && options.includes(requested)) return requested;
   if (requested) {
     const partialMatch = options.find((option) => option.includes(requested));
@@ -262,7 +265,8 @@ function aggregateRows(
     const member = getMember(row);
     const seminar = getSeminar(row);
     const seat = getSeat(row);
-    return member && !isExcludedMember(member) && seminar === selectedSeminar && !isExcludedFromSeatBase(seat);
+    const matchesSeminar = selectedSeminar === ALL_SEMINARS || seminar === selectedSeminar;
+    return member && !isExcludedMember(member) && matchesSeminar && !isExcludedFromSeatBase(seat);
   });
 
   const memberNames = [...new Set(seminarRows.map((row) => getMember(row)))].sort((a, b) => compareMembersByTeamOrder(a, b, teamDefinitions));

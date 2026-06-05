@@ -44,7 +44,7 @@ export const defaultTeamSalesDashboardData: TeamSalesDashboardData = {
   source: "fallback",
   selectedSeminar: "5月セミナー",
   selectedTeam: "全チーム",
-  seminars: ["5月セミナー"],
+  seminars: ["全期間", "5月セミナー"],
   teams: ["全チーム"],
   members: [],
   lostReasons: [],
