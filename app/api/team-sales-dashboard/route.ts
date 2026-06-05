@@ -16,6 +16,7 @@ const SANITIZED_SOURCE_CSV_URL =
 
 const DEFAULT_SEMINAR_TEXT = "5月セミナー";
 const ALL_SEMINARS = "全期間";
+const SEMINAR_SEPARATOR = ",";
 const ALL_TEAMS = "全チーム";
 const SALES_AGENCY_TEAM = "営業代行チーム";
 
@@ -30,6 +31,14 @@ const EXCLUDED_MEMBER_KEYWORDS = [
 const EXCLUDED_RAW_MEMBERS = new Set(["中島 絵美"]);
 const EXCLUDED_EXACT_MEMBERS = new Set(["池上翔太", "有川薫", "中村珠梨"]);
 const EXCLUDED_SEAT_STATUSES = new Set(["担当者変更", "重複予約", "無効アポ"]);
+const DATA_CACHE_TTL_MS = 60_000;
+
+type TeamSalesDataCacheEntry = {
+  expiresAt: number;
+  data: TeamSalesDashboardData;
+};
+
+const dataCache = new Map<string, TeamSalesDataCacheEntry>();
 
 const IMAGE_TEAM_DEFINITIONS: Record<string, string[]> = {
   [ALL_TEAMS]: [],
@@ -200,16 +209,33 @@ function getSeminarOptions(rows: SourceRow[]) {
   return [ALL_SEMINARS, ...seminars];
 }
 
-function resolveSelectedSeminar(options: string[], requestedSeminar?: string | null) {
+function resolveSelectedSeminars(options: string[], requestedSeminar?: string | null) {
   const requested = requestedSeminar?.trim();
-  if (requested === ALL_SEMINARS) return ALL_SEMINARS;
-  if (requested && options.includes(requested)) return requested;
   if (requested) {
-    const partialMatch = options.find((option) => option.includes(requested));
-    if (partialMatch) return partialMatch;
+    const requestedOptions = requested
+      .split(SEMINAR_SEPARATOR)
+      .map((seminar) => seminar.trim())
+      .filter(Boolean);
+
+    if (requestedOptions.includes(ALL_SEMINARS)) return [ALL_SEMINARS];
+
+    const selected = requestedOptions
+      .map((seminar) => {
+        if (options.includes(seminar)) return seminar;
+        return options.find((option) => option !== ALL_SEMINARS && option.includes(seminar));
+      })
+      .filter((seminar): seminar is string => Boolean(seminar));
+
+    const uniqueSelected = [...new Set(selected)];
+    if (uniqueSelected.length) return uniqueSelected;
   }
 
-  return options.find((option) => option.includes(DEFAULT_SEMINAR_TEXT)) ?? options[0] ?? DEFAULT_SEMINAR_TEXT;
+  if (requested) {
+    const partialMatch = options.find((option) => option.includes(requested));
+    if (partialMatch) return [partialMatch];
+  }
+
+  return [options.find((option) => option.includes(DEFAULT_SEMINAR_TEXT)) ?? options.find((option) => option !== ALL_SEMINARS) ?? DEFAULT_SEMINAR_TEXT];
 }
 
 function resolveTeamForMember(member: string, teamDefinitions: Record<string, string[]>) {
@@ -259,13 +285,14 @@ function aggregateRows(
 ): TeamSalesDashboardData {
   const teamDefinitions = parseTeamDefinitions();
   const seminars = getSeminarOptions(rows);
-  const selectedSeminar = resolveSelectedSeminar(seminars, requestedSeminar);
+  const selectedSeminars = resolveSelectedSeminars(seminars, requestedSeminar);
+  const selectedSeminar = selectedSeminars.join(SEMINAR_SEPARATOR);
 
   const seminarRows = rows.filter((row) => {
     const member = getMember(row);
     const seminar = getSeminar(row);
     const seat = getSeat(row);
-    const matchesSeminar = selectedSeminar === ALL_SEMINARS || seminar === selectedSeminar;
+    const matchesSeminar = selectedSeminars.includes(ALL_SEMINARS) || selectedSeminars.includes(seminar);
     return member && !isExcludedMember(member) && matchesSeminar && !isExcludedFromSeatBase(seat);
   });
 
@@ -369,6 +396,10 @@ export async function fetchTeamSalesData(
   requestedSeminar?: string | null,
   requestedTeam?: string | null,
 ): Promise<TeamSalesDashboardData | null> {
+  const cacheKey = `${requestedSeminar ?? ""}::${requestedTeam ?? ""}`;
+  const cached = dataCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+
   const urls = [
     process.env.TEAM_SALES_DASHBOARD_DATA_URL,
     SANITIZED_SOURCE_CSV_URL,
@@ -399,7 +430,11 @@ export async function fetchTeamSalesData(
       const hasExpectedHeaders = rows.some(
         (row) => getValue(row, 1, "担当者名").trim() && getValue(row, 2, "セミナー").trim(),
       );
-      if (rows.length && hasExpectedHeaders) return aggregateRows(rows as SourceRow[], requestedSeminar, requestedTeam);
+      if (rows.length && hasExpectedHeaders) {
+        const data = aggregateRows(rows as SourceRow[], requestedSeminar, requestedTeam);
+        dataCache.set(cacheKey, { data, expiresAt: Date.now() + DATA_CACHE_TTL_MS });
+        return data;
+      }
 
       errors.push(`${url}: invalid or empty rows`);
     } catch (error) {

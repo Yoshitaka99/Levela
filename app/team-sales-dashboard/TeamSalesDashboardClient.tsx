@@ -17,7 +17,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReasonCount, TeamMemberKpi, TeamSalesDashboardData } from "./data";
 
 type TabKey = "overview" | "members" | "reasons" | "alerts";
-type SortKey = "projectedRate" | "closeRate" | "seatRate" | "lost" | "hold";
+type SortKey = "projectedRate" | "closeRate" | "seatRate" | "seated" | "lost" | "hold";
+
+const ALL_SEMINARS_LABEL = "全期間";
+const SEMINAR_SEPARATOR = ",";
 
 const tabs: { key: TabKey; label: string }[] = [
   { key: "overview", label: "全体" },
@@ -30,6 +33,7 @@ const sortButtons: { key: SortKey; label: string }[] = [
   { key: "projectedRate", label: "予定込み成約率" },
   { key: "closeRate", label: "実成約率" },
   { key: "seatRate", label: "着座率" },
+  { key: "seated", label: "着座数" },
   { key: "lost", label: "失注理由数" },
   { key: "hold", label: "保留理由数" },
 ];
@@ -44,6 +48,24 @@ function sumReasons(reasons: ReasonCount[]) {
 
 function topReason(reasons: ReasonCount[]) {
   return reasons[0]?.label ?? "該当なし";
+}
+
+function splitSeminars(value?: string) {
+  return (value ?? "")
+    .split(SEMINAR_SEPARATOR)
+    .map((seminar) => seminar.trim())
+    .filter(Boolean);
+}
+
+function formatSelectedSeminars(value: string) {
+  return splitSeminars(value).join(" / ") || value;
+}
+
+function normalizeSeminarSelection(value: string, options: string[]) {
+  const selected = splitSeminars(value).filter((seminar) => options.includes(seminar));
+  if (!selected.length) return options[0] ? [options[0]] : [];
+  if (selected.includes(ALL_SEMINARS_LABEL)) return [ALL_SEMINARS_LABEL];
+  return selected;
 }
 
 function ProgressBar({ value, tone = "teal" }: { value: number; tone?: "teal" | "amber" | "rose" }) {
@@ -171,6 +193,7 @@ export function TeamSalesDashboardClient({
   );
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const hasMountedRef = useRef(false);
   const refreshRequestRef = useRef(0);
 
   const refreshData = useCallback(async () => {
@@ -202,8 +225,13 @@ export function TeamSalesDashboardClient({
   }, [selectedSeminar, selectedTeam]);
 
   useEffect(() => {
-    refreshData();
-    const timer = window.setInterval(refreshData, 30000);
+    if (hasMountedRef.current) {
+      refreshData();
+    } else {
+      hasMountedRef.current = true;
+    }
+
+    const timer = window.setInterval(refreshData, 120000);
     return () => window.clearInterval(timer);
   }, [refreshData]);
 
@@ -253,6 +281,10 @@ export function TeamSalesDashboardClient({
   const selected = data.members.find((member) => member.name === selectedMember) ?? data.members[0];
   const alertMembers = data.members.filter((member) => member.alert > 0 || member.hold > 0);
   const activeFilterCount = Number(onlyAlerts) + Number(onlyHold) + Number(Boolean(query.trim()));
+  const selectedSeminarValues = useMemo(
+    () => normalizeSeminarSelection(selectedSeminar, data.seminars),
+    [data.seminars, selectedSeminar],
+  );
   const visibleSortButtons =
     activeTab === "reasons"
       ? sortButtons.filter((button) => button.key === "lost" || button.key === "hold")
@@ -310,9 +342,23 @@ export function TeamSalesDashboardClient({
 
   function changeSeminar(nextSeminar: string) {
     refreshRequestRef.current += 1;
-    setSelectedSeminar(nextSeminar);
+    const currentSelection = normalizeSeminarSelection(selectedSeminar, data.seminars);
+    let nextSelection: string[];
+
+    if (nextSeminar === ALL_SEMINARS_LABEL) {
+      nextSelection = [ALL_SEMINARS_LABEL];
+    } else {
+      const withoutAll = currentSelection.filter((seminar) => seminar !== ALL_SEMINARS_LABEL);
+      nextSelection = withoutAll.includes(nextSeminar)
+        ? withoutAll.filter((seminar) => seminar !== nextSeminar)
+        : [...withoutAll, nextSeminar];
+      if (!nextSelection.length) nextSelection = [ALL_SEMINARS_LABEL];
+    }
+
+    const nextValue = nextSelection.join(SEMINAR_SEPARATOR);
+    setSelectedSeminar(nextValue);
     setSelectedMember("");
-    window.history.replaceState(null, "", dashboardHref({ seminar: nextSeminar, member: null }));
+    window.history.replaceState(null, "", dashboardHref({ seminar: nextValue, member: null }));
   }
 
   function changeTeam(nextTeam: string) {
@@ -333,7 +379,7 @@ export function TeamSalesDashboardClient({
             </div>
             <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
               <CalendarDays className="h-4 w-4" />
-              <span>{data.selectedSeminar}</span>
+              <span>{formatSelectedSeminars(selectedSeminar)}</span>
               <span className="rounded-full border border-slate-600 px-2 py-0.5 text-xs">{data.selectedTeam}</span>
               <span className="rounded-full border border-teal-300/25 bg-teal-300/10 px-2 py-0.5 text-xs text-teal-100">
                 {data.source === "sheet" ? "顧客管理シート連携中" : "フォールバック"}
@@ -348,17 +394,25 @@ export function TeamSalesDashboardClient({
           </div>
 
           <div className="flex w-full flex-wrap gap-2 lg:w-auto lg:justify-end">
-            <select
-              value={selectedSeminar}
-              onChange={(event) => changeSeminar(event.target.value)}
-              className="h-10 w-full rounded-md border border-teal-300/25 bg-slate-950 px-3 text-sm text-white outline-none sm:w-[220px]"
-            >
-              {data.seminars.map((seminar) => (
-                <option key={seminar} value={seminar}>
-                  {seminar}
-                </option>
-              ))}
-            </select>
+            <div className="flex min-h-10 w-full max-w-full flex-wrap gap-1.5 rounded-md border border-teal-300/25 bg-slate-950 p-1 sm:w-[360px]">
+              {data.seminars.map((seminar) => {
+                const selected = selectedSeminarValues.includes(seminar);
+                return (
+                  <button
+                    key={seminar}
+                    type="button"
+                    onClick={() => changeSeminar(seminar)}
+                    className={`min-h-8 rounded px-2.5 py-1 text-xs font-medium transition ${
+                      selected
+                        ? "bg-teal-300/20 text-teal-50"
+                        : "bg-white/[0.03] text-slate-300 hover:bg-white/[0.08]"
+                    }`}
+                  >
+                    {seminar}
+                  </button>
+                );
+              })}
+            </div>
             <select
               value={selectedTeam}
               onChange={(event) => changeTeam(event.target.value)}
@@ -645,7 +699,7 @@ function MemberTable({
         <TrendingUp className="h-5 w-5 text-teal-300" />
       </div>
       <div className="grid gap-3 p-3 lg:hidden">
-        {members.map((member) => (
+        {members.map((member, index) => (
           <button
             key={member.name}
             type="button"
@@ -655,8 +709,11 @@ function MemberTable({
             }`}
           >
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold text-white">{member.name}</p>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="rounded bg-cyan-300/15 px-1.5 py-0.5 text-xs font-semibold text-cyan-100">#{index + 1}</span>
+                  <p className="truncate font-semibold text-white">{member.name}</p>
+                </div>
                 <p className="mt-1 text-xs text-slate-400">抽出 {member.leads}件 / 着座 {member.seated}件</p>
               </div>
               {member.alert > 0 ? (
@@ -679,19 +736,20 @@ function MemberTable({
         <table className="w-full table-fixed border-collapse text-sm">
           <thead className="bg-slate-900 text-xs uppercase text-slate-400">
             <tr>
-              <th className="w-[17%] px-4 py-3 text-left">メンバー</th>
-              <th className="w-[14%] px-3 py-3 text-left">チーム</th>
+              <th className="w-[6%] px-3 py-3 text-right">順位</th>
+              <th className="w-[14%] px-3 py-3 text-left">メンバー</th>
+              <th className="w-[12%] px-3 py-3 text-left">チーム</th>
               <th className="w-[10%] px-3 py-3 text-right">抽出/着座</th>
-              <th className="w-[15%] px-3 py-3 text-left">着座率</th>
+              <th className="w-[14%] px-3 py-3 text-left">着座率</th>
               <th className="w-[10%] px-3 py-3 text-right">成約/予定</th>
-              <th className="w-[11%] px-3 py-3 text-right">実成約率</th>
-              <th className="w-[11%] px-3 py-3 text-right">予定込み</th>
+              <th className="w-[10%] px-3 py-3 text-right">実成約率</th>
+              <th className="w-[10%] px-3 py-3 text-right">予定込み</th>
               <th className="w-[7%] px-3 py-3 text-right">保留</th>
               <th className="w-[5%] px-3 py-3 text-right">警告</th>
             </tr>
           </thead>
           <tbody>
-            {members.map((member) => (
+            {members.map((member, index) => (
               <tr
                 key={member.name}
                 onClick={() => onSelect(member.name)}
@@ -699,7 +757,8 @@ function MemberTable({
                   selectedMember === member.name ? "bg-teal-300/10" : ""
                 }`}
               >
-                <td className="truncate px-4 py-3 font-medium text-white" title={member.name}>{member.name}</td>
+                <td className="px-3 py-3 text-right font-semibold text-cyan-100">#{index + 1}</td>
+                <td className="truncate px-3 py-3 font-medium text-white" title={member.name}>{member.name}</td>
                 <td className="truncate px-3 py-3 text-slate-400" title={member.team}>{member.team}</td>
                 <td className="px-3 py-3 text-right text-slate-300">{member.leads}/{member.seated}</td>
                 <td className="px-3 py-3">
