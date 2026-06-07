@@ -26,6 +26,23 @@ export type TeamMemberKpi = {
   holdReasons: ReasonCount[];
 };
 
+export type WeeklyKpi = {
+  key: string;
+  seminar: string;
+  label: string;
+  leads: number;
+  seated: number;
+  closed: number;
+  pending: number;
+  hold: number;
+  paid: number;
+  seatRate: number;
+  closeRate: number;
+  projectedRate: number;
+  holdRate: number;
+  paidRate: number;
+};
+
 export type TeamSalesDashboardData = {
   updatedAt: string;
   source: "sheet" | "fallback";
@@ -37,6 +54,7 @@ export type TeamSalesDashboardData = {
   lostReasons: ReasonCount[];
   holdReasons: ReasonCount[];
   statusMix: StatusCount[];
+  weeklyKpis: WeeklyKpi[];
 };
 
 export const defaultTeamSalesDashboardData: TeamSalesDashboardData = {
@@ -50,4 +68,5 @@ export const defaultTeamSalesDashboardData: TeamSalesDashboardData = {
   lostReasons: [],
   holdReasons: [],
   statusMix: [],
+  weeklyKpis: [],
 };

@@ -117,6 +117,67 @@ function MetricTile({
   );
 }
 
+function WeeklyKpiPanel({ weeks }: { weeks: TeamSalesDashboardData["weeklyKpis"] }) {
+  if (!weeks.length) {
+    return (
+      <section className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+        <div className="flex items-center gap-2">
+          <CalendarDays className="h-4 w-4 text-teal-200" />
+          <h2 className="text-base font-semibold text-white">週別推移</h2>
+        </div>
+        <p className="mt-3 text-sm text-slate-400">週別に表示できる日付データがありません。</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-teal-200" />
+            <h2 className="text-base font-semibold text-white">週別推移</h2>
+          </div>
+          <p className="mt-1 text-xs text-slate-400">決着/着金日ベースで、第1週〜第5週に分けています。</p>
+        </div>
+        <span className="rounded-md border border-white/10 bg-slate-950/50 px-2 py-1 text-xs text-slate-300">
+          {weeks.length}枠
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+        {weeks.map((week) => (
+          <div key={week.key} className="rounded-lg border border-white/10 bg-slate-950/35 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-white" title={week.seminar}>
+                  {week.seminar}
+                </p>
+                <p className="mt-1 text-xs text-teal-100">{week.label}</p>
+              </div>
+              <span className="shrink-0 rounded bg-white/5 px-2 py-1 text-xs text-slate-300">抽出 {week.leads}</span>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+              <SmallMetric label="着座率" value={formatPercent(week.seatRate)} />
+              <SmallMetric label="保留率" value={formatPercent(week.holdRate)} />
+              <SmallMetric label="成約率" value={formatPercent(week.closeRate)} />
+              <SmallMetric label="着金率" value={formatPercent(week.paidRate)} />
+            </div>
+
+            <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs text-slate-400">
+              <span>着座 {week.seated}</span>
+              <span>成約 {week.closed}</span>
+              <span>予定 {week.pending}</span>
+              <span>保留 {week.hold}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ReasonList({
   title,
   icon: Icon,
@@ -503,6 +564,8 @@ export function TeamSalesDashboardClient({
           <MetricTile label="保留" value={`${totals.hold}`} sub="保留理由を理由分析で確認" tone="violet" icon={CircleDot} />
           <MetricTile label="要確認" value={`${totals.alert}`} sub="成約済みで着金日未入力" tone="rose" icon={AlertTriangle} />
         </div>
+
+        <WeeklyKpiPanel weeks={data.weeklyKpis} />
 
         <div className="mt-5 flex flex-wrap gap-2">
           {tabs.map((tab) => (

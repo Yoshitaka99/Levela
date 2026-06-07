@@ -5,6 +5,7 @@ import {
   type StatusCount,
   type TeamMemberKpi,
   type TeamSalesDashboardData,
+  type WeeklyKpi,
 } from "../../team-sales-dashboard/data";
 
 export const dynamic = "force-dynamic";
@@ -147,6 +148,52 @@ function getHoldReason(row: SourceRow) {
   return getMappedValue(row, ["保留理由"], 6, 17) || getMappedValue(row, ["保留理由2"], 7, 19);
 }
 
+function parseSheetDate(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return null;
+
+  const slashDate = normalized.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (slashDate) {
+    return {
+      year: Number(slashDate[1]),
+      month: Number(slashDate[2]),
+      day: Number(slashDate[3]),
+    };
+  }
+
+  const jpDate = normalized.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日?/);
+  if (jpDate) {
+    return {
+      year: Number(jpDate[1]),
+      month: Number(jpDate[2]),
+      day: Number(jpDate[3]),
+    };
+  }
+
+  return null;
+}
+
+function getWeekLabel(row: SourceRow) {
+  const seminar = getSeminar(row);
+  const parsedDate = parseSheetDate(getPaymentDate(row));
+  if (!parsedDate) {
+    return {
+      key: `${seminar}:日付未入力`,
+      seminar,
+      label: "日付未入力",
+      order: 99,
+    };
+  }
+
+  const week = Math.min(Math.ceil(parsedDate.day / 7), 5);
+  return {
+    key: `${seminar}:第${week}週`,
+    seminar,
+    label: `第${week}週`,
+    order: week,
+  };
+}
+
 function increment(map: Map<string, number>, rawLabel: string) {
   const label = rawLabel.trim() || "未記入";
   map.set(label, (map.get(label) ?? 0) + 1);
@@ -251,6 +298,68 @@ function getTeamOptions(teamDefinitions: Record<string, string[]>, members: stri
   const definedTeams = Object.keys(teamDefinitions).filter((team) => team !== ALL_TEAMS);
   const hasSalesAgency = members.some((member) => resolveTeamForMember(member, teamDefinitions) === SALES_AGENCY_TEAM);
   return [ALL_TEAMS, ...definedTeams, ...(hasSalesAgency ? [SALES_AGENCY_TEAM] : [])];
+}
+
+type WeeklyAccumulator = WeeklyKpi & { order: number };
+
+function buildWeeklyKpis(rows: SourceRow[]): WeeklyKpi[] {
+  const weeklyMap = new Map<string, WeeklyAccumulator>();
+
+  rows.forEach((row) => {
+    const week = getWeekLabel(row);
+    const status = getStatus(row);
+    const seat = getSeat(row);
+    const isClosed = isClosedStatus(status);
+    const isPending = isPendingStatus(status);
+    const isHold = isHoldStatus(status);
+    const paymentDate = getPaymentDate(row);
+    const current =
+      weeklyMap.get(week.key) ??
+      ({
+        key: week.key,
+        seminar: week.seminar,
+        label: week.label,
+        leads: 0,
+        seated: 0,
+        closed: 0,
+        pending: 0,
+        hold: 0,
+        paid: 0,
+        seatRate: 0,
+        closeRate: 0,
+        projectedRate: 0,
+        holdRate: 0,
+        paidRate: 0,
+        order: week.order,
+      } satisfies WeeklyAccumulator);
+
+    current.leads += 1;
+    if (isSeated(seat)) current.seated += 1;
+    if (isClosed) current.closed += 1;
+    if (isPending) current.pending += 1;
+    if (isHold) current.hold += 1;
+    if (isClosed && paymentDate) current.paid += 1;
+    weeklyMap.set(week.key, current);
+  });
+
+  return [...weeklyMap.values()]
+    .map((week) => ({
+      key: week.key,
+      seminar: week.seminar,
+      label: week.label,
+      leads: week.leads,
+      seated: week.seated,
+      closed: week.closed,
+      pending: week.pending,
+      hold: week.hold,
+      paid: week.paid,
+      seatRate: week.leads ? (week.seated / week.leads) * 100 : 0,
+      closeRate: week.seated ? (week.closed / week.seated) * 100 : 0,
+      projectedRate: week.seated ? ((week.closed + week.pending) / week.seated) * 100 : 0,
+      holdRate: week.leads ? (week.hold / week.leads) * 100 : 0,
+      paidRate: week.closed ? (week.paid / week.closed) * 100 : 0,
+    }))
+    .sort((a, b) => a.seminar.localeCompare(b.seminar, "ja", { numeric: true }) || weeklyMap.get(a.key)!.order - weeklyMap.get(b.key)!.order);
 }
 
 function resolveSelectedTeam(options: string[], requestedTeam?: string | null) {
@@ -377,6 +486,7 @@ function aggregateRows(
     }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "ja"))
     .slice(0, 8);
+  const weeklyKpis = buildWeeklyKpis(scopedRows);
 
   return {
     updatedAt: new Date().toISOString(),
@@ -389,6 +499,7 @@ function aggregateRows(
     lostReasons: toReasonCounts(allLostReasons),
     holdReasons: toReasonCounts(allHoldReasons),
     statusMix,
+    weeklyKpis,
   };
 }
 
