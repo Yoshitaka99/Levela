@@ -52,7 +52,7 @@ export function TeamAccessForm({ nextPath }: { nextPath: string }) {
                 type="password"
                 autoFocus
                 className="mt-2 h-11 w-full rounded-md border border-teal-300/25 bg-slate-950 px-3 text-base text-white outline-none transition focus:border-teal-300/70"
-                placeholder="Levela"
+                placeholder=""
               />
             </label>
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 const TEAM_ACCESS_COOKIE = "levela_team_access";
-const TEAM_PASSPHRASE = "Levela";
+const TEAM_PASSPHRASE = "Levela2026";
 
 function normalizeNextPath(value: unknown) {
   const nextPath = typeof value === "string" ? value : "/team";
