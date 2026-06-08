@@ -138,7 +138,7 @@ function WeeklyKpiPanel({ weeks }: { weeks: TeamSalesDashboardData["weeklyKpis"]
             <CalendarDays className="h-4 w-4 text-teal-200" />
             <h2 className="text-base font-semibold text-white">週別推移</h2>
           </div>
-          <p className="mt-1 text-xs text-slate-400">決着/着金日ベースで、第1週〜第5週に分けています。</p>
+          <p className="mt-1 text-xs text-slate-400">面談日ベースで、第1週〜第5週に分けています。</p>
         </div>
         <span className="rounded-md border border-white/10 bg-slate-950/50 px-2 py-1 text-xs text-slate-300">
           {weeks.length}枠
@@ -160,8 +160,8 @@ function WeeklyKpiPanel({ weeks }: { weeks: TeamSalesDashboardData["weeklyKpis"]
 
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
               <SmallMetric label="着座率" value={formatPercent(week.seatRate)} />
-              <SmallMetric label="保留率" value={formatPercent(week.holdRate)} />
               <SmallMetric label="成約率" value={formatPercent(week.closeRate)} />
+              <SmallMetric label="保留率" value={formatPercent(week.holdRate)} />
               <SmallMetric label="着金率" value={formatPercent(week.paidRate)} />
             </div>
 

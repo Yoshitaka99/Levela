@@ -12,8 +12,9 @@ export const dynamic = "force-dynamic";
 
 const CUSTOMER_SHEET_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1wDIaRyHx0NUUuZWaiP5R9oBhT0Ko5e8HLvaJMlLDmHo/gviz/tq?tqx=out:csv&gid=1151421241";
-const SANITIZED_SOURCE_CSV_URL =
-  "https://docs.google.com/spreadsheets/d/1kkL_gysoXKq0Kh8ttFeMmG6pljzv1iwum2k2DxvJ96s/gviz/tq?tqx=out:csv&gid=2051214579&tq=select%20B%2CC%2CG%2CH%2CN%2CQ%2CR%2CT%20where%20B%20is%20not%20null%20label%20H%20%27%E3%82%B9%E3%83%86%E3%83%BC%E3%82%BF%E3%82%B9%27%2C%20T%20%27%E4%BF%9D%E7%95%99%E7%90%86%E7%94%B12%27";
+const SANITIZED_SOURCE_QUERY =
+  "select B,C,E,G,H,N,Q,R,T where B is not null label E '面談日', H 'ステータス', N '決着日(着金日)', T '保留理由2'";
+const SANITIZED_SOURCE_CSV_URL = `https://docs.google.com/spreadsheets/d/1kkL_gysoXKq0Kh8ttFeMmG6pljzv1iwum2k2DxvJ96s/gviz/tq?tqx=out:csv&gid=2051214579&tq=${encodeURIComponent(SANITIZED_SOURCE_QUERY)}`;
 
 const DEFAULT_SEMINAR_TEXT = "5月セミナー";
 const ALL_SEMINARS = "全期間";
@@ -136,6 +137,10 @@ function getStatus(row: SourceRow) {
   return getMappedValue(row, ["ステータス", "2回目/実施後ステータス"], 3, 7).trim();
 }
 
+function getAppointmentDate(row: SourceRow) {
+  return getMappedValue(row, ["面談日", "A~F列に直接入力禁止！ 面談日"], 2, 4).trim();
+}
+
 function getPaymentDate(row: SourceRow) {
   return getMappedValue(row, ["決済日(着金日)", "決着日(着金日)", "決着日（着金日）"], 4, 13).trim();
 }
@@ -175,7 +180,7 @@ function parseSheetDate(value: string) {
 
 function getWeekLabel(row: SourceRow) {
   const seminar = getSeminar(row);
-  const parsedDate = parseSheetDate(getPaymentDate(row));
+  const parsedDate = parseSheetDate(getAppointmentDate(row));
   if (!parsedDate) {
     return {
       key: `${seminar}:日付未入力`,
@@ -357,7 +362,7 @@ function buildWeeklyKpis(rows: SourceRow[]): WeeklyKpi[] {
       closeRate: week.seated ? (week.closed / week.seated) * 100 : 0,
       projectedRate: week.seated ? ((week.closed + week.pending) / week.seated) * 100 : 0,
       holdRate: week.leads ? (week.hold / week.leads) * 100 : 0,
-      paidRate: week.closed ? (week.paid / week.closed) * 100 : 0,
+      paidRate: week.seated ? (week.paid / week.seated) * 100 : 0,
     }))
     .sort((a, b) => a.seminar.localeCompare(b.seminar, "ja", { numeric: true }) || weeklyMap.get(a.key)!.order - weeklyMap.get(b.key)!.order);
 }
