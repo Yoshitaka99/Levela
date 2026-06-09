@@ -117,6 +117,113 @@ function MetricTile({
   );
 }
 
+type WeeklyRateKey = "seatRate" | "closeRate" | "holdRate" | "paidRate";
+
+const weeklyRateMetrics: { key: WeeklyRateKey; label: string }[] = [
+  { key: "seatRate", label: "着座率" },
+  { key: "closeRate", label: "成約率" },
+  { key: "holdRate", label: "保留率" },
+  { key: "paidRate", label: "着金率" },
+];
+
+const weeklyLineColors = ["#5eead4", "#93c5fd", "#fbbf24", "#fda4af", "#c4b5fd", "#86efac", "#f0abfc", "#fdba74"];
+
+function getWeekOrder(label: string) {
+  const match = label.match(/\d+/);
+  return match ? Number(match[0]) : 99;
+}
+
+function WeeklyLineCharts({ weeks }: { weeks: TeamSalesDashboardData["weeklyKpis"] }) {
+  const weekLabels = Array.from(new Set(weeks.map((week) => week.label))).sort((a, b) => getWeekOrder(a) - getWeekOrder(b));
+  const seminars = Array.from(new Set(weeks.map((week) => week.seminar)));
+  const chartWidth = 320;
+  const chartHeight = 150;
+  const padding = { top: 14, right: 10, bottom: 28, left: 32 };
+  const innerWidth = chartWidth - padding.left - padding.right;
+  const innerHeight = chartHeight - padding.top - padding.bottom;
+
+  function getPoint(index: number, value: number) {
+    const x = padding.left + (weekLabels.length > 1 ? (innerWidth * index) / (weekLabels.length - 1) : innerWidth / 2);
+    const y = padding.top + innerHeight - (Math.min(Math.max(value, 0), 100) / 100) * innerHeight;
+    return { x, y };
+  }
+
+  return (
+    <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/30 p-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-white">週別折れ線</p>
+        <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
+          {seminars.map((seminar, index) => (
+            <span key={seminar} className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: weeklyLineColors[index % weeklyLineColors.length] }} />
+              {seminar}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        {weeklyRateMetrics.map((metric) => (
+          <div key={metric.key} className="rounded-lg border border-white/10 bg-black/15 p-3">
+            <p className="mb-2 text-xs font-semibold text-slate-200">{metric.label}</p>
+            <svg className="h-44 w-full" viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label={`${metric.label}の週別折れ線`}>
+              {[0, 50, 100].map((tick) => {
+                const y = padding.top + innerHeight - (tick / 100) * innerHeight;
+                return (
+                  <g key={tick}>
+                    <line x1={padding.left} x2={chartWidth - padding.right} y1={y} y2={y} stroke="rgba(148, 163, 184, 0.18)" />
+                    <text x={padding.left - 8} y={y + 4} textAnchor="end" className="fill-slate-500 text-[10px]">
+                      {tick}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {weekLabels.map((label, index) => {
+                const { x } = getPoint(index, 0);
+                return (
+                  <g key={label}>
+                    <line x1={x} x2={x} y1={padding.top} y2={padding.top + innerHeight} stroke="rgba(148, 163, 184, 0.08)" />
+                    <text x={x} y={chartHeight - 8} textAnchor="middle" className="fill-slate-400 text-[10px]">
+                      {label.replace("第", "").replace("週", "w")}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {seminars.map((seminar, seminarIndex) => {
+                const color = weeklyLineColors[seminarIndex % weeklyLineColors.length];
+                const points = weekLabels
+                  .map((label, index) => {
+                    const week = weeks.find((item) => item.seminar === seminar && item.label === label);
+                    if (!week) return null;
+                    const point = getPoint(index, week[metric.key]);
+                    return { ...point, value: week[metric.key], key: `${seminar}-${label}` };
+                  })
+                  .filter((point): point is { x: number; y: number; value: number; key: string } => Boolean(point));
+                const linePoints = points.map((point) => `${point.x},${point.y}`).join(" ");
+
+                return (
+                  <g key={seminar}>
+                    {points.length > 1 ? (
+                      <polyline points={linePoints} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    ) : null}
+                    {points.map((point) => (
+                      <circle key={point.key} cx={point.x} cy={point.y} r="3.2" fill={color}>
+                        <title>{`${seminar} ${formatPercent(point.value)}`}</title>
+                      </circle>
+                    ))}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function WeeklyKpiPanel({ weeks }: { weeks: TeamSalesDashboardData["weeklyKpis"] }) {
   if (!weeks.length) {
     return (
@@ -144,6 +251,8 @@ function WeeklyKpiPanel({ weeks }: { weeks: TeamSalesDashboardData["weeklyKpis"]
           {weeks.length}枠
         </span>
       </div>
+
+      <WeeklyLineCharts weeks={weeks} />
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
         {weeks.map((week) => (
