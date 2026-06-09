@@ -56,6 +56,7 @@ export type TeamSalesDashboardData = {
   holdReasons: ReasonCount[];
   statusMix: StatusCount[];
   weeklyKpis: WeeklyKpi[];
+  appointmentWeeklyKpis: WeeklyKpi[];
 };
 
 export const defaultTeamSalesDashboardData: TeamSalesDashboardData = {
@@ -70,4 +71,5 @@ export const defaultTeamSalesDashboardData: TeamSalesDashboardData = {
   holdReasons: [],
   statusMix: [],
   weeklyKpis: [],
+  appointmentWeeklyKpis: [],
 };

@@ -203,6 +203,27 @@ function getWeekLabel(row: SourceRow) {
   };
 }
 
+function getAppointmentWeekLabel(row: SourceRow) {
+  const parsedDate = parseSheetDate(getAppointmentDate(row));
+  if (!parsedDate) {
+    return {
+      key: "面談日未入力:日付未入力",
+      seminar: "面談日未入力",
+      label: "日付未入力",
+      order: 99,
+    };
+  }
+
+  const week = Math.min(Math.ceil(parsedDate.day / 7), 5);
+  const monthLabel = `${parsedDate.year}/${parsedDate.month}`;
+  return {
+    key: `${monthLabel}:第${week}週`,
+    seminar: monthLabel,
+    label: `第${week}週`,
+    order: week,
+  };
+}
+
 function increment(map: Map<string, number>, rawLabel: string) {
   const label = rawLabel.trim() || "未記入";
   map.set(label, (map.get(label) ?? 0) + 1);
@@ -337,10 +358,18 @@ function getTeamOptions(teamDefinitions: Record<string, string[]>, members: stri
 type WeeklyAccumulator = WeeklyKpi & { order: number };
 
 function buildWeeklyKpis(rows: SourceRow[]): WeeklyKpi[] {
+  return buildWeeklyKpisBy(rows, getWeekLabel);
+}
+
+function buildAppointmentWeeklyKpis(rows: SourceRow[]): WeeklyKpi[] {
+  return buildWeeklyKpisBy(rows, getAppointmentWeekLabel);
+}
+
+function buildWeeklyKpisBy(rows: SourceRow[], getLabel: (row: SourceRow) => { key: string; seminar: string; label: string; order: number }): WeeklyKpi[] {
   const weeklyMap = new Map<string, WeeklyAccumulator>();
 
   rows.forEach((row) => {
-    const week = getWeekLabel(row);
+    const week = getLabel(row);
     const status = getStatus(row);
     const seat = getSeat(row);
     const isClosed = isClosedStatus(status);
@@ -524,6 +553,7 @@ function aggregateRows(
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "ja"))
     .slice(0, 8);
   const weeklyKpis = buildWeeklyKpis(scopedRows);
+  const appointmentWeeklyKpis = buildAppointmentWeeklyKpis(scopedRows);
 
   return {
     updatedAt: new Date().toISOString(),
@@ -537,6 +567,7 @@ function aggregateRows(
     holdReasons: toReasonCounts(allHoldReasons, 6, allHoldReasonDates),
     statusMix,
     weeklyKpis,
+    appointmentWeeklyKpis,
   };
 }
 

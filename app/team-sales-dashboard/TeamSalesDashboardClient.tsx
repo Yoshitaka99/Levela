@@ -133,12 +133,29 @@ function getWeekOrder(label: string) {
   return match ? Number(match[0]) : 99;
 }
 
-function WeeklyLineCharts({ weeks }: { weeks: TeamSalesDashboardData["weeklyKpis"] }) {
+function WeeklyLineCharts({
+  weeks,
+  title,
+  emptyText,
+}: {
+  weeks: TeamSalesDashboardData["weeklyKpis"];
+  title: string;
+  emptyText: string;
+}) {
+  if (!weeks.length) {
+    return (
+      <div className="rounded-lg border border-white/10 bg-slate-950/30 p-3">
+        <p className="text-sm font-semibold text-white">{title}</p>
+        <p className="mt-2 text-xs text-slate-400">{emptyText}</p>
+      </div>
+    );
+  }
+
   const weekLabels = Array.from(new Set(weeks.map((week) => week.label))).sort((a, b) => getWeekOrder(a) - getWeekOrder(b));
   const seminars = Array.from(new Set(weeks.map((week) => week.seminar)));
-  const chartWidth = 320;
-  const chartHeight = 150;
-  const padding = { top: 14, right: 10, bottom: 28, left: 32 };
+  const chartWidth = 280;
+  const chartHeight = 118;
+  const padding = { top: 10, right: 8, bottom: 24, left: 30 };
   const innerWidth = chartWidth - padding.left - padding.right;
   const innerHeight = chartHeight - padding.top - padding.bottom;
 
@@ -149,9 +166,9 @@ function WeeklyLineCharts({ weeks }: { weeks: TeamSalesDashboardData["weeklyKpis
   }
 
   return (
-    <div className="mt-4 rounded-lg border border-white/10 bg-slate-950/30 p-3">
+    <div className="rounded-lg border border-white/10 bg-slate-950/30 p-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-white">週別折れ線</p>
+        <p className="text-sm font-semibold text-white">{title}</p>
         <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
           {seminars.map((seminar, index) => (
             <span key={seminar} className="inline-flex items-center gap-1">
@@ -162,17 +179,17 @@ function WeeklyLineCharts({ weeks }: { weeks: TeamSalesDashboardData["weeklyKpis
         </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {weeklyRateMetrics.map((metric) => (
-          <div key={metric.key} className="rounded-lg border border-white/10 bg-black/15 p-3">
+          <div key={metric.key} className="rounded-lg border border-white/10 bg-black/15 p-2.5">
             <p className="mb-2 text-xs font-semibold text-slate-200">{metric.label}</p>
-            <svg className="h-44 w-full" viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label={`${metric.label}の週別折れ線`}>
+            <svg className="h-32 w-full" viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label={`${metric.label}の週別折れ線`}>
               {[0, 50, 100].map((tick) => {
                 const y = padding.top + innerHeight - (tick / 100) * innerHeight;
                 return (
                   <g key={tick}>
                     <line x1={padding.left} x2={chartWidth - padding.right} y1={y} y2={y} stroke="rgba(148, 163, 184, 0.18)" />
-                    <text x={padding.left - 8} y={y + 4} textAnchor="end" className="fill-slate-500 text-[10px]">
+                    <text x={padding.left - 7} y={y + 4} textAnchor="end" className="fill-slate-500 text-[9px]">
                       {tick}
                     </text>
                   </g>
@@ -184,7 +201,7 @@ function WeeklyLineCharts({ weeks }: { weeks: TeamSalesDashboardData["weeklyKpis
                 return (
                   <g key={label}>
                     <line x1={x} x2={x} y1={padding.top} y2={padding.top + innerHeight} stroke="rgba(148, 163, 184, 0.08)" />
-                    <text x={x} y={chartHeight - 8} textAnchor="middle" className="fill-slate-400 text-[10px]">
+                    <text x={x} y={chartHeight - 7} textAnchor="middle" className="fill-slate-400 text-[9px]">
                       {label.replace("第", "").replace("週", "w")}
                     </text>
                   </g>
@@ -224,8 +241,14 @@ function WeeklyLineCharts({ weeks }: { weeks: TeamSalesDashboardData["weeklyKpis
   );
 }
 
-function WeeklyKpiPanel({ weeks }: { weeks: TeamSalesDashboardData["weeklyKpis"] }) {
-  if (!weeks.length) {
+function WeeklyKpiPanel({
+  weeks,
+  appointmentWeeks,
+}: {
+  weeks: TeamSalesDashboardData["weeklyKpis"];
+  appointmentWeeks: TeamSalesDashboardData["appointmentWeeklyKpis"];
+}) {
+  if (!weeks.length && !appointmentWeeks.length) {
     return (
       <section className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-4">
         <div className="flex items-center gap-2">
@@ -245,14 +268,21 @@ function WeeklyKpiPanel({ weeks }: { weeks: TeamSalesDashboardData["weeklyKpis"]
             <CalendarDays className="h-4 w-4 text-teal-200" />
             <h2 className="text-base font-semibold text-white">週別推移</h2>
           </div>
-          <p className="mt-1 text-xs text-slate-400">面談日ベースで、第1週〜第5週に分けています。</p>
+          <p className="mt-1 text-xs text-slate-400">上段はセミナー別、下段は面談日の年月別で第1週〜第5週に分けています。</p>
         </div>
         <span className="rounded-md border border-white/10 bg-slate-950/50 px-2 py-1 text-xs text-slate-300">
           {weeks.length}枠
         </span>
       </div>
 
-      <WeeklyLineCharts weeks={weeks} />
+      <div className="mt-4 space-y-3">
+        <WeeklyLineCharts weeks={weeks} title="セミナー別折れ線" emptyText="セミナー別に表示できる週別データがありません。" />
+        <WeeklyLineCharts
+          weeks={appointmentWeeks}
+          title="面談日基準の折れ線"
+          emptyText="面談日基準で表示できる週別データがありません。"
+        />
+      </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
         {weeks.map((week) => (
@@ -681,7 +711,7 @@ export function TeamSalesDashboardClient({
           <MetricTile label="要確認" value={`${totals.alert}`} sub="成約済みで着金日未入力" tone="rose" icon={AlertTriangle} />
         </div>
 
-        <WeeklyKpiPanel weeks={data.weeklyKpis} />
+        <WeeklyKpiPanel weeks={data.weeklyKpis} appointmentWeeks={data.appointmentWeeklyKpis} />
 
         <div className="mt-5 flex flex-wrap gap-2">
           {tabs.map((tab) => (
