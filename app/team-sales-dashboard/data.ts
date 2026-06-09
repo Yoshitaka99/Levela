@@ -1,6 +1,7 @@
 export type ReasonCount = {
   label: string;
   count: number;
+  answerDates?: string[];
 };
 
 export type StatusCount = {

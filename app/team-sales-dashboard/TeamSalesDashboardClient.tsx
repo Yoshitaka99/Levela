@@ -311,7 +311,14 @@ function ReasonList({
           reasons.map((reason) => (
             <div key={reason.label}>
               <div className="mb-1 flex items-start justify-between gap-4 text-sm">
-                <span className="min-w-0 whitespace-normal break-words leading-5 text-slate-300">{reason.label}</span>
+                <span className="min-w-0 whitespace-normal break-words leading-5 text-slate-300">
+                  {reason.label}
+                  {reason.answerDates?.length ? (
+                    <span className="mt-0.5 block text-[11px] font-normal leading-4 text-amber-100/70">
+                      回答予定 {reason.answerDates.join("、")}
+                    </span>
+                  ) : null}
+                </span>
                 <span className="shrink-0 font-semibold text-white">{reason.count}件</span>
               </div>
               <ProgressBar value={(reason.count / total) * 100} tone={tone} />

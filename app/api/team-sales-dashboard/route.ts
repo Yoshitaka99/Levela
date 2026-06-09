@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 const CUSTOMER_SHEET_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1wDIaRyHx0NUUuZWaiP5R9oBhT0Ko5e8HLvaJMlLDmHo/gviz/tq?tqx=out:csv&gid=1151421241";
 const SANITIZED_SOURCE_QUERY =
-  "select B,C,E,G,H,N,Q,R,T where B is not null label E '面談日', H 'ステータス', N '決着日(着金日)', T '保留理由2'";
+  "select B,C,E,G,H,I,N,Q,R,T where B is not null label E '面談日', H 'ステータス', I '保留回答予定日', N '決着日(着金日)', T '保留理由2'";
 const SANITIZED_SOURCE_CSV_URL = `https://docs.google.com/spreadsheets/d/1kkL_gysoXKq0Kh8ttFeMmG6pljzv1iwum2k2DxvJ96s/gviz/tq?tqx=out:csv&gid=2051214579&tq=${encodeURIComponent(SANITIZED_SOURCE_QUERY)}`;
 
 const DEFAULT_SEMINAR_TEXT = "5月セミナー";
@@ -142,15 +142,19 @@ function getAppointmentDate(row: SourceRow) {
 }
 
 function getPaymentDate(row: SourceRow) {
-  return getMappedValue(row, ["決済日(着金日)", "決着日(着金日)", "決着日（着金日）"], 4, 13).trim();
+  return getMappedValue(row, ["決済日(着金日)", "決着日(着金日)", "決着日（着金日）"], 6, 13).trim();
 }
 
 function getLostReason(row: SourceRow) {
-  return getMappedValue(row, ["失注理由"], 5, 16);
+  return getMappedValue(row, ["失注理由"], 7, 16);
 }
 
 function getHoldReason(row: SourceRow) {
-  return getMappedValue(row, ["保留理由"], 6, 17) || getMappedValue(row, ["保留理由2"], 7, 19);
+  return getMappedValue(row, ["保留理由"], 8, 17) || getMappedValue(row, ["保留理由2"], 9, 19);
+}
+
+function getHoldAnswerDate(row: SourceRow) {
+  return getMappedValue(row, ["保留回答予定日"], 5, 8).trim();
 }
 
 function parseSheetDate(value: string) {
@@ -204,9 +208,34 @@ function increment(map: Map<string, number>, rawLabel: string) {
   map.set(label, (map.get(label) ?? 0) + 1);
 }
 
-function toReasonCounts(map: Map<string, number>, limit = 6): ReasonCount[] {
+function formatReasonDate(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const parsed = parseSheetDate(trimmed);
+  if (parsed) return `${parsed.month}/${parsed.day}`;
+
+  return trimmed;
+}
+
+function incrementReasonWithDate(counts: Map<string, number>, dates: Map<string, Set<string>>, rawLabel: string, rawDate: string) {
+  const label = rawLabel.trim() || "未記入";
+  counts.set(label, (counts.get(label) ?? 0) + 1);
+
+  const date = formatReasonDate(rawDate);
+  if (!date) return;
+
+  if (!dates.has(label)) dates.set(label, new Set());
+  dates.get(label)?.add(date);
+}
+
+function toReasonCounts(map: Map<string, number>, limit = 6, dateMap?: Map<string, Set<string>>): ReasonCount[] {
   return [...map.entries()]
-    .map(([label, count]) => ({ label, count }))
+    .map(([label, count]) => ({
+      label,
+      count,
+      answerDates: dateMap?.get(label) ? [...dateMap.get(label)!].slice(0, 4) : undefined,
+    }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "ja"))
     .slice(0, limit);
 }
@@ -421,6 +450,7 @@ function aggregateRows(
   const scopedRows = seminarRows.filter((row) => scopedMemberNames.includes(getMember(row)));
   const allLostReasons = new Map<string, number>();
   const allHoldReasons = new Map<string, number>();
+  const allHoldReasonDates = new Map<string, Set<string>>();
   const statusCounts = new Map<string, number>();
 
   scopedRows.forEach((row) => {
@@ -432,6 +462,7 @@ function aggregateRows(
     const memberRows = scopedRows.filter((row) => getMember(row) === name);
     const lostReasons = new Map<string, number>();
     const holdReasons = new Map<string, number>();
+    const holdReasonDates = new Map<string, Set<string>>();
     let seated = 0;
     let closed = 0;
     let pending = 0;
@@ -444,6 +475,7 @@ function aggregateRows(
       const paymentDate = getPaymentDate(row);
       const lostReason = getLostReason(row);
       const holdReason = getHoldReason(row);
+      const holdAnswerDate = getHoldAnswerDate(row);
 
       if (isSeated(seat)) seated += 1;
       if (isClosedStatus(status)) {
@@ -453,8 +485,8 @@ function aggregateRows(
       if (isPendingStatus(status)) pending += 1;
       if (isHoldStatus(status)) {
         hold += 1;
-        increment(holdReasons, holdReason);
-        increment(allHoldReasons, holdReason);
+        incrementReasonWithDate(holdReasons, holdReasonDates, holdReason, holdAnswerDate);
+        incrementReasonWithDate(allHoldReasons, allHoldReasonDates, holdReason, holdAnswerDate);
       }
       if (isLostStatus(status)) {
         increment(lostReasons, lostReason);
@@ -479,7 +511,7 @@ function aggregateRows(
       hold,
       alert,
       lostReasons: toReasonCounts(lostReasons, 5),
-      holdReasons: toReasonCounts(holdReasons, 5),
+      holdReasons: toReasonCounts(holdReasons, 5, holdReasonDates),
     };
   });
 
@@ -502,7 +534,7 @@ function aggregateRows(
     teams,
     members,
     lostReasons: toReasonCounts(allLostReasons),
-    holdReasons: toReasonCounts(allHoldReasons),
+    holdReasons: toReasonCounts(allHoldReasons, 6, allHoldReasonDates),
     statusMix,
     weeklyKpis,
   };
