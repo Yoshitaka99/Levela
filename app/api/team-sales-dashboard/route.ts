@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 const CUSTOMER_SHEET_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1wDIaRyHx0NUUuZWaiP5R9oBhT0Ko5e8HLvaJMlLDmHo/gviz/tq?tqx=out:csv&gid=1151421241";
 const SANITIZED_SOURCE_QUERY =
-  "select B,C,E,G,H,I,N,Q,R,T where B is not null label E '面談日', H 'ステータス', I '保留回答予定日', N '決着日(着金日)', T '保留理由2'";
+  "select B,C,E,G,H,I,N,O,Q,R,T where B is not null label E '面談日', H 'ステータス', I '保留回答予定日', N '決着日(着金日)', T '保留理由2'";
 const SANITIZED_SOURCE_CSV_URL = `https://docs.google.com/spreadsheets/d/1kkL_gysoXKq0Kh8ttFeMmG6pljzv1iwum2k2DxvJ96s/gviz/tq?tqx=out:csv&gid=2051214579&tq=${encodeURIComponent(SANITIZED_SOURCE_QUERY)}`;
 
 const DEFAULT_SEMINAR_TEXT = "5月セミナー";
@@ -146,15 +146,19 @@ function getPaymentDate(row: SourceRow) {
 }
 
 function getLostReason(row: SourceRow) {
-  return getMappedValue(row, ["失注理由"], 7, 16);
+  return getMappedValue(row, ["失注理由"], 8, 16);
 }
 
 function getHoldReason(row: SourceRow) {
-  return getMappedValue(row, ["保留理由"], 8, 17) || getMappedValue(row, ["保留理由2"], 9, 19);
+  return getMappedValue(row, ["保留理由"], 9, 17) || getMappedValue(row, ["保留理由2"], 10, 19);
 }
 
 function getHoldAnswerDate(row: SourceRow) {
   return getMappedValue(row, ["保留回答予定日"], 5, 8).trim();
+}
+
+function getContractPlan(row: SourceRow) {
+  return getMappedValue(row, ["成約プラン"], 7, 14).trim();
 }
 
 function parseSheetDate(value: string) {
@@ -276,6 +280,13 @@ function isExcludedMember(member: string) {
 
 function isClosedStatus(status: string) {
   return status.trim().endsWith("成約");
+}
+
+function normalizeContractPlan(plan: string) {
+  const normalized = plan.trim();
+  if (normalized.includes("コミット")) return "tokushin";
+  if (normalized.includes("プレプラ") || normalized.includes("プレミアムプラス")) return "basic";
+  return "";
 }
 
 function isPendingStatus(status: string) {
@@ -494,6 +505,8 @@ function aggregateRows(
     const holdReasonDates = new Map<string, Set<string>>();
     let seated = 0;
     let closed = 0;
+    let tokushinClosed = 0;
+    let basicClosed = 0;
     let pending = 0;
     let hold = 0;
     let alert = 0;
@@ -505,10 +518,13 @@ function aggregateRows(
       const lostReason = getLostReason(row);
       const holdReason = getHoldReason(row);
       const holdAnswerDate = getHoldAnswerDate(row);
+      const contractPlan = normalizeContractPlan(getContractPlan(row));
 
       if (isSeated(seat)) seated += 1;
       if (isClosedStatus(status)) {
         closed += 1;
+        if (contractPlan === "tokushin") tokushinClosed += 1;
+        if (contractPlan === "basic") basicClosed += 1;
         if (!paymentDate) alert += 1;
       }
       if (isPendingStatus(status)) pending += 1;
@@ -533,6 +549,8 @@ function aggregateRows(
       seated,
       seatRate: leads ? (seated / leads) * 100 : 0,
       closed,
+      tokushinClosed,
+      basicClosed,
       closeRate: seated ? (closed / seated) * 100 : 0,
       pending,
       projected,

@@ -52,6 +52,10 @@ function topReason(reasons: ReasonCount[]) {
   return reasons[0]?.label ?? "該当なし";
 }
 
+function formatPlanBreakdown(member: Pick<TeamMemberKpi, "tokushinClosed" | "basicClosed">) {
+  return `特進 ${member.tokushinClosed} / ベーシック ${member.basicClosed}`;
+}
+
 function splitSeminars(value?: string) {
   return (value ?? "")
     .split(SEMINAR_SEPARATOR)
@@ -805,11 +809,12 @@ export function TeamSalesDashboardClient({
                   予定込み成約率 {formatPercent(selected.projectedRate)}
                 </span>
               </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-4">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <SmallMetric label="予定込み成約率" value={formatPercent(selected.projectedRate)} />
                 <SmallMetric label="実成約率" value={formatPercent(selected.closeRate)} />
                 <SmallMetric label="着座率" value={formatPercent(selected.seatRate)} />
                 <SmallMetric label="成約予定" value={`${selected.pending}件`} />
+                <SmallMetric label="成約内訳" value={formatPlanBreakdown(selected)} />
               </div>
               <div className="mt-5">
                 <h3 className="mb-2 text-sm font-semibold text-white">KPIバランス</h3>
@@ -874,7 +879,7 @@ function SmallMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-white/10 bg-slate-950/50 px-3 py-3">
       <p className="text-xs text-slate-400">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-white">{value}</p>
+      <p className="mt-1 break-words text-lg font-semibold leading-snug text-white">{value}</p>
     </div>
   );
 }
@@ -939,6 +944,7 @@ function MemberTable({
               <SmallMetric label="実成約率" value={formatPercent(member.closeRate)} />
               <SmallMetric label="予定込み" value={formatPercent(member.projectedRate)} />
               <SmallMetric label="成約/予定/保留" value={`${member.closed}/${member.pending}/${member.hold}`} />
+              <SmallMetric label="成約内訳" value={formatPlanBreakdown(member)} />
             </div>
           </button>
         ))}
@@ -947,15 +953,16 @@ function MemberTable({
         <table className="w-full table-fixed border-collapse text-sm">
           <thead className="bg-slate-900 text-xs uppercase text-slate-400">
             <tr>
-              <th className="w-[6%] px-3 py-3 text-right">順位</th>
-              <th className="w-[14%] px-3 py-3 text-left">メンバー</th>
-              <th className="w-[12%] px-3 py-3 text-left">チーム</th>
-              <th className="w-[10%] px-3 py-3 text-right">抽出/着座</th>
-              <th className="w-[14%] px-3 py-3 text-left">着座率</th>
-              <th className="w-[10%] px-3 py-3 text-right">成約/予定</th>
-              <th className="w-[10%] px-3 py-3 text-right">実成約率</th>
-              <th className="w-[10%] px-3 py-3 text-right">予定込み</th>
-              <th className="w-[7%] px-3 py-3 text-right">保留</th>
+              <th className="w-[5%] px-3 py-3 text-right">順位</th>
+              <th className="w-[12%] px-3 py-3 text-left">メンバー</th>
+              <th className="w-[10%] px-3 py-3 text-left">チーム</th>
+              <th className="w-[9%] px-3 py-3 text-right">抽出/着座</th>
+              <th className="w-[13%] px-3 py-3 text-left">着座率</th>
+              <th className="w-[8%] px-3 py-3 text-right">成約/予定</th>
+              <th className="w-[12%] px-3 py-3 text-right">成約内訳</th>
+              <th className="w-[9%] px-3 py-3 text-right">実成約率</th>
+              <th className="w-[9%] px-3 py-3 text-right">予定込み</th>
+              <th className="w-[6%] px-3 py-3 text-right">保留</th>
               <th className="w-[5%] px-3 py-3 text-right">警告</th>
             </tr>
           </thead>
@@ -979,6 +986,9 @@ function MemberTable({
                   </div>
                 </td>
                 <td className="px-3 py-3 text-right text-slate-200">{member.closed}/{member.pending}</td>
+                <td className="whitespace-normal break-words px-3 py-3 text-right text-xs leading-5 text-slate-300">
+                  {formatPlanBreakdown(member)}
+                </td>
                 <td className="px-3 py-3 text-right font-medium text-teal-100">{formatPercent(member.closeRate)}</td>
                 <td className="px-3 py-3 text-right font-semibold text-cyan-100">{formatPercent(member.projectedRate)}</td>
                 <td className="px-3 py-3 text-right text-violet-100">{member.hold}</td>

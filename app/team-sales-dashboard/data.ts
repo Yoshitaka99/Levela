@@ -17,6 +17,8 @@ export type TeamMemberKpi = {
   seated: number;
   seatRate: number;
   closed: number;
+  tokushinClosed: number;
+  basicClosed: number;
   closeRate: number;
   pending: number;
   projected: number;
