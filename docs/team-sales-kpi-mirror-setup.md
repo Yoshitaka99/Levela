@@ -9,7 +9,7 @@
 ## URL
 
 - ミラー先: https://docs.google.com/spreadsheets/d/1a3WimNtSLyepfTZ3YxZmy3XAaV6eIG_8C-BdoAd4aIA/edit?usp=drivesdk
-- ミラーCSV: https://docs.google.com/spreadsheets/d/1a3WimNtSLyepfTZ3YxZmy3XAaV6eIG_8C-BdoAd4aIA/gviz/tq?tqx=out:csv&sheet=KPI_MIRROR
+- ミラーCSV: https://docs.google.com/spreadsheets/d/1a3WimNtSLyepfTZ3YxZmy3XAaV6eIG_8C-BdoAd4aIA/gviz/tq?tqx=out:csv&sheet=KPI_MIRROR&headers=1
 - 本番KPI: https://levela.vercel.app/team
 
 ## 抽出元
@@ -62,7 +62,7 @@
 Vercel の環境変数 `TEAM_SALES_DASHBOARD_DATA_URL` に以下を設定します。
 
 ```env
-TEAM_SALES_DASHBOARD_DATA_URL=https://docs.google.com/spreadsheets/d/1a3WimNtSLyepfTZ3YxZmy3XAaV6eIG_8C-BdoAd4aIA/gviz/tq?tqx=out:csv&sheet=KPI_MIRROR
+TEAM_SALES_DASHBOARD_DATA_URL=https://docs.google.com/spreadsheets/d/1a3WimNtSLyepfTZ3YxZmy3XAaV6eIG_8C-BdoAd4aIA/gviz/tq?tqx=out:csv&sheet=KPI_MIRROR&headers=1
 ```
 
 設定後、本番を再デプロイすると `https://levela.vercel.app/team` はミラーCSVから読み取ります。

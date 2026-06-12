@@ -57,7 +57,8 @@ function refreshTeamSalesKpiMirror() {
   for (let rowIndex = 1; rowIndex < sourceValues.length; rowIndex += 1) {
     const sourceRow = sourceValues[rowIndex];
     const owner = String(sourceRow[1] || "").trim();
-    if (!owner) continue;
+    const seminar = String(sourceRow[2] || "").trim();
+    if (!owner || !seminar) continue;
 
     output.push(config.columns.map((column) => sourceRow[column.sourceIndex] || ""));
   }
