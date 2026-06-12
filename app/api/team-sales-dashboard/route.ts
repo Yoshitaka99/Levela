@@ -17,6 +17,8 @@ const CUSTOMER_SHEET_CSV_URL =
 const SANITIZED_SOURCE_QUERY =
   "select B,C,D,E,F,G,H,I,N,O,Q,R,T where B is not null label D '流入経路', E '面談日', F '流入', H 'ステータス', I '保留回答予定日', N '決着日(着金日)', T '保留理由2'";
 const SANITIZED_SOURCE_CSV_URL = `https://docs.google.com/spreadsheets/d/1kkL_gysoXKq0Kh8ttFeMmG6pljzv1iwum2k2DxvJ96s/gviz/tq?tqx=out:csv&gid=2051214579&tq=${encodeURIComponent(SANITIZED_SOURCE_QUERY)}`;
+const TEAM_SALES_MIRROR_CSV_URL =
+  "https://docs.google.com/spreadsheets/d/1a3WimNtSLyepfTZ3YxZmy3XAaV6eIG_8C-BdoAd4aIA/gviz/tq?tqx=out:csv&sheet=KPI_MIRROR";
 
 const DEFAULT_SEMINAR_TEXT = "5月セミナー";
 const ALL_SEMINARS = "全期間";
@@ -653,6 +655,7 @@ export async function fetchTeamSalesData(
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
   const urls = [
+    TEAM_SALES_MIRROR_CSV_URL,
     process.env.TEAM_SALES_DASHBOARD_DATA_URL,
     SANITIZED_SOURCE_CSV_URL,
     CUSTOMER_SHEET_CSV_URL,
