@@ -1,8 +1,12 @@
 export type ReasonCount = {
   label: string;
   count: number;
+  rate?: number;
   answerDates?: string[];
 };
+
+export type TrafficFilter = "all" | "ad";
+export type AdSourceFilter = "all" | "x" | "meta";
 
 export type StatusCount = {
   label: string;
@@ -51,6 +55,8 @@ export type TeamSalesDashboardData = {
   source: "sheet" | "fallback";
   selectedSeminar: string;
   selectedTeam: string;
+  selectedTraffic: TrafficFilter;
+  selectedAdSource: AdSourceFilter;
   seminars: string[];
   teams: string[];
   members: TeamMemberKpi[];
@@ -66,6 +72,8 @@ export const defaultTeamSalesDashboardData: TeamSalesDashboardData = {
   source: "fallback",
   selectedSeminar: "5月セミナー",
   selectedTeam: "全チーム",
+  selectedTraffic: "all",
+  selectedAdSource: "all",
   seminars: ["全期間", "5月セミナー"],
   teams: ["全チーム"],
   members: [],

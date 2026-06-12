@@ -16,6 +16,8 @@ export const dynamic = "force-dynamic";
 
 const validTabs = ["overview", "members", "reasons", "alerts"] as const;
 const validSorts = ["projectedRate", "closeRate", "seatRate", "seated", "closed", "projected", "lost", "hold"] as const;
+const validTraffic = ["all", "ad"] as const;
+const validAdSources = ["all", "x", "meta"] as const;
 
 type PageSearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -40,9 +42,11 @@ export default async function TeamSalesDashboardPage({
   const initialQuery = Array.isArray(params.q) ? params.q[0] : params.q;
   const initialSeminar = Array.isArray(params.seminar) ? params.seminar[0] : params.seminar;
   const initialTeam = Array.isArray(params.team) ? params.team[0] : params.team;
+  const initialTraffic = pickParam(params.traffic, validTraffic, "all");
+  const initialAdSource = pickParam(params.adSource, validAdSources, "all");
   const initialOnlyAlerts = (Array.isArray(params.alerts) ? params.alerts[0] : params.alerts) === "1";
   const initialOnlyHold = (Array.isArray(params.hold) ? params.hold[0] : params.hold) === "1";
-  const initialData = (await fetchTeamSalesData(initialSeminar, initialTeam)) ?? defaultTeamSalesDashboardData;
+  const initialData = (await fetchTeamSalesData(initialSeminar, initialTeam, initialTraffic, initialAdSource)) ?? defaultTeamSalesDashboardData;
 
   return (
     <TeamSalesDashboardClient
@@ -53,6 +57,8 @@ export default async function TeamSalesDashboardPage({
       initialQuery={initialQuery}
       initialSeminar={initialSeminar}
       initialTeam={initialTeam}
+      initialTraffic={initialTraffic}
+      initialAdSource={initialAdSource}
       initialOnlyAlerts={initialOnlyAlerts}
       initialOnlyHold={initialOnlyHold}
     />

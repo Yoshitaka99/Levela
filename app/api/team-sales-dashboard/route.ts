@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import {
   defaultTeamSalesDashboardData,
+  type AdSourceFilter,
   type ReasonCount,
   type StatusCount,
   type TeamMemberKpi,
   type TeamSalesDashboardData,
+  type TrafficFilter,
   type WeeklyKpi,
 } from "../../team-sales-dashboard/data";
 
@@ -13,13 +15,18 @@ export const dynamic = "force-dynamic";
 const CUSTOMER_SHEET_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1wDIaRyHx0NUUuZWaiP5R9oBhT0Ko5e8HLvaJMlLDmHo/gviz/tq?tqx=out:csv&gid=1151421241";
 const SANITIZED_SOURCE_QUERY =
-  "select B,C,E,G,H,I,N,O,Q,R,T where B is not null label E '面談日', H 'ステータス', I '保留回答予定日', N '決着日(着金日)', T '保留理由2'";
+  "select B,C,D,E,F,G,H,I,N,O,Q,R,T where B is not null label D '流入経路', E '面談日', F '流入', H 'ステータス', I '保留回答予定日', N '決着日(着金日)', T '保留理由2'";
 const SANITIZED_SOURCE_CSV_URL = `https://docs.google.com/spreadsheets/d/1kkL_gysoXKq0Kh8ttFeMmG6pljzv1iwum2k2DxvJ96s/gviz/tq?tqx=out:csv&gid=2051214579&tq=${encodeURIComponent(SANITIZED_SOURCE_QUERY)}`;
 
 const DEFAULT_SEMINAR_TEXT = "5月セミナー";
 const ALL_SEMINARS = "全期間";
 const SEMINAR_SEPARATOR = ",";
 const ALL_TEAMS = "全チーム";
+const ALL_TRAFFIC: TrafficFilter = "all";
+const AD_TRAFFIC: TrafficFilter = "ad";
+const ALL_AD_SOURCES: AdSourceFilter = "all";
+const AD_SOURCE_X: Exclude<AdSourceFilter, "all"> = "x";
+const AD_SOURCE_META: Exclude<AdSourceFilter, "all"> = "meta";
 const SALES_AGENCY_TEAM = "営業代行チーム";
 
 const EXCLUDED_MEMBER_KEYWORDS = [
@@ -130,35 +137,43 @@ function getSeminar(row: SourceRow) {
 }
 
 function getSeat(row: SourceRow) {
-  return getMappedValue(row, ["着席", "着座"], 2, 6).trim();
+  return getMappedValue(row, ["着席", "着座"], 5, 6).trim();
 }
 
 function getStatus(row: SourceRow) {
-  return getMappedValue(row, ["ステータス", "2回目/実施後ステータス"], 3, 7).trim();
+  return getMappedValue(row, ["ステータス", "2回目/実施後ステータス"], 6, 7).trim();
 }
 
 function getAppointmentDate(row: SourceRow) {
-  return getMappedValue(row, ["面談日", "A~F列に直接入力禁止！ 面談日"], 2, 4).trim();
+  return getMappedValue(row, ["面談日", "A~F列に直接入力禁止！ 面談日"], 3, 4).trim();
+}
+
+function getTrafficRoute(row: SourceRow) {
+  return getMappedValue(row, ["流入経路"], 2, 3).trim();
+}
+
+function getInflow(row: SourceRow) {
+  return getMappedValue(row, ["流入"], 4, 5).trim();
 }
 
 function getPaymentDate(row: SourceRow) {
-  return getMappedValue(row, ["決済日(着金日)", "決着日(着金日)", "決着日（着金日）"], 6, 13).trim();
+  return getMappedValue(row, ["決済日(着金日)", "決着日(着金日)", "決着日（着金日）"], 8, 13).trim();
 }
 
 function getLostReason(row: SourceRow) {
-  return getMappedValue(row, ["失注理由"], 8, 16);
+  return getMappedValue(row, ["失注理由"], 10, 16);
 }
 
 function getHoldReason(row: SourceRow) {
-  return getMappedValue(row, ["保留理由"], 9, 17) || getMappedValue(row, ["保留理由2"], 10, 19);
+  return getMappedValue(row, ["保留理由"], 11, 17) || getMappedValue(row, ["保留理由2"], 12, 19);
 }
 
 function getHoldAnswerDate(row: SourceRow) {
-  return getMappedValue(row, ["保留回答予定日"], 5, 8).trim();
+  return getMappedValue(row, ["保留回答予定日"], 7, 8).trim();
 }
 
 function getContractPlan(row: SourceRow) {
-  return getMappedValue(row, ["成約プラン"], 7, 14).trim();
+  return getMappedValue(row, ["成約プラン"], 9, 14).trim();
 }
 
 function parseSheetDate(value: string) {
@@ -255,10 +270,12 @@ function incrementReasonWithDate(counts: Map<string, number>, dates: Map<string,
 }
 
 function toReasonCounts(map: Map<string, number>, limit = 6, dateMap?: Map<string, Set<string>>): ReasonCount[] {
+  const total = [...map.values()].reduce((sum, count) => sum + count, 0);
   return [...map.entries()]
     .map(([label, count]) => ({
       label,
       count,
+      rate: total ? (count / total) * 100 : 0,
       answerDates: dateMap?.get(label) ? [...dateMap.get(label)!].slice(0, 4) : undefined,
     }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "ja"))
@@ -287,6 +304,36 @@ function normalizeContractPlan(plan: string) {
   if (normalized.includes("コミット")) return "tokushin";
   if (normalized.includes("プレプラ") || normalized.includes("プレミアムプラス")) return "basic";
   return "";
+}
+
+function getTrafficText(row: SourceRow) {
+  return `${getTrafficRoute(row)} ${getInflow(row)}`;
+}
+
+function isAdTraffic(row: SourceRow) {
+  return /ad/i.test(getTrafficText(row));
+}
+
+function getAdSource(row: SourceRow): Exclude<AdSourceFilter, "all"> | "" {
+  const traffic = getTrafficText(row);
+  if (/(^|[^a-z])x[_-]?ad/i.test(traffic) || /x[_-]?ad/i.test(traffic)) return AD_SOURCE_X;
+  if (/meta/i.test(traffic)) return AD_SOURCE_META;
+  return "";
+}
+
+function resolveTrafficFilter(value?: string | null): TrafficFilter {
+  return value === AD_TRAFFIC ? AD_TRAFFIC : ALL_TRAFFIC;
+}
+
+function resolveAdSourceFilter(value?: string | null): AdSourceFilter {
+  return value === AD_SOURCE_X || value === AD_SOURCE_META ? value : ALL_AD_SOURCES;
+}
+
+function matchesTrafficFilter(row: SourceRow, traffic: TrafficFilter, adSource: AdSourceFilter) {
+  if (traffic === ALL_TRAFFIC) return true;
+  if (!isAdTraffic(row)) return false;
+  if (adSource === ALL_AD_SOURCES) return true;
+  return getAdSource(row) === adSource;
 }
 
 function isPendingStatus(status: string) {
@@ -465,18 +512,22 @@ function aggregateRows(
   rows: SourceRow[],
   requestedSeminar?: string | null,
   requestedTeam?: string | null,
+  requestedTraffic?: string | null,
+  requestedAdSource?: string | null,
 ): TeamSalesDashboardData {
   const teamDefinitions = parseTeamDefinitions();
   const seminars = getSeminarOptions(rows);
   const selectedSeminars = resolveSelectedSeminars(seminars, requestedSeminar);
   const selectedSeminar = selectedSeminars.join(SEMINAR_SEPARATOR);
+  const selectedTraffic = resolveTrafficFilter(requestedTraffic);
+  const selectedAdSource = selectedTraffic === AD_TRAFFIC ? resolveAdSourceFilter(requestedAdSource) : ALL_AD_SOURCES;
 
   const seminarRows = rows.filter((row) => {
     const member = getMember(row);
     const seminar = getSeminar(row);
     const seat = getSeat(row);
     const matchesSeminar = selectedSeminars.includes(ALL_SEMINARS) || selectedSeminars.includes(seminar);
-    return member && !isExcludedMember(member) && matchesSeminar && !isExcludedFromSeatBase(seat);
+    return member && !isExcludedMember(member) && matchesSeminar && matchesTrafficFilter(row, selectedTraffic, selectedAdSource) && !isExcludedFromSeatBase(seat);
   });
 
   const memberNames = [...new Set(seminarRows.map((row) => getMember(row)))].sort((a, b) => compareMembersByTeamOrder(a, b, teamDefinitions));
@@ -578,6 +629,8 @@ function aggregateRows(
     source: "sheet",
     selectedSeminar,
     selectedTeam,
+    selectedTraffic,
+    selectedAdSource,
     seminars,
     teams,
     members,
@@ -592,8 +645,10 @@ function aggregateRows(
 export async function fetchTeamSalesData(
   requestedSeminar?: string | null,
   requestedTeam?: string | null,
+  requestedTraffic?: string | null,
+  requestedAdSource?: string | null,
 ): Promise<TeamSalesDashboardData | null> {
-  const cacheKey = `${requestedSeminar ?? ""}::${requestedTeam ?? ""}`;
+  const cacheKey = `${requestedSeminar ?? ""}::${requestedTeam ?? ""}::${requestedTraffic ?? ""}::${requestedAdSource ?? ""}`;
   const cached = dataCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
@@ -628,7 +683,7 @@ export async function fetchTeamSalesData(
         (row) => getValue(row, 1, "担当者名").trim() && getValue(row, 2, "セミナー").trim(),
       );
       if (rows.length && hasExpectedHeaders) {
-        const data = aggregateRows(rows as SourceRow[], requestedSeminar, requestedTeam);
+        const data = aggregateRows(rows as SourceRow[], requestedSeminar, requestedTeam, requestedTraffic, requestedAdSource);
         dataCache.set(cacheKey, { data, expiresAt: Date.now() + DATA_CACHE_TTL_MS });
         return data;
       }
@@ -645,7 +700,7 @@ export async function fetchTeamSalesData(
 export async function GET(request: Request) {
   try {
     const searchParams = new URL(request.url).searchParams;
-    const liveData = await fetchTeamSalesData(searchParams.get("seminar"), searchParams.get("team"));
+    const liveData = await fetchTeamSalesData(searchParams.get("seminar"), searchParams.get("team"), searchParams.get("traffic"), searchParams.get("adSource"));
 
     return NextResponse.json(liveData ?? defaultTeamSalesDashboardData, {
       headers: { "Cache-Control": "no-store, max-age=0" },

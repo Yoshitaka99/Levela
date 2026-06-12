@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReasonCount, TeamMemberKpi, TeamSalesDashboardData } from "./data";
+import type { AdSourceFilter, ReasonCount, TeamMemberKpi, TeamSalesDashboardData, TrafficFilter } from "./data";
 
 type TabKey = "overview" | "members" | "reasons" | "alerts";
 type SortKey = "projectedRate" | "closeRate" | "seatRate" | "seated" | "closed" | "projected" | "lost" | "hold";
@@ -38,6 +38,17 @@ const sortButtons: { key: SortKey; label: string }[] = [
   { key: "projected", label: "予定込み成約数" },
   { key: "lost", label: "失注理由数" },
   { key: "hold", label: "保留理由数" },
+];
+
+const trafficFilters: { key: TrafficFilter; label: string }[] = [
+  { key: "all", label: "全て" },
+  { key: "ad", label: "広告のみ" },
+];
+
+const adSourceFilters: { key: AdSourceFilter; label: string }[] = [
+  { key: "all", label: "広告すべて" },
+  { key: "x", label: "x流入" },
+  { key: "meta", label: "meta流入" },
 ];
 
 function formatPercent(value: number) {
@@ -353,7 +364,12 @@ function ReasonList({
                     </span>
                   ) : null}
                 </span>
-                <span className="shrink-0 font-semibold text-white">{reason.count}件</span>
+                <span className="shrink-0 text-right font-semibold text-white">
+                  {reason.count}件
+                  <span className="ml-2 text-xs font-normal text-slate-400">
+                    {formatPercent(reason.rate ?? (reason.count / total) * 100)}
+                  </span>
+                </span>
               </div>
               <ProgressBar value={(reason.count / total) * 100} tone={tone} />
             </div>
@@ -376,6 +392,8 @@ export function TeamSalesDashboardClient({
   initialQuery,
   initialSeminar,
   initialTeam,
+  initialTraffic,
+  initialAdSource,
   initialOnlyAlerts,
   initialOnlyHold,
   basePath = "/team-sales-dashboard",
@@ -387,6 +405,8 @@ export function TeamSalesDashboardClient({
   initialQuery?: string;
   initialSeminar?: string;
   initialTeam?: string;
+  initialTraffic: TrafficFilter;
+  initialAdSource: AdSourceFilter;
   initialOnlyAlerts: boolean;
   initialOnlyHold: boolean;
   basePath?: string;
@@ -397,6 +417,8 @@ export function TeamSalesDashboardClient({
   const [query, setQuery] = useState(initialQuery ?? "");
   const [selectedSeminar, setSelectedSeminar] = useState(initialSeminar ?? initialData.selectedSeminar);
   const [selectedTeam, setSelectedTeam] = useState(initialTeam ?? initialData.selectedTeam);
+  const [selectedTraffic, setSelectedTraffic] = useState<TrafficFilter>(initialTraffic ?? initialData.selectedTraffic);
+  const [selectedAdSource, setSelectedAdSource] = useState<AdSourceFilter>(initialAdSource ?? initialData.selectedAdSource);
   const [onlyAlerts, setOnlyAlerts] = useState(initialOnlyAlerts);
   const [onlyHold, setOnlyHold] = useState(initialOnlyHold);
   const [selectedMember, setSelectedMember] = useState(
@@ -414,12 +436,16 @@ export function TeamSalesDashboardClient({
     refreshRequestRef.current = requestId;
     const requestedSeminar = selectedSeminar;
     const requestedTeam = selectedTeam;
+    const requestedTraffic = selectedTraffic;
+    const requestedAdSource = selectedAdSource;
 
     setIsRefreshing(true);
     try {
       const params = new URLSearchParams();
       if (requestedSeminar) params.set("seminar", requestedSeminar);
       if (requestedTeam) params.set("team", requestedTeam);
+      if (requestedTraffic === "ad") params.set("traffic", requestedTraffic);
+      if (requestedTraffic === "ad" && requestedAdSource !== "all") params.set("adSource", requestedAdSource);
       const response = await fetch(`/api/team-sales-dashboard?${params.toString()}`, { cache: "no-store" });
       const nextData = (await response.json()) as TeamSalesDashboardData;
 
@@ -428,6 +454,8 @@ export function TeamSalesDashboardClient({
       setData(nextData);
       setSelectedSeminar(nextData.selectedSeminar || requestedSeminar);
       setSelectedTeam(nextData.selectedTeam || requestedTeam);
+      setSelectedTraffic(nextData.selectedTraffic || requestedTraffic);
+      setSelectedAdSource(nextData.selectedAdSource || requestedAdSource);
       setLastSyncedAt(new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }));
       setSelectedMember((currentMember) =>
         nextData.members.some((member) => member.name === currentMember) ? currentMember : nextData.members[0]?.name ?? "",
@@ -435,7 +463,7 @@ export function TeamSalesDashboardClient({
     } finally {
       if (requestId === refreshRequestRef.current) setIsRefreshing(false);
     }
-  }, [selectedSeminar, selectedTeam]);
+  }, [selectedAdSource, selectedSeminar, selectedTeam, selectedTraffic]);
 
   useEffect(() => {
     if (hasMountedRef.current) {
@@ -493,7 +521,7 @@ export function TeamSalesDashboardClient({
 
   const selected = data.members.find((member) => member.name === selectedMember) ?? data.members[0];
   const alertMembers = data.members.filter((member) => member.alert > 0 || member.hold > 0);
-  const activeFilterCount = Number(onlyAlerts) + Number(onlyHold) + Number(Boolean(query.trim()));
+  const activeFilterCount = Number(onlyAlerts) + Number(onlyHold) + Number(Boolean(query.trim())) + Number(selectedTraffic === "ad");
   const selectedSeminarValues = useMemo(
     () => normalizeSeminarSelection(selectedSeminar, data.seminars),
     [data.seminars, selectedSeminar],
@@ -511,6 +539,8 @@ export function TeamSalesDashboardClient({
       q?: string | null;
       seminar?: string | null;
       team?: string | null;
+      traffic?: TrafficFilter;
+      adSource?: AdSourceFilter;
       alerts?: boolean;
       hold?: boolean;
     } = {},
@@ -523,11 +553,15 @@ export function TeamSalesDashboardClient({
     const nextQuery = overrides.q === undefined ? query.trim() : overrides.q;
     const nextSeminar = overrides.seminar === undefined ? selectedSeminar : overrides.seminar;
     const nextTeam = overrides.team === undefined ? selectedTeam : overrides.team;
+    const nextTraffic = overrides.traffic ?? selectedTraffic;
+    const nextAdSource = overrides.adSource ?? selectedAdSource;
     const nextAlerts = overrides.alerts ?? onlyAlerts;
     const nextHold = overrides.hold ?? onlyHold;
 
     if (nextSeminar) params.set("seminar", nextSeminar);
     if (nextTeam) params.set("team", nextTeam);
+    if (nextTraffic === "ad") params.set("traffic", nextTraffic);
+    if (nextTraffic === "ad" && nextAdSource !== "all") params.set("adSource", nextAdSource);
     if (nextMember) params.set("member", nextMember);
     if (nextQuery) params.set("q", nextQuery);
     if (nextAlerts) params.set("alerts", "1");
@@ -581,6 +615,23 @@ export function TeamSalesDashboardClient({
     window.history.replaceState(null, "", dashboardHref({ team: nextTeam, member: null }));
   }
 
+  function changeTraffic(nextTraffic: TrafficFilter) {
+    refreshRequestRef.current += 1;
+    const nextAdSource = nextTraffic === "ad" ? selectedAdSource : "all";
+    setSelectedTraffic(nextTraffic);
+    setSelectedAdSource(nextAdSource);
+    setSelectedMember("");
+    window.history.replaceState(null, "", dashboardHref({ traffic: nextTraffic, adSource: nextAdSource, member: null }));
+  }
+
+  function changeAdSource(nextAdSource: AdSourceFilter) {
+    refreshRequestRef.current += 1;
+    setSelectedTraffic("ad");
+    setSelectedAdSource(nextAdSource);
+    setSelectedMember("");
+    window.history.replaceState(null, "", dashboardHref({ traffic: "ad", adSource: nextAdSource, member: null }));
+  }
+
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#07100f] px-4 py-6 text-slate-100 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-7xl">
@@ -594,6 +645,9 @@ export function TeamSalesDashboardClient({
               <CalendarDays className="h-4 w-4" />
               <span>{formatSelectedSeminars(selectedSeminar)}</span>
               <span className="rounded-full border border-slate-600 px-2 py-0.5 text-xs">{data.selectedTeam}</span>
+              <span className="rounded-full border border-slate-600 px-2 py-0.5 text-xs">
+                {selectedTraffic === "ad" ? `広告のみ${selectedAdSource !== "all" ? ` / ${selectedAdSource === "x" ? "x流入" : "meta流入"}` : ""}` : "全て"}
+              </span>
               <span className="rounded-full border border-teal-300/25 bg-teal-300/10 px-2 py-0.5 text-xs text-teal-100">
                 {data.source === "sheet" ? "顧客管理シート連携中" : "フォールバック"}
               </span>
@@ -637,11 +691,43 @@ export function TeamSalesDashboardClient({
                 </option>
               ))}
             </select>
+            <div className="flex h-10 rounded-md border border-white/10 bg-white/5 p-1">
+              {trafficFilters.map((filter) => (
+                <button
+                  key={filter.key}
+                  type="button"
+                  onClick={() => changeTraffic(filter.key)}
+                  className={`rounded px-3 text-sm font-medium ${
+                    selectedTraffic === filter.key ? "bg-teal-300 text-slate-950" : "text-slate-300 hover:bg-white/10"
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+            {selectedTraffic === "ad" ? (
+              <div className="flex h-10 rounded-md border border-white/10 bg-white/5 p-1">
+                {adSourceFilters.map((filter) => (
+                  <button
+                    key={filter.key}
+                    type="button"
+                    onClick={() => changeAdSource(filter.key)}
+                    className={`rounded px-2.5 text-xs font-medium ${
+                      selectedAdSource === filter.key ? "bg-cyan-300 text-slate-950" : "text-slate-300 hover:bg-white/10"
+                    }`}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <form action={basePath} className="inline-flex h-10 w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-slate-200 sm:w-[260px]">
               <input type="hidden" name="tab" value={activeTab} />
               <input type="hidden" name="sort" value={sortKey} />
               <input type="hidden" name="seminar" value={selectedSeminar} />
               <input type="hidden" name="team" value={selectedTeam} />
+              {selectedTraffic === "ad" ? <input type="hidden" name="traffic" value="ad" /> : null}
+              {selectedTraffic === "ad" && selectedAdSource !== "all" ? <input type="hidden" name="adSource" value={selectedAdSource} /> : null}
               {onlyAlerts ? <input type="hidden" name="alerts" value="1" /> : null}
               {onlyHold ? <input type="hidden" name="hold" value="1" /> : null}
               <Search className="h-4 w-4" />
@@ -693,10 +779,13 @@ export function TeamSalesDashboardClient({
           <button
             type="button"
             onClick={() => {
+              refreshRequestRef.current += 1;
               setQuery("");
               setOnlyAlerts(false);
               setOnlyHold(false);
-              window.history.replaceState(null, "", dashboardHref({ q: null, alerts: false, hold: false, member: null }));
+              setSelectedTraffic("all");
+              setSelectedAdSource("all");
+              window.history.replaceState(null, "", dashboardHref({ q: null, traffic: "all", adSource: "all", alerts: false, hold: false, member: null }));
             }}
             className="inline-flex items-center gap-2 rounded-md bg-white/5 px-3 py-2 text-sm text-slate-300"
           >
