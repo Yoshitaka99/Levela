@@ -41,7 +41,13 @@ const EXCLUDED_MEMBER_KEYWORDS = [
 
 const EXCLUDED_RAW_MEMBERS = new Set(["中島 絵美"]);
 const EXCLUDED_EXACT_MEMBERS = new Set(["池上翔太", "有川薫", "中村珠梨"]);
-const EXCLUDED_SEAT_STATUSES = new Set(["担当者変更", "重複予約", "無効アポ"]);
+const EXCLUDED_SEAT_STATUSES = new Set([
+  "担当者変更",
+  "重複予約",
+  "無効アポ",
+  "リスケ/再日程調整中",
+  "【その場】リスケ/再日程調整中",
+]);
 const DATA_CACHE_TTL_MS = 60_000;
 
 type TeamSalesDataCacheEntry = {
