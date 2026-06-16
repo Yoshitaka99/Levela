@@ -43,13 +43,35 @@ const sortButtons: { key: SortKey; label: string }[] = [
 const trafficFilters: { key: TrafficFilter; label: string }[] = [
   { key: "all", label: "全て" },
   { key: "ad", label: "広告のみ" },
+  { key: "exclude_ad", label: "広告除外" },
 ];
 
 const adSourceFilters: { key: AdSourceFilter; label: string }[] = [
   { key: "all", label: "広告すべて" },
   { key: "x", label: "x流入" },
-  { key: "meta", label: "meta流入" },
+  { key: "meta", label: "metaすべて" },
+  { key: "meta_ad", label: "meta_ad" },
+  { key: "Meta_ad", label: "Meta_ad" },
+  { key: "meta_ad_Suea_aw", label: "meta_ad_Suea_aw" },
+  { key: "meta_ad_in-house_aw", label: "meta_ad_in-house_aw" },
+  { key: "meta_ad_Suea", label: "meta_ad_Suea" },
+  { key: "Meta_ad_aw", label: "Meta_ad_aw" },
+  { key: "meta_ad_in-house", label: "meta_ad_in-house" },
 ];
+
+function splitAdSources(value?: string) {
+  return (value ?? "")
+    .split(SEMINAR_SEPARATOR)
+    .map((source) => source.trim())
+    .filter(Boolean);
+}
+
+function formatSelectedAdSource(value: string) {
+  if (value === "all") return "";
+  return splitAdSources(value)
+    .map((source) => adSourceFilters.find((filter) => filter.key === source)?.label ?? source)
+    .join(" / ");
+}
 
 function formatPercent(value: number) {
   return `${value.toFixed(1)}%`;
@@ -444,7 +466,7 @@ export function TeamSalesDashboardClient({
       const params = new URLSearchParams();
       if (requestedSeminar) params.set("seminar", requestedSeminar);
       if (requestedTeam) params.set("team", requestedTeam);
-      if (requestedTraffic === "ad") params.set("traffic", requestedTraffic);
+      if (requestedTraffic !== "all") params.set("traffic", requestedTraffic);
       if (requestedTraffic === "ad" && requestedAdSource !== "all") params.set("adSource", requestedAdSource);
       const response = await fetch(`/api/team-sales-dashboard?${params.toString()}`, { cache: "no-store" });
       const nextData = (await response.json()) as TeamSalesDashboardData;
@@ -521,7 +543,7 @@ export function TeamSalesDashboardClient({
 
   const selected = data.members.find((member) => member.name === selectedMember) ?? data.members[0];
   const alertMembers = data.members.filter((member) => member.alert > 0 || member.hold > 0);
-  const activeFilterCount = Number(onlyAlerts) + Number(onlyHold) + Number(Boolean(query.trim())) + Number(selectedTraffic === "ad");
+  const activeFilterCount = Number(onlyAlerts) + Number(onlyHold) + Number(Boolean(query.trim())) + Number(selectedTraffic !== "all");
   const selectedSeminarValues = useMemo(
     () => normalizeSeminarSelection(selectedSeminar, data.seminars),
     [data.seminars, selectedSeminar],
@@ -560,7 +582,7 @@ export function TeamSalesDashboardClient({
 
     if (nextSeminar) params.set("seminar", nextSeminar);
     if (nextTeam) params.set("team", nextTeam);
-    if (nextTraffic === "ad") params.set("traffic", nextTraffic);
+    if (nextTraffic !== "all") params.set("traffic", nextTraffic);
     if (nextTraffic === "ad" && nextAdSource !== "all") params.set("adSource", nextAdSource);
     if (nextMember) params.set("member", nextMember);
     if (nextQuery) params.set("q", nextQuery);
@@ -626,10 +648,18 @@ export function TeamSalesDashboardClient({
 
   function changeAdSource(nextAdSource: AdSourceFilter) {
     refreshRequestRef.current += 1;
+    const currentSources = splitAdSources(selectedAdSource);
+    const nextSources =
+      nextAdSource === "all"
+        ? ["all"]
+        : currentSources.includes(nextAdSource)
+          ? currentSources.filter((source) => source !== nextAdSource && source !== "all")
+          : [...currentSources.filter((source) => source !== "all"), nextAdSource];
+    const nextValue = nextSources.length ? nextSources.join(SEMINAR_SEPARATOR) : "all";
     setSelectedTraffic("ad");
-    setSelectedAdSource(nextAdSource);
+    setSelectedAdSource(nextValue);
     setSelectedMember("");
-    window.history.replaceState(null, "", dashboardHref({ traffic: "ad", adSource: nextAdSource, member: null }));
+    window.history.replaceState(null, "", dashboardHref({ traffic: "ad", adSource: nextValue, member: null }));
   }
 
   return (
@@ -646,7 +676,11 @@ export function TeamSalesDashboardClient({
               <span>{formatSelectedSeminars(selectedSeminar)}</span>
               <span className="rounded-full border border-slate-600 px-2 py-0.5 text-xs">{data.selectedTeam}</span>
               <span className="rounded-full border border-slate-600 px-2 py-0.5 text-xs">
-                {selectedTraffic === "ad" ? `広告のみ${selectedAdSource !== "all" ? ` / ${selectedAdSource === "x" ? "x流入" : "meta流入"}` : ""}` : "全て"}
+                {selectedTraffic === "ad"
+                  ? `広告のみ${selectedAdSource !== "all" ? ` / ${formatSelectedAdSource(selectedAdSource)}` : ""}`
+                  : selectedTraffic === "exclude_ad"
+                    ? "広告除外"
+                    : "全て"}
               </span>
               <span className="rounded-full border border-teal-300/25 bg-teal-300/10 px-2 py-0.5 text-xs text-teal-100">
                 {data.source === "sheet" ? "顧客管理シート連携中" : "フォールバック"}
@@ -706,14 +740,14 @@ export function TeamSalesDashboardClient({
               ))}
             </div>
             {selectedTraffic === "ad" ? (
-              <div className="flex h-10 rounded-md border border-white/10 bg-white/5 p-1">
+              <div className="flex min-h-10 max-w-full flex-wrap gap-1 rounded-md border border-white/10 bg-white/5 p-1">
                 {adSourceFilters.map((filter) => (
                   <button
                     key={filter.key}
                     type="button"
                     onClick={() => changeAdSource(filter.key)}
                     className={`rounded px-2.5 text-xs font-medium ${
-                      selectedAdSource === filter.key ? "bg-cyan-300 text-slate-950" : "text-slate-300 hover:bg-white/10"
+                      splitAdSources(selectedAdSource).includes(filter.key) ? "bg-cyan-300 text-slate-950" : "text-slate-300 hover:bg-white/10"
                     }`}
                   >
                     {filter.label}
@@ -726,7 +760,7 @@ export function TeamSalesDashboardClient({
               <input type="hidden" name="sort" value={sortKey} />
               <input type="hidden" name="seminar" value={selectedSeminar} />
               <input type="hidden" name="team" value={selectedTeam} />
-              {selectedTraffic === "ad" ? <input type="hidden" name="traffic" value="ad" /> : null}
+              {selectedTraffic !== "all" ? <input type="hidden" name="traffic" value={selectedTraffic} /> : null}
               {selectedTraffic === "ad" && selectedAdSource !== "all" ? <input type="hidden" name="adSource" value={selectedAdSource} /> : null}
               {onlyAlerts ? <input type="hidden" name="alerts" value="1" /> : null}
               {onlyHold ? <input type="hidden" name="hold" value="1" /> : null}

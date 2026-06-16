@@ -5,8 +5,8 @@ export type ReasonCount = {
   answerDates?: string[];
 };
 
-export type TrafficFilter = "all" | "ad";
-export type AdSourceFilter = "all" | "x" | "meta";
+export type TrafficFilter = "all" | "ad" | "exclude_ad";
+export type AdSourceFilter = string;
 
 export type StatusCount = {
   label: string;

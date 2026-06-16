@@ -26,9 +26,13 @@ const SEMINAR_SEPARATOR = ",";
 const ALL_TEAMS = "全チーム";
 const ALL_TRAFFIC: TrafficFilter = "all";
 const AD_TRAFFIC: TrafficFilter = "ad";
+const EXCLUDE_AD_TRAFFIC: TrafficFilter = "exclude_ad";
 const ALL_AD_SOURCES: AdSourceFilter = "all";
-const AD_SOURCE_X: Exclude<AdSourceFilter, "all"> = "x";
-const AD_SOURCE_META: Exclude<AdSourceFilter, "all"> = "meta";
+const AD_SOURCE_X = "x";
+const AD_SOURCE_META = "meta";
+const AD_SOURCE_SEPARATOR = ",";
+const META_AD_SOURCES = new Set(["meta_ad", "Meta_ad", "meta_ad_Suea_aw", "meta_ad_in-house_aw", "meta_ad_Suea", "Meta_ad_aw", "meta_ad_in-house"]);
+const VALID_AD_SOURCES = new Set([ALL_AD_SOURCES, AD_SOURCE_X, AD_SOURCE_META, ...META_AD_SOURCES]);
 const SALES_AGENCY_TEAM = "営業代行チーム";
 
 const EXCLUDED_MEMBER_KEYWORDS = [
@@ -316,30 +320,58 @@ function getTrafficText(row: SourceRow) {
   return `${getTrafficRoute(row)} ${getInflow(row)}`;
 }
 
-function isAdTraffic(row: SourceRow) {
-  return /ad/i.test(getTrafficText(row));
-}
-
-function getAdSource(row: SourceRow): Exclude<AdSourceFilter, "all"> | "" {
+function getAdSource(row: SourceRow) {
   const traffic = getTrafficText(row);
   if (/(^|[^a-z])x[_-]?ad/i.test(traffic) || /x[_-]?ad/i.test(traffic)) return AD_SOURCE_X;
-  if (/meta/i.test(traffic)) return AD_SOURCE_META;
+  const inflow = getInflow(row).trim();
+  if (META_AD_SOURCES.has(inflow)) return inflow;
   return "";
 }
 
+function isMetaAdSource(source: string) {
+  return META_AD_SOURCES.has(source);
+}
+
+function isAdTraffic(row: SourceRow) {
+  return /ad/i.test(getTrafficText(row)) || Boolean(getAdSource(row));
+}
+
 function resolveTrafficFilter(value?: string | null): TrafficFilter {
-  return value === AD_TRAFFIC ? AD_TRAFFIC : ALL_TRAFFIC;
+  if (value === AD_TRAFFIC) return AD_TRAFFIC;
+  if (value === EXCLUDE_AD_TRAFFIC) return EXCLUDE_AD_TRAFFIC;
+  return ALL_TRAFFIC;
 }
 
 function resolveAdSourceFilter(value?: string | null): AdSourceFilter {
-  return value === AD_SOURCE_X || value === AD_SOURCE_META ? value : ALL_AD_SOURCES;
+  const requested = value
+    ?.split(AD_SOURCE_SEPARATOR)
+    .map((source) => source.trim())
+    .filter((source) => source && VALID_AD_SOURCES.has(source));
+
+  if (!requested?.length || requested.includes(ALL_AD_SOURCES)) return ALL_AD_SOURCES;
+  return [...new Set(requested)].join(AD_SOURCE_SEPARATOR);
+}
+
+function resolveSelectedAdSources(adSource: AdSourceFilter) {
+  if (adSource === ALL_AD_SOURCES) return [ALL_AD_SOURCES];
+  return adSource
+    .split(AD_SOURCE_SEPARATOR)
+    .map((source) => source.trim())
+    .filter((source) => source && VALID_AD_SOURCES.has(source));
 }
 
 function matchesTrafficFilter(row: SourceRow, traffic: TrafficFilter, adSource: AdSourceFilter) {
   if (traffic === ALL_TRAFFIC) return true;
+  if (traffic === EXCLUDE_AD_TRAFFIC) return !isAdTraffic(row);
   if (!isAdTraffic(row)) return false;
   if (adSource === ALL_AD_SOURCES) return true;
-  return getAdSource(row) === adSource;
+
+  const source = getAdSource(row);
+  const selectedSources = resolveSelectedAdSources(adSource);
+  return selectedSources.some((selectedSource) => {
+    if (selectedSource === AD_SOURCE_META) return isMetaAdSource(source);
+    return source === selectedSource;
+  });
 }
 
 function isPendingStatus(status: string) {
