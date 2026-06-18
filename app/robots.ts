@@ -8,6 +8,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: [
           "/seminar-dashboard",
           "/team-sales-dashboard",
+          "/life-plan-risk-map",
           "/team",
           "/api/seminar-dashboard",
           "/api/team-sales-dashboard",
