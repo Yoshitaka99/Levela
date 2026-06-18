@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { LifePlanRiskMapClient } from "./LifePlanRiskMapClient";
 
 export const metadata: Metadata = {
-  title: "ライフプラン整理マップ",
-  description: "入力内容を固定構図のライフプラン整理マップへ即時反映する編集ページです。",
+  title: "ライフプラン整理フォーム",
+  description: "お客様情報を整理してライフプラン資料作成に使える内容を準備します。",
   robots: {
     index: false,
     follow: false,
