@@ -117,6 +117,26 @@ function extractMonthlyNisa(text: string) {
   return nisaLine ? toNumber(nisaLine) : 0;
 }
 
+function extractCustomerDisplayName(text: string) {
+  const nameLine = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => (
+      line
+      && !/(本人|配偶者|パートナー|子ども|こども|歳|才|年齢|月収|年収|NISA|貯金|資産)/.test(line)
+    ));
+
+  if (!nameLine) return "お客様";
+
+  const name = nameLine
+    .replace(/^(お名前|名前|氏名)\s*[:：]\s*/, "")
+    .replace(/[、,].*$/, "")
+    .trim();
+
+  if (!name) return "お客様";
+  return name.endsWith("さん") ? name : `${name}さん`;
+}
+
 function buildAgeInsight(age: number, currentMonthlyInvestment: number) {
   if (!age) {
     return [
@@ -156,8 +176,9 @@ function buildCrisisImagePrompt(form: FormState) {
   const age = extractAge(form.family);
   const monthlyNisa = extractMonthlyNisa(form.assets);
   const ageInsight = buildAgeInsight(age, monthlyNisa);
+  const imageTitle = `${extractCustomerDisplayName(form.family)}の生涯ライフプラン年棒`;
 
-  return `以下のお客様情報をもとに、ライフプラン危機感画像を今すぐ生成してください。
+  return `以下のお客様情報をもとに、「${imageTitle}」を今すぐ生成してください。
 
 【目的】
 お客様が「今のままだと、理想の暮らしに対して将来のお金が足りないかもしれない」と直感的にわかる1枚画像にする。
@@ -165,6 +186,8 @@ function buildCrisisImagePrompt(form: FormState) {
 
 【画像の見た目】
 ・16:9横長のインフォグラフィック
+・画像内のメインタイトルは必ず「${imageTitle}」にする
+・画像内のメインタイトル以外に、用途名・内部ラベル・作成指示の文言は入れない
 ・白背景、紺の見出し、黄色の注意帯、赤は重要な不足額と赤字化ポイントだけに限定する
 ・赤の面積は多くしすぎない。全体の15〜20%程度まで
 ・添付イメージのように、上部に大きなタイトル、家族状況、前提条件、教育費、老後不足額、トータル不足額のボックスを並べる
@@ -533,12 +556,12 @@ export function LifePlanRiskMapClient() {
                 <div className="mt-4 overflow-hidden rounded-md border border-stone-200 bg-stone-50">
                   <img
                     src={generatedImage.dataUrl}
-                    alt={generatedImage.kind === "crisis" ? "生成された危機感画像" : "生成された理想画像"}
+                    alt={generatedImage.kind === "crisis" ? "生成された将来設計年棒プロンプト" : "生成された理想画像"}
                     className="aspect-video w-full bg-stone-200 object-contain"
                   />
                   <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                     <p className="text-xs font-bold text-stone-500">
-                      {generatedImage.kind === "crisis" ? "危機感画像" : "理想画像"}
+                      {generatedImage.kind === "crisis" ? "将来設計年棒プロンプト" : "理想画像"}
                       {generatedImage.model ? ` / ${generatedImage.model}` : ""}
                       {generatedImage.size ? ` / ${generatedImage.size}` : ""}
                     </p>

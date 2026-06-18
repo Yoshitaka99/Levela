@@ -54,6 +54,26 @@ function extractChildrenAges(text = "") {
   return Array.from(childLine.matchAll(/(\d{1,2})歳/g)).map((match) => Number(match[1]));
 }
 
+function extractCustomerDisplayName(text = "") {
+  const nameLine = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => (
+      line
+      && !/(本人|配偶者|パートナー|子ども|こども|歳|才|年齢|月収|年収|NISA|貯金|資産)/.test(line)
+    ));
+
+  if (!nameLine) return "お客様";
+
+  const name = nameLine
+    .replace(/^(お名前|名前|氏名)\s*[:：]\s*/, "")
+    .replace(/[、,].*$/, "")
+    .trim();
+
+  if (!name) return "お客様";
+  return name.endsWith("さん") ? name : `${name}さん`;
+}
+
 function wrapText(text: string, maxChars: number, maxLines = 4) {
   const normalized = text.replace(/\r/g, "").replace(/\s+/g, " ").trim();
   const lines: string[] = [];
@@ -191,6 +211,7 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   const educationMax = childAges.length * 2000 || 2000;
   const totalThemeMin = educationMin + retirementTotalGap + 1000;
   const totalThemeMax = educationMax + retirementTotalGap + 1000;
+  const imageTitle = `${extractCustomerDisplayName(form.family)}の生涯ライフプラン年棒`;
 
   const topY = 96;
   const cardW = 188;
@@ -223,7 +244,7 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
 
   const header = `
     <rect width="${WIDTH}" height="${HEIGHT}" fill="#f8fafc"/>
-    <text x="900" y="54" text-anchor="middle" font-size="48" font-weight="900" fill="#0b2a5b">みなみさんご家族のライフプラン整理</text>
+    <text x="900" y="54" text-anchor="middle" font-size="48" font-weight="900" fill="#0b2a5b">${escapeXml(imageTitle)}</text>
     <text x="900" y="88" text-anchor="middle" font-size="24" font-weight="800" fill="#111827">今の生活費だけでは見えにくい、将来必要なお金の見える化（概算）</text>
   `;
 
