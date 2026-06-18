@@ -173,24 +173,33 @@ function extractMonthlyNisa(text: string) {
   return nisaLine ? toNumber(nisaLine) : 0;
 }
 
+function formatCustomerName(rawName: string) {
+  const name = rawName
+    .replace(/^(お客様名|お客様のお名前|お名前|名前|氏名)\s*[:：]\s*/, "")
+    .replace(/\s*(本人|ご本人|年齢|配偶者|パートナー|子ども|こども|月収|年収).*$/, "")
+    .replace(/\d{1,3}\s*(歳|才).*$/, "")
+    .replace(/[、,。].*$/, "")
+    .trim();
+
+  if (!name) return "";
+  if (name.endsWith("さん") || name.endsWith("様")) return name;
+  return `${name}さん`;
+}
+
 function extractCustomerDisplayName(text: string) {
+  const explicitName = text.match(/(?:お客様名|お客様のお名前|お名前|名前|氏名)\s*[:：]\s*([^\n、,。]+)/);
+  const explicitDisplayName = explicitName ? formatCustomerName(explicitName[1]) : "";
+
+  if (explicitDisplayName) return explicitDisplayName;
+
   const nameLine = text
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .find((line) => (
-      line
-      && !/(本人|配偶者|パートナー|子ども|こども|歳|才|年齢|月収|年収|NISA|貯金|資産)/.test(line)
-    ));
+    .find((line) => line && !/(配偶者|パートナー|子ども|こども|月収|年収|NISA|貯金|資産)/.test(line));
 
   if (!nameLine) return "お客様";
 
-  const name = nameLine
-    .replace(/^(お名前|名前|氏名)\s*[:：]\s*/, "")
-    .replace(/[、,].*$/, "")
-    .trim();
-
-  if (!name) return "お客様";
-  return name.endsWith("さん") ? name : `${name}さん`;
+  return formatCustomerName(nameLine) || "お客様";
 }
 
 function addMonths(date: Date, months: number) {
