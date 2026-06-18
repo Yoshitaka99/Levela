@@ -234,13 +234,15 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   const totalThemeMin = educationMin + retirementTotalGap + 1000;
   const totalThemeMax = educationMax + retirementTotalGap + 1000;
   const imageTitle = `${extractCustomerDisplayName(form.family)}の生涯ライフプラン年棒`;
-  const incomeLabel = annualIncome ? `${annualIncome.toLocaleString()}万円` : "要確認";
+  const fallbackAnnualIncome = baseAnnualExpense + 120;
+  const displayAnnualIncome = annualIncome || fallbackAnnualIncome;
+  const incomeLabel = `${displayAnnualIncome.toLocaleString()}万円`;
   const rowValues = (extraExpense: number) => {
     const expense = baseAnnualExpense + extraExpense;
     return {
       income: incomeLabel,
       expense: `${expense.toLocaleString()}万円`,
-      diff: annualIncome ? `${(annualIncome - expense).toLocaleString()}万円` : "要確認",
+      diff: `${(displayAnnualIncome - expense).toLocaleString()}万円`,
     };
   };
 
