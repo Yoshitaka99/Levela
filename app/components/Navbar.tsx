@@ -26,6 +26,7 @@ export function Navbar() {
   if (pathname.startsWith("/seminar-dashboard")) return null;
   if (pathname.startsWith("/team-sales-dashboard")) return null;
   if (pathname.startsWith("/team")) return null;
+  if (pathname.startsWith("/life-plan-risk-map")) return null;
 
   return (
     <nav className="fixed top-0 inset-x-0 h-16 bg-black/50 backdrop-blur-xl border-b border-white/10 z-50 transition-all px-4">

@@ -85,6 +85,7 @@ export default function BottomNav() {
   if (pathname.startsWith("/seminar-dashboard")) return null;
   if (pathname.startsWith("/team-sales-dashboard")) return null;
   if (pathname.startsWith("/team")) return null;
+  if (pathname.startsWith("/life-plan-risk-map")) return null;
   if (/^\/messages\/.+/.test(pathname)) return null;
 
   return (
