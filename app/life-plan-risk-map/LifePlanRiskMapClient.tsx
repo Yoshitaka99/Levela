@@ -488,8 +488,8 @@ export function LifePlanRiskMapClient() {
             </div>
 
             <div className="mt-4 grid gap-3">
-              <CopyButton text={crisisPrompt} label="危機感画像用テキストをコピー" />
-              <CopyButton text={idealPrompt} label="ライフスタイル訴求画像用テキストをコピー" />
+              <CopyButton text={crisisPrompt} label="将来設計年棒プロンプト" />
+              <CopyButton text={idealPrompt} label="あなたの強み" />
             </div>
             <div className="mt-4 rounded-md border border-stone-200 bg-white p-4">
               <div className="flex items-start gap-3">
@@ -510,7 +510,7 @@ export function LifePlanRiskMapClient() {
                   className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-red-700 px-4 py-3 text-sm font-black text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:bg-stone-400"
                 >
                   {isGenerating ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
-                  危機感画像
+                  将来設計年棒プロンプト
                 </button>
                 <button
                   type="button"
@@ -519,7 +519,7 @@ export function LifePlanRiskMapClient() {
                   className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 py-3 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-stone-400"
                 >
                   {isGenerating ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
-                  理想画像
+                  あなたの強み
                 </button>
               </div>
 
