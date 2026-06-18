@@ -1,6 +1,15 @@
 "use client";
 
-import { CheckCircle2, Clipboard, Download, Image as ImageIcon, Loader2, RotateCcw } from "lucide-react";
+import {
+  CheckCircle2,
+  Clipboard,
+  Download,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  RotateCcw,
+  Sparkles,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
 type FormState = {
@@ -14,12 +23,19 @@ type FormState = {
   strengths: string;
 };
 
+type InputMode = "detailed" | "simple";
+
 type Section = {
   key: keyof FormState;
   number: string;
   title: string;
   guide: string;
   placeholder: string;
+};
+
+type SimpleMemoHint = {
+  title: string;
+  items: string[];
 };
 
 const initialForm: FormState = {
@@ -100,6 +116,46 @@ const sections: Section[] = [
   },
 ];
 
+const simpleMemoHints: SimpleMemoHint[] = [
+  {
+    title: "家族情報",
+    items: ["お名前", "本人年齢", "配偶者年齢", "子どもの人数・年齢", "今後の出産予定"],
+  },
+  {
+    title: "収入情報",
+    items: ["本人月収・年収", "配偶者収入", "ボーナス", "副業", "今後の働き方"],
+  },
+  {
+    title: "支出情報",
+    items: ["生活費", "家賃・住宅ローン", "車", "保険", "通信費", "固定費"],
+  },
+  {
+    title: "資産情報",
+    items: ["貯金", "NISA", "iDeCo", "保険積立", "毎月の積立額"],
+  },
+  {
+    title: "教育・子ども",
+    items: ["公立・私立", "習い事", "留学", "進学イメージ", "教育費の不安"],
+  },
+  {
+    title: "理想・老後",
+    items: ["旅行", "家族時間", "趣味", "理想の生活費", "老後の不安"],
+  },
+  {
+    title: "あなたの強み",
+    items: ["経験", "好きなこと", "得意なこと", "褒められたこと", "悩んできたこと"],
+  },
+];
+
+const simpleMemoPlaceholder = [
+  "例：田中さん、本人32歳、奥さん34歳。子どもは6歳と4歳。",
+  "本人月収35万円、奥さん月収12万円、ボーナス年間80万円。",
+  "生活費28万円、住宅ローン9万円、車ローン3万円、保険2万円。",
+  "貯金250万円、NISA月3万円。子どもは基本公立希望だけど、本人が希望すれば私立も考える。",
+  "家族旅行は年1回行きたい。老後は夫婦で旅行しながら月35万円くらいで暮らしたい。",
+  "昔から人の相談に乗ることが多く、子育ての悩みも経験している。美容や暮らしの工夫が好き。",
+].join("\n");
+
 function toNumber(value: string) {
   const parsed = Number(value.replace(/[^\d.]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -135,6 +191,33 @@ function extractCustomerDisplayName(text: string) {
 
   if (!name) return "お客様";
   return name.endsWith("さん") ? name : `${name}さん`;
+}
+
+function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function formatYearMonth(date: Date) {
+  return `${date.getFullYear()}年${date.getMonth() + 1}月`;
+}
+
+function buildTimelineStartInstructions() {
+  const now = new Date();
+  const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const anchors = [
+    ["3ヶ月後", 3],
+    ["半年後", 6],
+    ["1年後", 12],
+    ["3年後", 36],
+    ["5年後", 60],
+  ] as const;
+
+  return [
+    `現在は${formatYearMonth(currentMonth)}として扱う。`,
+    "年表の最初は、必ず以下の順番で行を作る。",
+    ...anchors.map(([label, months]) => `・${formatYearMonth(addMonths(currentMonth, months))}（${label}）`),
+    "その後は、結婚、出産、住宅、教育、車、旅行、老後など、入力内容から自然なイベント順で続ける。",
+  ].join("\n");
 }
 
 function buildAgeInsight(age: number, currentMonthlyInvestment: number) {
@@ -177,6 +260,7 @@ function buildCrisisImagePrompt(form: FormState) {
   const monthlyNisa = extractMonthlyNisa(form.assets);
   const ageInsight = buildAgeInsight(age, monthlyNisa);
   const imageTitle = `${extractCustomerDisplayName(form.family)}の生涯ライフプラン年棒`;
+  const timelineStartInstructions = buildTimelineStartInstructions();
 
   return `以下のお客様情報をもとに、「${imageTitle}」を今すぐ生成してください。
 
@@ -188,18 +272,24 @@ function buildCrisisImagePrompt(form: FormState) {
 ・16:9横長のインフォグラフィック
 ・画像内のメインタイトルは必ず「${imageTitle}」にする
 ・画像内のメインタイトル以外に、用途名・内部ラベル・作成指示の文言は入れない
+・添付イメージの原型構図、余白、色、見出し、表の見せ方は崩さない。指定した項目の削除・差し替え・追加だけを行う
 ・白背景、紺の見出し、黄色の注意帯、赤は重要な不足額と赤字化ポイントだけに限定する
 ・赤の面積は多くしすぎない。全体の15〜20%程度まで
 ・添付イメージのように、上部に大きなタイトル、家族状況、前提条件、教育費、老後不足額、トータル不足額のボックスを並べる
 ・家族構成に合わせて、上部左側に家族が並んでいるやさしいイラストを入れる
 ・家族イラストは、入力された家族構成に合わせる。夫婦、子どもの人数、子どもの年齢感が伝わるようにする。写真風ではなく、明るいフラットイラスト
 ・中央から下は年表テーブルにする
-・年表の列は、年、本人年齢、子ども年齢、ライフイベント、年間必要額、将来不足額、累計不足額、危険ポイント
-・世帯年収や年間収支がプラスに見える列は作らない
-・黒字、プラス収支、余裕があるように見える表現は避ける
-・すべて「必要になるお金」「不足する可能性があるお金」「準備しないと足りないお金」に変換して見せる
+・年表の列は、年、本人年齢、子ども年齢、ライフイベント、収入、支出、差分、気付きポイント
+・上記以外の金額列名や注意列名は追加しない
+・収入、支出、差分は、お客様情報に書かれた月収、年収、ボーナス、生活費、家賃、住宅ローン、保険、教育方針、老後生活費などを元に計算する
+・差分は「収入 - 支出」で計算し、支出が収入を上回る行は赤字で強調する
+・収入が読み取れない場合は「要確認」、支出が読み取れない場合は一般的な概算を使い、気付きポイントに「確認が必要」と書く
+・表はイベントごとのイメージで作る。単なる年齢表ではなく、その時期に起きそうな支出・収入変化・家族イベントを入れる
 ・赤字になる年、教育費ピーク、大学在学中、老後開始は赤や黄色の帯で強調する
 ・最下部に「このままだと...」から始まる強い結論帯を入れる
+
+【年表の最初に必ず入れる行】
+${timelineStartInstructions}
 
 【必ず入れる内容】
 ・現在の年齢と65歳までの残り年数
@@ -356,8 +446,87 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
+function SimpleMemoPanel({
+  memo,
+  onMemoChange,
+  onOrganize,
+  isOrganizing,
+  organizeError,
+  organizeNotice,
+}: {
+  memo: string;
+  onMemoChange: (value: string) => void;
+  onOrganize: () => void;
+  isOrganizing: boolean;
+  organizeError: string;
+  organizeNotice: string;
+}) {
+  return (
+    <section className="bg-white px-5 py-6 shadow-sm sm:px-7">
+      <div className="flex items-start gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-stone-950 text-white">
+          <FileText className="h-5 w-5" />
+        </span>
+        <div>
+          <h2 className="text-lg font-black text-stone-950">簡単フォーマット</h2>
+          <p className="mt-1 text-sm leading-6 text-stone-500">
+            営業側のメモ用です。聞いた順番がバラバラでも、そのまま入れて整理できます。
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 rounded-md border border-stone-200 bg-stone-50 p-4">
+        <p className="text-xs font-black tracking-normal text-stone-500">聞いておきたい項目</p>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          {simpleMemoHints.map((hint) => (
+            <div key={hint.title} className="rounded-md border border-stone-200 bg-white p-3">
+              <p className="text-sm font-black text-stone-800">{hint.title}</p>
+              <p className="mt-2 text-xs leading-5 text-stone-400">
+                {hint.items.join(" / ")}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <textarea
+        className="mt-4 min-h-[460px] w-full resize-y rounded-md border border-stone-300 bg-white px-4 py-3 text-base leading-7 outline-none focus:border-stone-950"
+        value={memo}
+        onChange={(event) => onMemoChange(event.target.value)}
+        placeholder={simpleMemoPlaceholder}
+      />
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={onOrganize}
+          disabled={isOrganizing}
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-stone-950 px-5 py-3 text-sm font-black text-white hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
+        >
+          {isOrganizing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
+          AIで整理して反映
+        </button>
+        {organizeNotice && (
+          <span className="text-sm font-bold text-emerald-700">{organizeNotice}</span>
+        )}
+      </div>
+
+      {organizeError && (
+        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold leading-6 text-red-800">
+          {organizeError}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function LifePlanRiskMapClient() {
   const [form, setForm] = useState<FormState>(initialForm);
+  const [inputMode, setInputMode] = useState<InputMode>("detailed");
+  const [simpleMemo, setSimpleMemo] = useState("");
+  const [isOrganizing, setIsOrganizing] = useState(false);
+  const [organizeError, setOrganizeError] = useState("");
+  const [organizeNotice, setOrganizeNotice] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState("");
   const [generatedImage, setGeneratedImage] = useState<{
@@ -377,8 +546,48 @@ export function LifePlanRiskMapClient() {
 
   const reset = () => {
     setForm(initialForm);
+    setSimpleMemo("");
+    setOrganizeError("");
+    setOrganizeNotice("");
     setGenerationError("");
     setGeneratedImage(null);
+  };
+
+  const organizeSimpleMemo = async () => {
+    if (!simpleMemo.trim()) {
+      setOrganizeError("メモを入力してから整理してください。");
+      setOrganizeNotice("");
+      return;
+    }
+
+    setIsOrganizing(true);
+    setOrganizeError("");
+    setOrganizeNotice("");
+
+    try {
+      const response = await fetch("/api/life-plan-risk-map/organize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memo: simpleMemo }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "メモの整理に失敗しました。");
+      }
+
+      setForm((current) => ({
+        ...current,
+        ...data.form,
+      }));
+      setOrganizeNotice("整理して詳細パターンへ反映しました。");
+      setGeneratedImage(null);
+    } catch (error) {
+      setOrganizeError(error instanceof Error ? error.message : "メモの整理に失敗しました。");
+    } finally {
+      setIsOrganizing(false);
+    }
   };
 
   const generateImage = async (kind: "crisis" | "ideal") => {
@@ -437,29 +646,66 @@ export function LifePlanRiskMapClient() {
                 </div>
               </div>
             </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 rounded-md bg-stone-100 p-1">
+              <button
+                type="button"
+                onClick={() => setInputMode("detailed")}
+                className={[
+                  "min-h-11 rounded-md px-4 py-2 text-sm font-black transition",
+                  inputMode === "detailed"
+                    ? "bg-stone-950 text-white shadow-sm"
+                    : "bg-transparent text-stone-600 hover:bg-white",
+                ].join(" ")}
+              >
+                詳細パターン
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputMode("simple")}
+                className={[
+                  "min-h-11 rounded-md px-4 py-2 text-sm font-black transition",
+                  inputMode === "simple"
+                    ? "bg-stone-950 text-white shadow-sm"
+                    : "bg-transparent text-stone-600 hover:bg-white",
+                ].join(" ")}
+              >
+                簡単フォーマット
+              </button>
+            </div>
           </div>
 
-          <form className="divide-y divide-stone-200">
-            {sections.map((section) => (
-              <section key={section.key} className="bg-white px-5 py-6 shadow-sm sm:px-7">
-                <div className="flex items-start gap-3">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-stone-950 text-sm font-black text-white">
-                    {section.number}
-                  </span>
-                  <div>
-                    <h2 className="text-lg font-black text-stone-950">{section.title}</h2>
-                    <p className="mt-1 text-sm leading-6 text-stone-500">{section.guide}</p>
+          {inputMode === "detailed" ? (
+            <form className="divide-y divide-stone-200">
+              {sections.map((section) => (
+                <section key={section.key} className="bg-white px-5 py-6 shadow-sm sm:px-7">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-stone-950 text-sm font-black text-white">
+                      {section.number}
+                    </span>
+                    <div>
+                      <h2 className="text-lg font-black text-stone-950">{section.title}</h2>
+                      <p className="mt-1 text-sm leading-6 text-stone-500">{section.guide}</p>
+                    </div>
                   </div>
-                </div>
-                <textarea
-                  className="mt-4 min-h-40 w-full resize-y rounded-md border border-stone-300 bg-white px-4 py-3 text-base leading-7 outline-none focus:border-stone-950"
-                  value={form[section.key]}
-                  onChange={(event) => updateForm(section.key, event.target.value)}
-                  placeholder={section.placeholder}
-                />
-              </section>
-            ))}
-          </form>
+                  <textarea
+                    className="mt-4 min-h-40 w-full resize-y rounded-md border border-stone-300 bg-white px-4 py-3 text-base leading-7 outline-none focus:border-stone-950"
+                    value={form[section.key]}
+                    onChange={(event) => updateForm(section.key, event.target.value)}
+                    placeholder={section.placeholder}
+                  />
+                </section>
+              ))}
+            </form>
+          ) : (
+            <SimpleMemoPanel
+              memo={simpleMemo}
+              onMemoChange={setSimpleMemo}
+              onOrganize={organizeSimpleMemo}
+              isOrganizing={isOrganizing}
+              organizeError={organizeError}
+              organizeNotice={organizeNotice}
+            />
+          )}
         </div>
 
         <aside className="w-full border-l border-stone-200 bg-stone-50 lg:sticky lg:top-0 lg:h-screen lg:w-[42%] lg:overflow-y-auto">
@@ -505,7 +751,9 @@ export function LifePlanRiskMapClient() {
               <div className="rounded-md border border-stone-200 bg-white p-4">
                 <p className="text-xs font-bold text-stone-500">次にやること</p>
                 <p className="mt-2 text-sm font-bold leading-6 text-stone-700">
-                  全体を確認したら、用途に合わせて下のボタンを押し、ChatGPTの画像生成に貼り付けます。
+                  {inputMode === "simple"
+                    ? "メモをAIで整理したら、下のボタンから用途別にコピーできます。必要なら詳細パターンで微調整できます。"
+                    : "全体を確認したら、用途に合わせて下のボタンを押し、ChatGPTの画像生成に貼り付けます。"}
                 </p>
               </div>
             </div>

@@ -74,6 +74,27 @@ function extractCustomerDisplayName(text = "") {
   return name.endsWith("さん") ? name : `${name}さん`;
 }
 
+function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function formatYearMonth(date: Date) {
+  return `${date.getFullYear()}年${date.getMonth() + 1}月`;
+}
+
+function yearsAfter(months: number) {
+  return Math.floor(months / 12);
+}
+
+function ageAt(age: number, months: number) {
+  return `${age + yearsAfter(months)}歳`;
+}
+
+function childAgeAt(childAges: number[], months: number) {
+  if (!childAges.length) return "-";
+  return childAges.map((age) => `${age + yearsAfter(months)}歳`).join(" / ");
+}
+
 function wrapText(text: string, maxChars: number, maxLines = 4) {
   const normalized = text.replace(/\r/g, "").replace(/\s+/g, " ").trim();
   const lines: string[] = [];
@@ -191,7 +212,7 @@ function tableCell(x: number, y: number, w: number, h: number, text: string, opt
 }
 
 export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
-  const currentYear = 2026;
+  const currentMonth = new Date();
   const personAge = extractAge(form.family, "本人") || firstNumber(form.family) || 30;
   const spouseAge = extractAge(form.family, "配偶者");
   const childAges = extractChildrenAges(form.family);
@@ -201,6 +222,7 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   const annualIncome = Math.round(monthlyIncome * 12 + bonus);
   const monthlyExpenses = amountFrom(form.expenses, "生活費") || 28;
   const housing = amountFrom(form.expenses, "住宅ローン") || amountFrom(form.expenses, "家賃") || 9;
+  const baseAnnualExpense = Math.round((monthlyExpenses + housing) * 12);
   const nisaMonthly = amountFrom(form.assets, "NISA") || 0;
   const savings = amountFrom(form.assets, "貯金") || 0;
   const targetRetirementMonthly = amountFrom(form.retirement, "生活費") || firstNumber(form.retirement) || 38;
@@ -212,6 +234,15 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   const totalThemeMin = educationMin + retirementTotalGap + 1000;
   const totalThemeMax = educationMax + retirementTotalGap + 1000;
   const imageTitle = `${extractCustomerDisplayName(form.family)}の生涯ライフプラン年棒`;
+  const incomeLabel = annualIncome ? `${annualIncome.toLocaleString()}万円` : "要確認";
+  const rowValues = (extraExpense: number) => {
+    const expense = baseAnnualExpense + extraExpense;
+    return {
+      income: incomeLabel,
+      expense: `${expense.toLocaleString()}万円`,
+      diff: annualIncome ? `${(annualIncome - expense).toLocaleString()}万円` : "要確認",
+    };
+  };
 
   const topY = 96;
   const cardW = 188;
@@ -232,14 +263,25 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   const idealText = [
     ...(form.idealsBeforeRetirement || "").split(/\r?\n/).filter(Boolean).slice(0, 4),
   ];
+  const threeMonths = rowValues(30);
+  const sixMonths = rowValues(80);
+  const oneYear = rowValues(120);
+  const threeYears = rowValues(180);
+  const fiveYears = rowValues(250);
+  const educationPeak = rowValues(220);
+  const retirementRow = {
+    income: `${pensionMonthly * 12}万円`,
+    expense: `${targetRetirementMonthly * 12}万円`,
+    diff: `${(pensionMonthly - targetRetirementMonthly) * 12}万円`,
+  };
   const tableRows = [
-    [currentYear, personAge, childAges.length ? childAges.join(" / ") : "-", "現在の家計整理", "250万円", "250万円", "250万円", "今の積立だけでは十分とは言い切れない"],
-    [currentYear + 2, personAge + 2, childAges.map((age) => age + 2).join(" / ") || "-", "教育・育児コスト上昇", "120万円", "120万円", "370万円", "出費が重なりやすい時期"],
-    [currentYear + 7, personAge + 7, childAges.map((age) => age + 7).join(" / ") || "-", "住宅・車・家族イベント", "400万円", "400万円", "890万円", "まとまった支出が出やすい"],
-    [currentYear + 16, personAge + 16, childAges.map((age) => age + 16).join(" / ") || "-", "教育費ピーク", "180万円", "180万円", "1,190万円", "進学準備で教育費が上がりやすい"],
-    [`${currentYear + 22}〜${currentYear + 26}`, `${personAge + 22}〜${personAge + 26}`, childAges.map((age) => `${age + 22}〜${age + 26}`).join(" / ") || "-", "大学在学中", "220万円/年", "1,100万円", "2,540万円", "教育費ピークが続く"],
-    [currentYear + yearsTo65, 65, childAges.map((age) => age + yearsTo65).join(" / ") || "-", "老後生活スタート", `${retirementGap * 12}万円/年`, `${retirementGap * 12}万円/年`, `${Math.round(retirementTotalGap).toLocaleString()}万円`, "年金だけでは理想生活に届きにくい"],
-    [`${currentYear + yearsTo65}〜`, "65歳〜", "-", "老後30年累計", `${Math.round(retirementTotalGap).toLocaleString()}万円`, `${Math.round(retirementTotalGap).toLocaleString()}万円`, `${Math.round(retirementTotalGap + educationMax).toLocaleString()}万円超`, "人生全体で必要額を見ることが大切"],
+    [`${formatYearMonth(addMonths(currentMonth, 3))}（3ヶ月後）`, ageAt(personAge, 3), childAgeAt(childAges, 3), "現状整理・家計確認", threeMonths.income, threeMonths.expense, threeMonths.diff, "収支と固定費をまず見える化"],
+    [`${formatYearMonth(addMonths(currentMonth, 6))}（半年後）`, ageAt(personAge, 6), childAgeAt(childAges, 6), "結婚・新生活準備", sixMonths.income, sixMonths.expense, sixMonths.diff, "初期費用と生活費の変化に注意"],
+    [`${formatYearMonth(addMonths(currentMonth, 12))}（1年後）`, ageAt(personAge, 12), childAgeAt(childAges, 12), "新生活安定・将来準備", oneYear.income, oneYear.expense, oneYear.diff, "毎月差分を資産形成へ回せるか確認"],
+    [`${formatYearMonth(addMonths(currentMonth, 36))}（3年後）`, ageAt(personAge, 36), childAgeAt(childAges, 36), "出産・育児・住宅検討", threeYears.income, threeYears.expense, threeYears.diff, "働き方変化と支出増が重なりやすい"],
+    [`${formatYearMonth(addMonths(currentMonth, 60))}（5年後）`, ageAt(personAge, 60), childAgeAt(childAges, 60), "教育・住まい・車", fiveYears.income, fiveYears.expense, fiveYears.diff, "イベントごとの支出が大きくなる"],
+    [`${formatYearMonth(addMonths(currentMonth, 240))}頃`, ageAt(personAge, 240), childAgeAt(childAges, 240), "教育費ピーク", educationPeak.income, educationPeak.expense, educationPeak.diff, "進学準備で支出が上がりやすい"],
+    [`${formatYearMonth(addMonths(currentMonth, yearsTo65 * 12))}頃`, "65歳", childAgeAt(childAges, yearsTo65 * 12), "老後生活スタート", retirementRow.income, retirementRow.expense, retirementRow.diff, "年金だけでは理想生活に届きにくい"],
   ];
 
   const header = `
@@ -273,7 +315,7 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   const colW = [120, 104, 160, 230, 120, 120, 132, 350];
   const rowH = 46;
   const startY = 444;
-  const tableHeader = ["年", "本人年齢", "子ども年齢", "ライフイベント", "年間必要額", "将来不足額", "累計不足額", "危険ポイント"];
+  const tableHeader = ["年", "本人年齢", "子ども年齢", "ライフイベント", "収入", "支出", "差分", "気付きポイント"];
   const table = [
     ...tableHeader.map((label, index) => tableCell(colX[index], startY, colW[index], rowH, label, {
       fill: "#0b2a5b",
