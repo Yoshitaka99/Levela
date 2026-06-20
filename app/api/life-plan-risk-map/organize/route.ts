@@ -43,6 +43,11 @@ function appendLine(
   form[key] = [form[key], line].filter(Boolean).join("\n");
 }
 
+function isUnconfirmedIncomeGoal(line: string) {
+  return /(稼ぎたい|目標|希望|理想|目指す|できたら|将来|副業で)/.test(line)
+    && /(副業|収入|月収|年収|万円|円)/.test(line);
+}
+
 function organizeLocally(memo: string) {
   const form = { ...emptyForm };
   const lines = memo
@@ -51,6 +56,11 @@ function organizeLocally(memo: string) {
     .filter(Boolean);
 
   for (const line of lines) {
+    if (isUnconfirmedIncomeGoal(line)) {
+      appendLine(form, "income", `副業目標（未確定・収入計算には含めない）：${line}`);
+      continue;
+    }
+
     if (/(本人|配偶者|夫|妻|奥さん|旦那|子ども|こども|名前|氏名|歳|才|家族)/.test(line)) {
       appendLine(form, "family", line);
       continue;
@@ -138,7 +148,9 @@ async function organizeWithOpenAI(memo: string) {
       "分類ルール:",
       "- family: お名前、本人年齢、配偶者年齢、子ども、家族構成、出産予定",
       "- 相談メモの冒頭にお客様名・お名前・氏名がある場合は、必ずfamilyの先頭に「お名前：〇〇さん」として残す",
-      "- income: 本人収入、配偶者収入、ボーナス、副業、今後の働き方",
+      "- income: 本人収入、配偶者収入、ボーナス、確定している副業収入、今後の働き方",
+      "- 「副業で月10万円稼ぎたい」「副業目標」「稼ぎたい額」「目標収入」「希望収入」など、未確定の金額は現在収入や将来確定収入に入れない",
+      "- 未確定の副業金額はincome内に「副業目標（未確定・収入計算には含めない）：月〇万円」のように残す",
       "- expenses: 生活費、家賃、住宅ローン、車、保険、固定費",
       "- assets: 貯金、NISA、iDeCo、保険積立、毎月の積立",
       "- education: 教育方針、公立私立、習い事、留学、進学、教育費の不安",

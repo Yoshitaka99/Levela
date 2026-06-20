@@ -436,6 +436,16 @@ function buildLifeStageBlock(selection: LifeStageSelection) {
   ].filter(Boolean).join("\n");
 }
 
+function buildIncomeCalculationRules() {
+  return [
+    "【収入計算ルール】",
+    "・収支計算に入れる収入は、現在すでに発生している本人月収、配偶者月収、ボーナス、確定している副業収入だけにする。",
+    "・「副業で稼ぎたい」「副業目標」「目標収入」「希望収入」「将来できたら」「目指す」などの未確定金額は、収入・年収・差分の計算に絶対に入れない。",
+    "・未確定の副業目標は、収入欄ではなく気付きポイントや改善余地として扱う。",
+    "・例：副業で月10万円稼ぎたい → 現在収入には入れない。気付きポイントに「副業で月10万円を作れれば改善余地」として扱う。",
+  ].join("\n");
+}
+
 function buildCrisisImagePrompt(form: FormState, lifeStageSelection: LifeStageSelection) {
   const customerInfo = buildCustomerInfo(form);
   const age = extractAge(form.family);
@@ -463,7 +473,7 @@ function buildCrisisImagePrompt(form: FormState, lifeStageSelection: LifeStageSe
 ・中央から下は年表テーブルにする
 ・年表の列は、年、本人年齢、子ども年齢、ライフイベント、収入、支出、差分、気付きポイント
 ・上記以外の金額列名や注意列名は追加しない
-・収入、支出、差分は、お客様情報に書かれた月収、年収、ボーナス、生活費、家賃、住宅ローン、保険、教育方針、老後生活費などを元に計算する
+・収入、支出、差分は、お客様情報に書かれた現在の月収、年収、ボーナス、確定収入、生活費、家賃、住宅ローン、保険、教育方針、老後生活費などを元に計算する
 ・差分は「収入 - 支出」で計算し、支出が収入を上回る行は赤字で強調する
 ・収入や支出が読み取れない場合でも、画像内に確認用の文言は出さず、一般的な概算で自然に補完する
 ・表はイベントごとのイメージで作る。単なる年齢表ではなく、その時期に起きそうな支出・収入変化・家族イベントを入れる
@@ -489,6 +499,8 @@ ${timelineStartInstructions}
 ${customerInfo}
 
 ${buildLifeStageBlock(lifeStageSelection)}
+
+${buildIncomeCalculationRules()}
 
 【年齢から見た比較】
 ${ageInsight}

@@ -22,10 +22,15 @@ function escapeXml(value: string) {
     .replace(/"/g, "&quot;");
 }
 
+function isUnconfirmedIncomeGoal(line: string) {
+  return /(稼ぎたい|目標|希望|理想|目指す|できたら|将来|未確定|副業目標)/.test(line)
+    && /(副業|収入|月収|年収|万円|円)/.test(line);
+}
+
 function amountFrom(text = "", label: string) {
   const line = text
     .split(/\r?\n/)
-    .find((item) => item.replace(/\s/g, "").includes(label));
+    .find((item) => item.replace(/\s/g, "").includes(label) && !isUnconfirmedIncomeGoal(item));
 
   if (!line) return 0;
 
