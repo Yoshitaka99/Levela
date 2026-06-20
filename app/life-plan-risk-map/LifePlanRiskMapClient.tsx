@@ -48,6 +48,11 @@ type OptionButton<T extends string> = {
   description: string;
 };
 
+type SingleFutureOption = OptionButton<string> & {
+  marriageIntent: Exclude<MarriageIntent, "">;
+  childPlan: Exclude<ChildPlan, "">;
+};
+
 type SimpleMemoHint = {
   title: string;
   items: string[];
@@ -111,6 +116,23 @@ const childPlanOptions: Array<OptionButton<Exclude<ChildPlan, "">>> = [
     value: "no_children",
     label: "子供希望なし",
     description: "子供なしの暮らしを自然に描く",
+  },
+];
+
+const singleFutureOptions: SingleFutureOption[] = [
+  {
+    value: "wants_marriage_no_children",
+    label: "結婚願望あり子供不要",
+    description: "将来は夫婦二人の未来図に寄せる",
+    marriageIntent: "wants_marriage",
+    childPlan: "no_children",
+  },
+  {
+    value: "wants_marriage_wants_children",
+    label: "結婚子供希望あり",
+    description: "将来は結婚して子供がいる未来図に寄せる",
+    marriageIntent: "wants_marriage",
+    childPlan: "wants_children",
   },
 ];
 
@@ -332,6 +354,15 @@ function optionLabel<T extends string>(options: Array<OptionButton<T>>, value: T
   return options.find((option) => option.value === value)?.label || "未選択";
 }
 
+function singleFutureLabel(selection: LifeStageSelection) {
+  if (selection.maritalStatus !== "single") return "";
+
+  return singleFutureOptions.find((option) => (
+    option.marriageIntent === selection.marriageIntent
+    && option.childPlan === selection.childPlan
+  ))?.label || "";
+}
+
 function buildLifeStageImageDirection(selection: LifeStageSelection) {
   const { maritalStatus, marriageIntent, childPlan } = selection;
 
@@ -397,6 +428,7 @@ function buildLifeStageBlock(selection: LifeStageSelection) {
     selection.maritalStatus === "single"
       ? `結婚願望：${optionLabel(marriageIntentOptions, selection.marriageIntent)}`
       : "",
+    singleFutureLabel(selection) ? `独身の未来パターン：${singleFutureLabel(selection)}` : "",
     `子供：${optionLabel(childPlanOptions, selection.childPlan)}`,
     "画像への反映：",
     buildLifeStageImageDirection(selection),
@@ -658,15 +690,18 @@ function LifeStageSelector({
   onMaritalStatusChange,
   onMarriageIntentChange,
   onChildPlanChange,
+  onSingleFutureChange,
 }: {
   selection: LifeStageSelection;
   onMaritalStatusChange: (value: Exclude<MaritalStatus, "">) => void;
   onMarriageIntentChange: (value: Exclude<MarriageIntent, "">) => void;
   onChildPlanChange: (value: Exclude<ChildPlan, "">) => void;
+  onSingleFutureChange: (option: SingleFutureOption) => void;
 }) {
   const showMarriageIntent = selection.maritalStatus === "single";
   const showChildPlan = selection.maritalStatus === "married"
     || (selection.maritalStatus === "single" && Boolean(selection.marriageIntent));
+  const selectedSingleFutureLabel = singleFutureLabel(selection);
 
   return (
     <section className="border-t border-stone-200 bg-white px-5 py-5 sm:px-7">
@@ -688,12 +723,46 @@ function LifeStageSelector({
         />
 
         {showMarriageIntent && (
-          <LifeStageOptionGroup
-            title="結婚願望"
-            options={marriageIntentOptions}
-            value={selection.marriageIntent}
-            onChange={onMarriageIntentChange}
-          />
+          <>
+            <div>
+              <p className="text-xs font-black text-stone-500">独身の未来パターン</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {singleFutureOptions.map((option) => {
+                  const isSelected = selectedSingleFutureLabel === option.label;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => onSingleFutureChange(option)}
+                      className={[
+                        "min-h-16 rounded-md border px-3 py-3 text-left transition",
+                        isSelected
+                          ? "border-stone-950 bg-stone-950 text-white shadow-sm"
+                          : "border-stone-200 bg-white text-stone-700 hover:border-stone-400",
+                      ].join(" ")}
+                    >
+                      <span className="block text-sm font-black">{option.label}</span>
+                      <span
+                        className={[
+                          "mt-1 block text-xs font-bold leading-5",
+                          isSelected ? "text-stone-200" : "text-stone-400",
+                        ].join(" ")}
+                      >
+                        {option.description}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <LifeStageOptionGroup
+              title="結婚願望"
+              options={marriageIntentOptions}
+              value={selection.marriageIntent}
+              onChange={onMarriageIntentChange}
+            />
+          </>
         )}
 
         {showChildPlan && (
@@ -834,6 +903,15 @@ export function LifePlanRiskMapClient() {
     setLifeStageSelection((current) => ({ ...current, childPlan }));
   };
 
+  const updateSingleFuture = (option: SingleFutureOption) => {
+    setLifeStageSelection((current) => ({
+      ...current,
+      maritalStatus: "single",
+      marriageIntent: option.marriageIntent,
+      childPlan: option.childPlan,
+    }));
+  };
+
   const reset = () => {
     setForm(initialForm);
     setLifeStageSelection(initialLifeStageSelection);
@@ -970,6 +1048,7 @@ export function LifePlanRiskMapClient() {
             onMaritalStatusChange={updateMaritalStatus}
             onMarriageIntentChange={updateMarriageIntent}
             onChildPlanChange={updateChildPlan}
+            onSingleFutureChange={updateSingleFuture}
           />
 
           {inputMode === "detailed" ? (
@@ -1045,7 +1124,12 @@ export function LifePlanRiskMapClient() {
                 <div className="mt-2 grid gap-1 text-sm font-bold leading-6 text-stone-700">
                   <p>現状：{optionLabel(maritalStatusOptions, lifeStageSelection.maritalStatus)}</p>
                   {lifeStageSelection.maritalStatus === "single" && (
-                    <p>結婚願望：{optionLabel(marriageIntentOptions, lifeStageSelection.marriageIntent)}</p>
+                    <>
+                      {singleFutureLabel(lifeStageSelection) && (
+                        <p>独身の未来パターン：{singleFutureLabel(lifeStageSelection)}</p>
+                      )}
+                      <p>結婚願望：{optionLabel(marriageIntentOptions, lifeStageSelection.marriageIntent)}</p>
+                    </>
                   )}
                   <p>子供：{optionLabel(childPlanOptions, lifeStageSelection.childPlan)}</p>
                 </div>
