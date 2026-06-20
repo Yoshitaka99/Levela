@@ -24,6 +24,15 @@ type FormState = {
 };
 
 type InputMode = "detailed" | "simple";
+type MaritalStatus = "married" | "single" | "";
+type MarriageIntent = "wants_marriage" | "no_marriage" | "";
+type ChildPlan = "has_children" | "wants_children" | "no_children" | "";
+
+type LifeStageSelection = {
+  maritalStatus: MaritalStatus;
+  marriageIntent: MarriageIntent;
+  childPlan: ChildPlan;
+};
 
 type Section = {
   key: keyof FormState;
@@ -31,6 +40,12 @@ type Section = {
   title: string;
   guide: string;
   placeholder: string;
+};
+
+type OptionButton<T extends string> = {
+  value: T;
+  label: string;
+  description: string;
 };
 
 type SimpleMemoHint = {
@@ -48,6 +63,56 @@ const initialForm: FormState = {
   retirement: "",
   strengths: "",
 };
+
+const initialLifeStageSelection: LifeStageSelection = {
+  maritalStatus: "",
+  marriageIntent: "",
+  childPlan: "",
+};
+
+const maritalStatusOptions: Array<OptionButton<Exclude<MaritalStatus, "">>> = [
+  {
+    value: "married",
+    label: "既婚",
+    description: "夫婦・家族の未来図に寄せる",
+  },
+  {
+    value: "single",
+    label: "独身",
+    description: "現在は一人の状態から未来を作る",
+  },
+];
+
+const marriageIntentOptions: Array<OptionButton<Exclude<MarriageIntent, "">>> = [
+  {
+    value: "wants_marriage",
+    label: "結婚願望あり",
+    description: "将来の配偶者がいる未来図に寄せる",
+  },
+  {
+    value: "no_marriage",
+    label: "結婚願望なし",
+    description: "自分軸の将来設計に寄せる",
+  },
+];
+
+const childPlanOptions: Array<OptionButton<Exclude<ChildPlan, "">>> = [
+  {
+    value: "has_children",
+    label: "子供いる",
+    description: "現在の子供がいる前提で描く",
+  },
+  {
+    value: "wants_children",
+    label: "将来子供希望",
+    description: "未来図に子供がいる場面を入れる",
+  },
+  {
+    value: "no_children",
+    label: "子供希望なし",
+    description: "子供なしの暮らしを自然に描く",
+  },
+];
 
 const sections: Section[] = [
   {
@@ -263,7 +328,83 @@ function buildCustomerInfo(form: FormState, options?: { includeStrengths?: boole
     .join("\n\n");
 }
 
-function buildCrisisImagePrompt(form: FormState) {
+function optionLabel<T extends string>(options: Array<OptionButton<T>>, value: T | "") {
+  return options.find((option) => option.value === value)?.label || "未選択";
+}
+
+function buildLifeStageImageDirection(selection: LifeStageSelection) {
+  const { maritalStatus, marriageIntent, childPlan } = selection;
+
+  if (!maritalStatus) {
+    return "現状が未選択の場合は、お客様情報に書かれた家族構成を優先して自然に描く。";
+  }
+
+  if (maritalStatus === "married") {
+    if (childPlan === "has_children") {
+      return "現在は既婚で子供がいるため、夫婦と子供がいる現在の家族像と、その家族で叶える未来図を自然に描く。";
+    }
+
+    if (childPlan === "wants_children") {
+      return "現在は既婚で、将来子供を希望しているため、今は夫婦中心、未来図では子供もいる家族像を自然に描く。";
+    }
+
+    if (childPlan === "no_children") {
+      return "現在は既婚で、子供は希望しないため、夫婦二人の暮らし、旅行、働き方、老後の未来図を自然に描く。";
+    }
+
+    return "現在は既婚のため、夫婦を中心にした未来図を自然に描く。";
+  }
+
+  if (marriageIntent === "wants_marriage") {
+    if (childPlan === "has_children") {
+      return "現在は独身だが子供がいるため、今の親子の暮らしを起点に、将来結婚も視野に入れた家族の未来図を自然に描く。";
+    }
+
+    if (childPlan === "wants_children") {
+      return "今は独身だが将来結婚して子供が欲しいため、現在は一人の姿、未来図では配偶者と子供がいる家族像を自然に描く。";
+    }
+
+    if (childPlan === "no_children") {
+      return "今は独身だが将来結婚したい、子供は希望しないため、未来図では夫婦二人の暮らしを自然に描く。";
+    }
+
+    return "今は独身だが将来結婚したい状態として、現在の一人の姿から、将来の配偶者がいる未来図へ自然につなげる。";
+  }
+
+  if (marriageIntent === "no_marriage") {
+    if (childPlan === "has_children") {
+      return "現在は独身で子供がいるため、本人と子供の暮らしを中心に、安心できる未来図を自然に描く。";
+    }
+
+    if (childPlan === "wants_children") {
+      return "現在は独身で結婚願望はないが将来子供を希望しているため、自分らしい暮らしと子供がいる未来図を自然に描く。";
+    }
+
+    if (childPlan === "no_children") {
+      return "現在は独身で結婚願望も子供希望もないため、自分軸の暮らし、仕事、趣味、老後の未来図を自然に描く。";
+    }
+
+    return "現在は独身で結婚願望はないため、自分軸の将来設計として自然に描く。";
+  }
+
+  return "現在は独身のため、今の一人の暮らしを起点に、選択された将来像へ自然につなげる。";
+}
+
+function buildLifeStageBlock(selection: LifeStageSelection) {
+  return [
+    "【ライフステージ選択】",
+    `現状：${optionLabel(maritalStatusOptions, selection.maritalStatus)}`,
+    selection.maritalStatus === "single"
+      ? `結婚願望：${optionLabel(marriageIntentOptions, selection.marriageIntent)}`
+      : "",
+    `子供：${optionLabel(childPlanOptions, selection.childPlan)}`,
+    "画像への反映：",
+    buildLifeStageImageDirection(selection),
+    "基本構図は変えず、人物イラスト・家族構成・未来図だけをこの選択状態に自然に合わせる。",
+  ].filter(Boolean).join("\n");
+}
+
+function buildCrisisImagePrompt(form: FormState, lifeStageSelection: LifeStageSelection) {
   const customerInfo = buildCustomerInfo(form);
   const age = extractAge(form.family);
   const monthlyNisa = extractMonthlyNisa(form.assets);
@@ -315,6 +456,8 @@ ${timelineStartInstructions}
 【お客様情報】
 ${customerInfo}
 
+${buildLifeStageBlock(lifeStageSelection)}
+
 【年齢から見た比較】
 ${ageInsight}
 
@@ -333,7 +476,7 @@ ${ageInsight}
 追加質問や文章での説明はせず、上記条件を満たす画像をそのまま生成してください。`;
 }
 
-function buildIdealImagePrompt(form: FormState) {
+function buildIdealImagePrompt(form: FormState, lifeStageSelection: LifeStageSelection) {
   const customerInfo = buildCustomerInfo(form, { includeStrengths: true });
   const strengths = form.strengths.trim() || "未入力。未入力の場合は、家族情報、理想、教育方針、老後の内容から自然に強みの素材を推測する。";
 
@@ -429,6 +572,8 @@ ${strengths}
 【お客様情報】
 ${customerInfo}
 
+${buildLifeStageBlock(lifeStageSelection)}
+
 【画像内の構成】
 上部：〇〇さんのライフスタイル発信設計
 左側：強み、経験、感情が動いた瞬間、発信素材
@@ -458,6 +603,109 @@ function CopyButton({ text, label }: { text: string; label: string }) {
       <Clipboard className="h-5 w-5" />
       {copied ? "コピーしました" : label}
     </button>
+  );
+}
+
+function LifeStageOptionGroup<T extends string>({
+  title,
+  options,
+  value,
+  onChange,
+}: {
+  title: string;
+  options: Array<OptionButton<T>>;
+  value: T | "";
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-black text-stone-500">{title}</p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {options.map((option) => {
+          const isSelected = option.value === value;
+
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              className={[
+                "min-h-16 rounded-md border px-3 py-3 text-left transition",
+                isSelected
+                  ? "border-stone-950 bg-stone-950 text-white shadow-sm"
+                  : "border-stone-200 bg-white text-stone-700 hover:border-stone-400",
+              ].join(" ")}
+            >
+              <span className="block text-sm font-black">{option.label}</span>
+              <span
+                className={[
+                  "mt-1 block text-xs font-bold leading-5",
+                  isSelected ? "text-stone-200" : "text-stone-400",
+                ].join(" ")}
+              >
+                {option.description}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function LifeStageSelector({
+  selection,
+  onMaritalStatusChange,
+  onMarriageIntentChange,
+  onChildPlanChange,
+}: {
+  selection: LifeStageSelection;
+  onMaritalStatusChange: (value: Exclude<MaritalStatus, "">) => void;
+  onMarriageIntentChange: (value: Exclude<MarriageIntent, "">) => void;
+  onChildPlanChange: (value: Exclude<ChildPlan, "">) => void;
+}) {
+  const showMarriageIntent = selection.maritalStatus === "single";
+  const showChildPlan = selection.maritalStatus === "married"
+    || (selection.maritalStatus === "single" && Boolean(selection.marriageIntent));
+
+  return (
+    <section className="border-t border-stone-200 bg-white px-5 py-5 sm:px-7">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-black text-stone-500">現状</p>
+          <h2 className="mt-1 text-lg font-black text-stone-950">
+            家族構成の前提を選択
+          </h2>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4">
+        <LifeStageOptionGroup
+          title="現状"
+          options={maritalStatusOptions}
+          value={selection.maritalStatus}
+          onChange={onMaritalStatusChange}
+        />
+
+        {showMarriageIntent && (
+          <LifeStageOptionGroup
+            title="結婚願望"
+            options={marriageIntentOptions}
+            value={selection.marriageIntent}
+            onChange={onMarriageIntentChange}
+          />
+        )}
+
+        {showChildPlan && (
+          <LifeStageOptionGroup
+            title="子供"
+            options={childPlanOptions}
+            value={selection.childPlan}
+            onChange={onChildPlanChange}
+          />
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -538,6 +786,7 @@ function SimpleMemoPanel({
 export function LifePlanRiskMapClient() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [inputMode, setInputMode] = useState<InputMode>("detailed");
+  const [lifeStageSelection, setLifeStageSelection] = useState<LifeStageSelection>(initialLifeStageSelection);
   const [simpleMemo, setSimpleMemo] = useState("");
   const [isOrganizing, setIsOrganizing] = useState(false);
   const [organizeError, setOrganizeError] = useState("");
@@ -552,15 +801,42 @@ export function LifePlanRiskMapClient() {
   } | null>(null);
   const filledCount = sections.filter((section) => form[section.key].trim()).length;
   const progress = Math.round((filledCount / sections.length) * 100);
-  const crisisPrompt = useMemo(() => buildCrisisImagePrompt(form), [form]);
-  const idealPrompt = useMemo(() => buildIdealImagePrompt(form), [form]);
+  const crisisPrompt = useMemo(
+    () => buildCrisisImagePrompt(form, lifeStageSelection),
+    [form, lifeStageSelection],
+  );
+  const idealPrompt = useMemo(
+    () => buildIdealImagePrompt(form, lifeStageSelection),
+    [form, lifeStageSelection],
+  );
 
   const updateForm = (key: keyof FormState, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
+  const updateMaritalStatus = (maritalStatus: Exclude<MaritalStatus, "">) => {
+    setLifeStageSelection((current) => ({
+      maritalStatus,
+      marriageIntent: maritalStatus === "single" ? current.marriageIntent : "",
+      childPlan: maritalStatus === current.maritalStatus ? current.childPlan : "",
+    }));
+  };
+
+  const updateMarriageIntent = (marriageIntent: Exclude<MarriageIntent, "">) => {
+    setLifeStageSelection((current) => ({
+      ...current,
+      marriageIntent,
+      childPlan: current.marriageIntent === marriageIntent ? current.childPlan : "",
+    }));
+  };
+
+  const updateChildPlan = (childPlan: Exclude<ChildPlan, "">) => {
+    setLifeStageSelection((current) => ({ ...current, childPlan }));
+  };
+
   const reset = () => {
     setForm(initialForm);
+    setLifeStageSelection(initialLifeStageSelection);
     setSimpleMemo("");
     setOrganizeError("");
     setOrganizeNotice("");
@@ -689,6 +965,13 @@ export function LifePlanRiskMapClient() {
             </div>
           </div>
 
+          <LifeStageSelector
+            selection={lifeStageSelection}
+            onMaritalStatusChange={updateMaritalStatus}
+            onMarriageIntentChange={updateMarriageIntent}
+            onChildPlanChange={updateChildPlan}
+          />
+
           {inputMode === "detailed" ? (
             <form className="divide-y divide-stone-200">
               {sections.map((section) => (
@@ -757,6 +1040,16 @@ export function LifePlanRiskMapClient() {
             </div>
 
             <div className="mt-4 grid gap-3">
+              <div className="rounded-md border border-stone-200 bg-white p-4">
+                <p className="text-xs font-bold text-stone-500">ライフステージ選択</p>
+                <div className="mt-2 grid gap-1 text-sm font-bold leading-6 text-stone-700">
+                  <p>現状：{optionLabel(maritalStatusOptions, lifeStageSelection.maritalStatus)}</p>
+                  {lifeStageSelection.maritalStatus === "single" && (
+                    <p>結婚願望：{optionLabel(marriageIntentOptions, lifeStageSelection.marriageIntent)}</p>
+                  )}
+                  <p>子供：{optionLabel(childPlanOptions, lifeStageSelection.childPlan)}</p>
+                </div>
+              </div>
               <div className="rounded-md border border-stone-200 bg-white p-4">
                 <p className="text-xs font-bold text-stone-500">入力済み</p>
                 <p className="mt-1 text-3xl font-black text-stone-950">
