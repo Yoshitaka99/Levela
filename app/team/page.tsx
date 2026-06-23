@@ -20,8 +20,8 @@ export const dynamic = "force-dynamic";
 
 const validTabs = ["overview", "members", "reasons", "alerts"] as const;
 const validSorts = ["projectedRate", "closeRate", "seatRate", "seated", "closed", "projected", "lost", "hold"] as const;
-const validTraffic = ["all", "ad"] as const;
-const validAdSources = ["all", "x", "meta"] as const;
+const validTraffic = ["all", "ad", "exclude_ad"] as const;
+const validAdSources = ["all", "x", "meta", "meta_ad", "Meta_ad", "meta_ad_Suea_aw", "meta_ad_in-house_aw", "meta_ad_Suea", "Meta_ad_aw", "meta_ad_in-house"] as const;
 
 type PageSearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -32,6 +32,33 @@ function pickParam<T extends readonly string[]>(
 ) {
   const raw = Array.isArray(value) ? value[0] : value;
   return allowed.includes(raw ?? "") ? (raw as T[number]) : fallback;
+}
+
+function pickAdSourceParam(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return "all";
+
+  const selected = raw
+    .split(",")
+    .map((source) => source.trim())
+    .filter((source) => validAdSources.includes(source as (typeof validAdSources)[number]));
+
+  if (!selected.length || selected.includes("all")) return "all";
+  return [...new Set(selected)].join(",");
+}
+
+async function getInitialTeamSalesData(
+  seminar?: string,
+  team?: string,
+  traffic?: string,
+  adSource?: string,
+) {
+  try {
+    return (await fetchTeamSalesData(seminar, team, traffic, adSource)) ?? defaultTeamSalesDashboardData;
+  } catch (error) {
+    console.error("[team] failed to load team sales data", error);
+    return defaultTeamSalesDashboardData;
+  }
 }
 
 export default async function TeamAccountPage({
@@ -47,10 +74,10 @@ export default async function TeamAccountPage({
   const initialSeminar = Array.isArray(params.seminar) ? params.seminar[0] : params.seminar;
   const initialTeam = Array.isArray(params.team) ? params.team[0] : params.team;
   const initialTraffic = pickParam(params.traffic, validTraffic, "all");
-  const initialAdSource = pickParam(params.adSource, validAdSources, "all");
+  const initialAdSource = pickAdSourceParam(params.adSource);
   const initialOnlyAlerts = (Array.isArray(params.alerts) ? params.alerts[0] : params.alerts) === "1";
   const initialOnlyHold = (Array.isArray(params.hold) ? params.hold[0] : params.hold) === "1";
-  const initialData = (await fetchTeamSalesData(initialSeminar, initialTeam, initialTraffic, initialAdSource)) ?? defaultTeamSalesDashboardData;
+  const initialData = await getInitialTeamSalesData(initialSeminar, initialTeam, initialTraffic, initialAdSource);
 
   return (
     <TeamSalesDashboardClient

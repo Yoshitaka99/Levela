@@ -43,6 +43,20 @@ function pickAdSourceParam(value: string | string[] | undefined) {
   return [...new Set(selected)].join(",");
 }
 
+async function getInitialTeamSalesData(
+  seminar?: string,
+  team?: string,
+  traffic?: string,
+  adSource?: string,
+) {
+  try {
+    return (await fetchTeamSalesData(seminar, team, traffic, adSource)) ?? defaultTeamSalesDashboardData;
+  } catch (error) {
+    console.error("[team-sales-dashboard] failed to load team sales data", error);
+    return defaultTeamSalesDashboardData;
+  }
+}
+
 export default async function TeamSalesDashboardPage({
   searchParams,
 }: {
@@ -59,7 +73,7 @@ export default async function TeamSalesDashboardPage({
   const initialAdSource = pickAdSourceParam(params.adSource);
   const initialOnlyAlerts = (Array.isArray(params.alerts) ? params.alerts[0] : params.alerts) === "1";
   const initialOnlyHold = (Array.isArray(params.hold) ? params.hold[0] : params.hold) === "1";
-  const initialData = (await fetchTeamSalesData(initialSeminar, initialTeam, initialTraffic, initialAdSource)) ?? defaultTeamSalesDashboardData;
+  const initialData = await getInitialTeamSalesData(initialSeminar, initialTeam, initialTraffic, initialAdSource);
 
   return (
     <TeamSalesDashboardClient
