@@ -16,19 +16,19 @@ type ChatbotKnowledgeArticlePageProps = {
 };
 
 const imageSizes: Record<string, { width: number; height: number }> = {
-  "/chatbot-knowledge/assets/a5366ab3bdd08386886f81efd3993067_01_72dcb345f1.png": {
+  "/chatbot-knowledge/payment-method/bank-transfer.png": {
     width: 1620,
     height: 900,
   },
-  "/chatbot-knowledge/assets/a5366ab3bdd08386886f81efd3993067_02_7169e64593.png": {
+  "/chatbot-knowledge/payment-method/credit-card.png": {
     width: 1524,
     height: 860,
   },
-  "/chatbot-knowledge/assets/a5366ab3bdd08386886f81efd3993067_03_62bd6aace0.png": {
+  "/chatbot-knowledge/payment-method/special-payment.png": {
     width: 1524,
     height: 860,
   },
-  "/chatbot-knowledge/assets/a5366ab3bdd08386886f81efd3993067_04_8fbbf513e7.png": {
+  "/chatbot-knowledge/payment-method/lifety.png": {
     width: 1334,
     height: 884,
   },

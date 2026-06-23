@@ -1,9 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Navbar } from "./components/Navbar";
-import BottomNav from "./components/BottomNav";
 import { PWAHandler } from "./components/PwaHandler";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,14 +15,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "オロチーム",
+  title: "Levela",
   manifest: "/manifest.json",
-  themeColor: "#0a0a0a",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
-    title: "オロチーム"
-  }
+    statusBarStyle: "default",
+    title: "Levela",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
@@ -32,17 +34,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja" className="dark" suppressHydrationWarning>
+    <html
+      lang="ja"
+      className={`${geistSans.variable} ${geistMono.variable}`}
+      suppressHydrationWarning
+    >
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#0a0a0a] text-white min-h-screen`}
+        className="min-h-screen bg-white text-stone-950 antialiased"
         suppressHydrationWarning
       >
-        <PWAHandler />
-        <div className="pb-24 md:pb-0"> {/* Padding to prevent content from hiding behind BottomNav on mobile */}
-          <Navbar />
+        <TooltipProvider>
+          <PWAHandler />
           {children}
-        </div>
-        <BottomNav />
+        </TooltipProvider>
       </body>
     </html>
   );
