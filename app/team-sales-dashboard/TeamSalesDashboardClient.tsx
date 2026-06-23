@@ -19,6 +19,7 @@ import type { AdSourceFilter, ReasonCount, TeamMemberKpi, TeamSalesDashboardData
 type TabKey = "overview" | "members" | "reasons" | "alerts";
 type SortKey = "projectedRate" | "closeRate" | "seatRate" | "reservationSlots" | "seated" | "closed" | "projected" | "lost" | "hold";
 type ViewMode = "user" | "admin";
+type AdminSortKey = "appointmentDesc" | "appointmentAsc" | "memberAsc" | "memberDesc";
 
 const ALL_ADMIN_MEMBERS = "all";
 const ALL_SEMINARS_LABEL = "全期間";
@@ -1094,6 +1095,7 @@ function AdminCustomerPanel({
     };
   }, [isAllMembers, members, selectedKpi]);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [adminSort, setAdminSort] = useState<AdminSortKey>("appointmentDesc");
   const visibleMemberNames = useMemo(() => new Set(members.map((member) => member.name)), [members]);
   const memberRowsAll = useMemo(
     () =>
@@ -1110,11 +1112,25 @@ function AdminCustomerPanel({
   );
   const effectiveStatusFilter = statusFilter === "all" || statusOptions.includes(statusFilter) ? statusFilter : "all";
   const memberRows = useMemo(
-    () =>
-      effectiveStatusFilter === "all"
-        ? memberRowsAll
-        : memberRowsAll.filter((row) => row.status.trim() === effectiveStatusFilter),
-    [effectiveStatusFilter, memberRowsAll],
+    () => {
+      const filtered =
+        effectiveStatusFilter === "all"
+          ? memberRowsAll
+          : memberRowsAll.filter((row) => row.status.trim() === effectiveStatusFilter);
+
+      return [...filtered].sort((a, b) => {
+        if (adminSort === "memberAsc" || adminSort === "memberDesc") {
+          const memberDiff = a.member.localeCompare(b.member, "ja");
+          if (memberDiff !== 0) return adminSort === "memberAsc" ? memberDiff : -memberDiff;
+          return b.appointmentDate.localeCompare(a.appointmentDate, "ja");
+        }
+
+        const dateDiff = a.appointmentDate.localeCompare(b.appointmentDate, "ja");
+        if (dateDiff !== 0) return adminSort === "appointmentAsc" ? dateDiff : -dateDiff;
+        return a.member.localeCompare(b.member, "ja");
+      });
+    },
+    [adminSort, effectiveStatusFilter, memberRowsAll],
   );
 
   return (
@@ -1160,6 +1176,19 @@ function AdminCustomerPanel({
             ))}
           </select>
         </label>
+        <label className="grid gap-1 text-sm text-slate-300 lg:w-[280px]">
+          <span className="text-xs font-medium text-slate-400">並び順</span>
+          <select
+            value={adminSort}
+            onChange={(event) => setAdminSort(event.target.value as AdminSortKey)}
+            className="h-11 rounded-md border border-cyan-300/25 bg-slate-950 px-3 text-sm text-white outline-none"
+          >
+            <option value="appointmentDesc">面談日 新しい順</option>
+            <option value="appointmentAsc">面談日 古い順</option>
+            <option value="memberAsc">営業担当 あいうえお順</option>
+            <option value="memberDesc">営業担当 逆順</option>
+          </select>
+        </label>
       </div>
 
       {summaryKpi ? (
@@ -1176,9 +1205,10 @@ function AdminCustomerPanel({
       {memberRows.length ? (
         <>
           <div className="mt-5 hidden overflow-x-auto rounded-lg border border-white/10 lg:block">
-            <table className="w-full min-w-[1080px] border-collapse text-sm">
+            <table className="w-full min-w-[1160px] border-collapse text-sm">
               <thead className="bg-slate-900 text-xs text-slate-400">
                 <tr>
+                  <th className="px-3 py-3 text-left">営業担当</th>
                   <th className="px-3 py-3 text-left">面談日</th>
                   <th className="px-3 py-3 text-left">セミナー</th>
                   <th className="px-3 py-3 text-left">流入</th>
@@ -1195,6 +1225,7 @@ function AdminCustomerPanel({
               <tbody>
                 {memberRows.map((row, index) => (
                   <tr key={`${row.member}-${row.appointmentDate}-${index}`} className="border-t border-white/10 odd:bg-white/[0.02]">
+                    <AdminCell value={row.member} />
                     <AdminCell value={row.appointmentDate} />
                     <AdminCell value={row.seminar} />
                     <AdminCell value={row.inflow} />
@@ -1218,7 +1249,7 @@ function AdminCustomerPanel({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-semibold text-white">{displayAdminValue(row.appointmentDate)}</p>
-                    <p className="mt-1 text-xs text-slate-400">{displayAdminValue(row.seminar)}</p>
+                    <p className="mt-1 text-xs text-slate-400">{displayAdminValue(row.member)} / {displayAdminValue(row.seminar)}</p>
                   </div>
                   <span className="rounded-md bg-cyan-300/15 px-2 py-1 text-xs font-semibold text-cyan-100">
                     {displayAdminValue(row.status)}
