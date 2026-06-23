@@ -18,6 +18,7 @@ const validTabs = ["overview", "members", "reasons", "alerts"] as const;
 const validSorts = ["projectedRate", "closeRate", "seatRate", "reservationSlots", "seated", "closed", "projected", "lost", "hold"] as const;
 const validTraffic = ["all", "ad", "exclude_ad"] as const;
 const validAdSources = ["all", "x", "meta", "meta_ad", "Meta_ad", "meta_ad_Suea_aw", "meta_ad_in-house_aw", "meta_ad_Suea", "Meta_ad_aw", "meta_ad_in-house"] as const;
+const validViews = ["user", "admin"] as const;
 
 type PageSearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -64,6 +65,7 @@ export default async function TeamSalesDashboardPage({
 }) {
   const params = await searchParams;
   const initialTab = pickParam(params.tab, validTabs, "overview");
+  const initialView = pickParam(params.view, validViews, "user");
   const initialSort = pickParam(params.sort, validSorts, "projectedRate");
   const initialMember = Array.isArray(params.member) ? params.member[0] : params.member;
   const initialQuery = Array.isArray(params.q) ? params.q[0] : params.q;
@@ -78,6 +80,7 @@ export default async function TeamSalesDashboardPage({
   return (
     <TeamSalesDashboardClient
       initialData={initialData}
+      initialView={initialView}
       initialTab={initialTab}
       initialSort={initialSort}
       initialMember={initialMember}

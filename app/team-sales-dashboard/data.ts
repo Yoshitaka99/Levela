@@ -51,6 +51,22 @@ export type WeeklyKpi = {
   paidRate: number;
 };
 
+export type CustomerManagementRow = {
+  member: string;
+  team: string;
+  seminar: string;
+  appointmentDate: string;
+  trafficRoute: string;
+  inflow: string;
+  seat: string;
+  status: string;
+  holdAnswerDate: string;
+  paymentDate: string;
+  contractPlan: string;
+  lostReason: string;
+  holdReason: string;
+};
+
 export type TeamSalesDashboardData = {
   updatedAt: string;
   source: "sheet" | "fallback";
@@ -66,6 +82,7 @@ export type TeamSalesDashboardData = {
   statusMix: StatusCount[];
   weeklyKpis: WeeklyKpi[];
   appointmentWeeklyKpis: WeeklyKpi[];
+  customerRows: CustomerManagementRow[];
 };
 
 export const defaultTeamSalesDashboardData: TeamSalesDashboardData = {
@@ -83,4 +100,5 @@ export const defaultTeamSalesDashboardData: TeamSalesDashboardData = {
   statusMix: [],
   weeklyKpis: [],
   appointmentWeeklyKpis: [],
+  customerRows: [],
 };

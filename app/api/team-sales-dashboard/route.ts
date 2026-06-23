@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   defaultTeamSalesDashboardData,
   type AdSourceFilter,
+  type CustomerManagementRow,
   type ReasonCount,
   type StatusCount,
   type TeamMemberKpi,
@@ -576,6 +577,36 @@ function compareMembersByTeamOrder(
   return a.localeCompare(b, "ja");
 }
 
+function buildCustomerRows(
+  rows: SourceRow[],
+  teamDefinitions: Record<string, string[]>,
+): CustomerManagementRow[] {
+  return rows
+    .map((row) => {
+      const member = getMember(row);
+      return {
+        member,
+        team: resolveTeamForMember(member, teamDefinitions),
+        seminar: getSeminar(row),
+        appointmentDate: getAppointmentDate(row),
+        trafficRoute: getTrafficRoute(row),
+        inflow: getInflow(row),
+        seat: getSeat(row),
+        status: getStatus(row),
+        holdAnswerDate: getHoldAnswerDate(row),
+        paymentDate: getPaymentDate(row),
+        contractPlan: getContractPlan(row),
+        lostReason: getLostReason(row),
+        holdReason: getHoldReason(row),
+      };
+    })
+    .sort((a, b) => {
+      const memberDiff = compareMembersByTeamOrder(a.member, b.member, teamDefinitions);
+      if (memberDiff !== 0) return memberDiff;
+      return a.appointmentDate.localeCompare(b.appointmentDate, "ja");
+    });
+}
+
 function aggregateRows(
   rows: SourceRow[],
   requestedSeminar?: string | null,
@@ -695,6 +726,7 @@ function aggregateRows(
     .slice(0, 8);
   const weeklyKpis = buildWeeklyKpis(scopedRows);
   const appointmentWeeklyKpis = buildAppointmentWeeklyKpis(scopedRows);
+  const customerRows = buildCustomerRows(scopedRows, teamDefinitions);
 
   return {
     updatedAt: new Date().toISOString(),
@@ -711,6 +743,7 @@ function aggregateRows(
     statusMix,
     weeklyKpis,
     appointmentWeeklyKpis,
+    customerRows,
   };
 }
 

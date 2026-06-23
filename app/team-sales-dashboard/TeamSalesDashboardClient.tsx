@@ -18,6 +18,7 @@ import type { AdSourceFilter, ReasonCount, TeamMemberKpi, TeamSalesDashboardData
 
 type TabKey = "overview" | "members" | "reasons" | "alerts";
 type SortKey = "projectedRate" | "closeRate" | "seatRate" | "reservationSlots" | "seated" | "closed" | "projected" | "lost" | "hold";
+type ViewMode = "user" | "admin";
 
 const ALL_SEMINARS_LABEL = "全期間";
 const SEMINAR_SEPARATOR = ",";
@@ -419,6 +420,7 @@ export function TeamSalesDashboardClient({
   initialAdSource,
   initialOnlyAlerts,
   initialOnlyHold,
+  initialView = "user",
   basePath = "/team-sales-dashboard",
 }: {
   initialData: TeamSalesDashboardData;
@@ -432,9 +434,11 @@ export function TeamSalesDashboardClient({
   initialAdSource: AdSourceFilter;
   initialOnlyAlerts: boolean;
   initialOnlyHold: boolean;
+  initialView?: ViewMode;
   basePath?: string;
 }) {
   const [data, setData] = useState(initialData);
+  const [viewMode, setViewMode] = useState<ViewMode>(initialView);
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [sortKey, setSortKey] = useState<SortKey>(initialSort);
   const [query, setQuery] = useState(initialQuery ?? "");
@@ -557,6 +561,7 @@ export function TeamSalesDashboardClient({
 
   function dashboardHref(
     overrides: {
+      view?: ViewMode;
       tab?: TabKey;
       sort?: SortKey;
       member?: string | null;
@@ -570,8 +575,12 @@ export function TeamSalesDashboardClient({
     } = {},
   ) {
     const params = new URLSearchParams();
-    params.set("tab", overrides.tab ?? activeTab);
-    params.set("sort", overrides.sort ?? sortKey);
+    const nextView = overrides.view ?? viewMode;
+    const nextTab = overrides.tab ?? activeTab;
+    const nextSort = overrides.sort ?? sortKey;
+    if (nextView === "admin") params.set("view", "admin");
+    params.set("tab", nextTab);
+    params.set("sort", nextSort);
 
     const nextMember = overrides.member === undefined ? selectedMember : overrides.member;
     const nextQuery = overrides.q === undefined ? query.trim() : overrides.q;
@@ -605,10 +614,20 @@ export function TeamSalesDashboardClient({
     window.history.replaceState(null, "", dashboardHref({ sort: nextSort }));
   }
 
+  function changeView(nextView: ViewMode) {
+    setViewMode(nextView);
+    window.history.replaceState(null, "", dashboardHref({ view: nextView }));
+  }
+
   function selectMember(memberName: string) {
     setSelectedMember(memberName);
     setActiveTab("members");
     window.history.replaceState(null, "", dashboardHref({ tab: "members", member: memberName }));
+  }
+
+  function selectAdminMember(memberName: string) {
+    setSelectedMember(memberName);
+    window.history.replaceState(null, "", dashboardHref({ view: "admin", member: memberName }));
   }
 
   function changeSeminar(nextSeminar: string) {
@@ -697,6 +716,26 @@ export function TeamSalesDashboardClient({
           </div>
 
           <div className="flex w-full flex-wrap gap-2 lg:w-auto lg:justify-end">
+            <div className="flex h-10 rounded-md border border-white/10 bg-white/5 p-1">
+              <button
+                type="button"
+                onClick={() => changeView("user")}
+                className={`rounded px-3 text-sm font-medium ${
+                  viewMode === "user" ? "bg-teal-300 text-slate-950" : "text-slate-300 hover:bg-white/10"
+                }`}
+              >
+                ユーザー画面
+              </button>
+              <button
+                type="button"
+                onClick={() => changeView("admin")}
+                className={`rounded px-3 text-sm font-medium ${
+                  viewMode === "admin" ? "bg-cyan-300 text-slate-950" : "text-slate-300 hover:bg-white/10"
+                }`}
+              >
+                管理者画面
+              </button>
+            </div>
             <div className="flex min-h-10 w-full max-w-full flex-wrap gap-1.5 rounded-md border border-teal-300/25 bg-slate-950 p-1 sm:w-[360px]">
               {data.seminars.map((seminar) => {
                 const selected = selectedSeminarValues.includes(seminar);
@@ -758,6 +797,7 @@ export function TeamSalesDashboardClient({
               </div>
             ) : null}
             <form action={basePath} className="inline-flex h-10 w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-slate-200 sm:w-[260px]">
+              {viewMode === "admin" ? <input type="hidden" name="view" value="admin" /> : null}
               <input type="hidden" name="tab" value={activeTab} />
               <input type="hidden" name="sort" value={sortKey} />
               <input type="hidden" name="seminar" value={selectedSeminar} />
@@ -832,6 +872,15 @@ export function TeamSalesDashboardClient({
           <span className="text-xs text-slate-500">最終同期: {lastSyncedAt || "確認中"} / 30秒ごとに更新</span>
         </div>
 
+        {viewMode === "admin" ? (
+          <AdminCustomerPanel
+            members={filteredMembers}
+            rows={data.customerRows ?? []}
+            selectedMember={selected?.name ?? ""}
+            onSelectMember={selectAdminMember}
+          />
+        ) : (
+          <>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <MetricTile label="予約枠数" value={`${totals.reservationSlots}`} sub={`抽出 ${totals.leads} 件 / 条件適用後`} tone="cyan" icon={CalendarDays} />
           <MetricTile label="実際の着座" value={`${totals.seated}`} sub={`抽出 ${totals.leads} 件 / 着座率 ${formatPercent(seatRate)}`} tone="cyan" icon={Users} />
@@ -997,8 +1046,161 @@ export function TeamSalesDashboardClient({
             </div>
           </section>
         ) : null}
+          </>
+        )}
       </section>
     </main>
+  );
+}
+
+function AdminCustomerPanel({
+  members,
+  rows,
+  selectedMember,
+  onSelectMember,
+}: {
+  members: TeamMemberKpi[];
+  rows: TeamSalesDashboardData["customerRows"];
+  selectedMember: string;
+  onSelectMember: (member: string) => void;
+}) {
+  const effectiveMember = members.some((member) => member.name === selectedMember)
+    ? selectedMember
+    : members[0]?.name ?? "";
+  const selectedKpi = members.find((member) => member.name === effectiveMember);
+  const memberRows = rows.filter((row) => row.member === effectiveMember);
+
+  return (
+    <section className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-md border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-sm font-semibold text-cyan-100">
+            <Users className="h-4 w-4" />
+            管理者画面
+          </div>
+          <h2 className="mt-3 text-2xl font-semibold text-white">営業担当別 顧客管理データ</h2>
+          <p className="mt-1 max-w-2xl text-sm text-slate-400">
+            現在のセミナー・チーム・流入条件を適用した上で、選択した営業担当のミラー済み明細を確認できます。
+          </p>
+        </div>
+        <label className="grid gap-1 text-sm text-slate-300 lg:w-[280px]">
+          <span className="text-xs font-medium text-slate-400">営業担当</span>
+          <select
+            value={effectiveMember}
+            onChange={(event) => onSelectMember(event.target.value)}
+            className="h-11 rounded-md border border-cyan-300/25 bg-slate-950 px-3 text-sm text-white outline-none"
+          >
+            {members.map((member) => (
+              <option key={member.name} value={member.name}>
+                {member.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {selectedKpi ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <SmallMetric label="対象行" value={`${memberRows.length}件`} />
+          <SmallMetric label="予約枠数" value={`${selectedKpi.reservationSlots}件`} />
+          <SmallMetric label="着座数" value={`${selectedKpi.seated}件`} />
+          <SmallMetric label="成約数" value={`${selectedKpi.closed}件`} />
+          <SmallMetric label="予定込み成約率" value={formatPercent(selectedKpi.projectedRate)} />
+        </div>
+      ) : null}
+
+      {memberRows.length ? (
+        <>
+          <div className="mt-5 hidden overflow-x-auto rounded-lg border border-white/10 lg:block">
+            <table className="w-full min-w-[1080px] border-collapse text-sm">
+              <thead className="bg-slate-900 text-xs text-slate-400">
+                <tr>
+                  <th className="px-3 py-3 text-left">面談日</th>
+                  <th className="px-3 py-3 text-left">セミナー</th>
+                  <th className="px-3 py-3 text-left">流入</th>
+                  <th className="px-3 py-3 text-left">流入経路</th>
+                  <th className="px-3 py-3 text-left">着座</th>
+                  <th className="px-3 py-3 text-left">ステータス</th>
+                  <th className="px-3 py-3 text-left">保留回答予定日</th>
+                  <th className="px-3 py-3 text-left">決着日</th>
+                  <th className="px-3 py-3 text-left">成約プラン</th>
+                  <th className="px-3 py-3 text-left">失注理由</th>
+                  <th className="px-3 py-3 text-left">保留理由</th>
+                </tr>
+              </thead>
+              <tbody>
+                {memberRows.map((row, index) => (
+                  <tr key={`${row.member}-${row.appointmentDate}-${index}`} className="border-t border-white/10 odd:bg-white/[0.02]">
+                    <AdminCell value={row.appointmentDate} />
+                    <AdminCell value={row.seminar} />
+                    <AdminCell value={row.inflow} />
+                    <AdminCell value={row.trafficRoute} />
+                    <AdminCell value={row.seat} />
+                    <AdminCell value={row.status} />
+                    <AdminCell value={row.holdAnswerDate} />
+                    <AdminCell value={row.paymentDate} />
+                    <AdminCell value={row.contractPlan} />
+                    <AdminCell value={row.lostReason} wide />
+                    <AdminCell value={row.holdReason} wide />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-5 grid gap-3 lg:hidden">
+            {memberRows.map((row, index) => (
+              <div key={`${row.member}-${row.appointmentDate}-${index}`} className="rounded-lg border border-white/10 bg-slate-950/35 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-white">{displayAdminValue(row.appointmentDate)}</p>
+                    <p className="mt-1 text-xs text-slate-400">{displayAdminValue(row.seminar)}</p>
+                  </div>
+                  <span className="rounded-md bg-cyan-300/15 px-2 py-1 text-xs font-semibold text-cyan-100">
+                    {displayAdminValue(row.status)}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2 text-sm text-slate-300">
+                  <AdminInfo label="流入" value={row.inflow} />
+                  <AdminInfo label="流入経路" value={row.trafficRoute} />
+                  <AdminInfo label="着座" value={row.seat} />
+                  <AdminInfo label="保留回答予定日" value={row.holdAnswerDate} />
+                  <AdminInfo label="決着日" value={row.paymentDate} />
+                  <AdminInfo label="成約プラン" value={row.contractPlan} />
+                  <AdminInfo label="失注理由" value={row.lostReason} />
+                  <AdminInfo label="保留理由" value={row.holdReason} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="mt-5 rounded-md border border-white/10 bg-slate-950/35 px-3 py-4 text-sm text-slate-400">
+          条件に一致する明細がありません。
+        </p>
+      )}
+    </section>
+  );
+}
+
+function displayAdminValue(value: string) {
+  return value?.trim() || "-";
+}
+
+function AdminCell({ value, wide = false }: { value: string; wide?: boolean }) {
+  return (
+    <td className={`whitespace-normal break-words px-3 py-3 align-top text-slate-300 ${wide ? "min-w-[180px] leading-5" : ""}`}>
+      {displayAdminValue(value)}
+    </td>
+  );
+}
+
+function AdminInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="mt-0.5 whitespace-normal break-words leading-5 text-slate-200">{displayAdminValue(value)}</p>
+    </div>
   );
 }
 
