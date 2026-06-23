@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdSourceFilter, ReasonCount, TeamMemberKpi, TeamSalesDashboardData, TrafficFilter } from "./data";
 
 type TabKey = "overview" | "members" | "reasons" | "alerts";
-type SortKey = "projectedRate" | "closeRate" | "seatRate" | "seated" | "closed" | "projected" | "lost" | "hold";
+type SortKey = "projectedRate" | "closeRate" | "seatRate" | "reservationSlots" | "seated" | "closed" | "projected" | "lost" | "hold";
 
 const ALL_SEMINARS_LABEL = "全期間";
 const SEMINAR_SEPARATOR = ",";
@@ -33,6 +33,7 @@ const sortButtons: { key: SortKey; label: string }[] = [
   { key: "projectedRate", label: "予定込み成約率" },
   { key: "closeRate", label: "実成約率" },
   { key: "seatRate", label: "着座率" },
+  { key: "reservationSlots", label: "予約枠数" },
   { key: "seated", label: "着座数" },
   { key: "closed", label: "実成約数" },
   { key: "projected", label: "予定込み成約数" },
@@ -503,13 +504,14 @@ export function TeamSalesDashboardClient({
       data.members.reduce(
         (sum, member) => ({
           leads: sum.leads + member.leads,
+          reservationSlots: sum.reservationSlots + member.reservationSlots,
           seated: sum.seated + member.seated,
           closed: sum.closed + member.closed,
           pending: sum.pending + member.pending,
           hold: sum.hold + member.hold,
           alert: sum.alert + member.alert,
         }),
-        { leads: 0, seated: 0, closed: 0, pending: 0, hold: 0, alert: 0 },
+        { leads: 0, reservationSlots: 0, seated: 0, closed: 0, pending: 0, hold: 0, alert: 0 },
       ),
     [data.members],
   );
@@ -830,7 +832,8 @@ export function TeamSalesDashboardClient({
           <span className="text-xs text-slate-500">最終同期: {lastSyncedAt || "確認中"} / 30秒ごとに更新</span>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+          <MetricTile label="予約枠数" value={`${totals.reservationSlots}`} sub={`抽出 ${totals.leads} 件 / 条件適用後`} tone="cyan" icon={CalendarDays} />
           <MetricTile label="実際の着座" value={`${totals.seated}`} sub={`抽出 ${totals.leads} 件 / 着座率 ${formatPercent(seatRate)}`} tone="cyan" icon={Users} />
           <MetricTile label="成約数" value={`${totals.closed}`} sub={`実成約率 ${formatPercent(closeRate)}`} tone="teal" icon={CheckCircle2} />
           <MetricTile label="成約予定" value={`${totals.pending}`} sub={`予定込み成約率 ${formatPercent(projectedRate)}`} tone="amber" icon={TrendingUp} />
@@ -909,10 +912,10 @@ export function TeamSalesDashboardClient({
                       <span className="text-sm font-semibold text-cyan-100">{formatPercent(member.projectedRate)}</span>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-400 sm:grid-cols-4">
+                      <span>予約 {member.reservationSlots}</span>
                       <span>着座 {member.seated}</span>
                       <span>成約 {member.closed}</span>
                       <span>予定 {member.pending}</span>
-                      <span>保留 {member.hold}</span>
                     </div>
                   </button>
                 )) : (
@@ -935,6 +938,7 @@ export function TeamSalesDashboardClient({
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <SmallMetric label="予定込み成約率" value={formatPercent(selected.projectedRate)} />
                 <SmallMetric label="実成約率" value={formatPercent(selected.closeRate)} />
+                <SmallMetric label="予約枠数" value={`${selected.reservationSlots}件`} />
                 <SmallMetric label="着座率" value={formatPercent(selected.seatRate)} />
                 <SmallMetric label="成約予定" value={`${selected.pending}件`} />
                 <SmallMetric label="成約内訳" value={formatPlanBreakdown(selected)} />
@@ -1053,7 +1057,7 @@ function MemberTable({
                   <span className="rounded bg-cyan-300/15 px-1.5 py-0.5 text-xs font-semibold text-cyan-100">#{index + 1}</span>
                   <p className="truncate font-semibold text-white">{member.name}</p>
                 </div>
-                <p className="mt-1 text-xs text-slate-400">抽出 {member.leads}件 / 着座 {member.seated}件</p>
+                <p className="mt-1 text-xs text-slate-400">抽出 {member.leads}件 / 予約 {member.reservationSlots}件 / 着座 {member.seated}件</p>
               </div>
               {member.alert > 0 ? (
                 <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-100">
@@ -1064,6 +1068,7 @@ function MemberTable({
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
               <SmallMetric label="着座率" value={formatPercent(member.seatRate)} />
+              <SmallMetric label="予約枠数" value={`${member.reservationSlots}`} />
               <SmallMetric label="実成約率" value={formatPercent(member.closeRate)} />
               <SmallMetric label="予定込み" value={formatPercent(member.projectedRate)} />
               <SmallMetric label="成約/予定/保留" value={`${member.closed}/${member.pending}/${member.hold}`} />
@@ -1077,9 +1082,9 @@ function MemberTable({
           <thead className="bg-slate-900 text-xs uppercase text-slate-400">
             <tr>
               <th className="w-[5%] px-3 py-3 text-right">順位</th>
-              <th className="w-[12%] px-3 py-3 text-left">メンバー</th>
-              <th className="w-[10%] px-3 py-3 text-left">チーム</th>
-              <th className="w-[9%] px-3 py-3 text-right">抽出/着座</th>
+              <th className="w-[11%] px-3 py-3 text-left">メンバー</th>
+              <th className="w-[9%] px-3 py-3 text-left">チーム</th>
+              <th className="w-[11%] px-3 py-3 text-right">抽出/予約/着座</th>
               <th className="w-[13%] px-3 py-3 text-left">着座率</th>
               <th className="w-[8%] px-3 py-3 text-right">成約/予定</th>
               <th className="w-[12%] px-3 py-3 text-right">成約内訳</th>
@@ -1101,7 +1106,7 @@ function MemberTable({
                 <td className="px-3 py-3 text-right font-semibold text-cyan-100">#{index + 1}</td>
                 <td className="truncate px-3 py-3 font-medium text-white" title={member.name}>{member.name}</td>
                 <td className="truncate px-3 py-3 text-slate-400" title={member.team}>{member.team}</td>
-                <td className="px-3 py-3 text-right text-slate-300">{member.leads}/{member.seated}</td>
+                <td className="px-3 py-3 text-right text-slate-300">{member.leads}/{member.reservationSlots}/{member.seated}</td>
                 <td className="px-3 py-3">
                   <div className="flex items-center gap-2">
                     <span className="w-12 shrink-0 text-right text-slate-200">{formatPercent(member.seatRate)}</span>

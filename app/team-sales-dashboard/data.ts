@@ -18,6 +18,7 @@ export type TeamMemberKpi = {
   name: string;
   team: string;
   leads: number;
+  reservationSlots: number;
   seated: number;
   seatRate: number;
   closed: number;

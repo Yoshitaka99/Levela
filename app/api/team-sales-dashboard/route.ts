@@ -50,6 +50,24 @@ const EXCLUDED_SEAT_STATUSES = new Set([
   "重複予約",
   "無効アポ",
 ]);
+const EXCLUDED_INTERVIEW_STATUSES = new Set(["MLM失注"]);
+const RESERVATION_SLOT_SEAT_STATUSES = new Set([
+  "着座",
+  "着席",
+  "日程変更→着座",
+  "飛び",
+  "事前キャンセル",
+  "【その場】事前キャンセル",
+  "リスケ/再日程調整中",
+  "【その場】リスケ/日程調整中",
+  "【その場】リスケ/再日程調整中",
+  "日程調整済",
+  "日程調整中→返信なし",
+  "日程調整→返信なし",
+  "【その場】日程調整済",
+  "【その場】日程調整→返信なし",
+  "営業マン都合キャンセル",
+]);
 const DATA_CACHE_TTL_MS = 60_000;
 
 type TeamSalesDataCacheEntry = {
@@ -387,8 +405,20 @@ function isHoldStatus(status: string) {
   return status.trim() === "保留";
 }
 
+function normalizeKpiStatusLabel(value: string) {
+  return value.trim().replace(/／/g, "/").replace(/\s+/g, "");
+}
+
 function isExcludedFromSeatBase(seat: string) {
-  return EXCLUDED_SEAT_STATUSES.has(seat.trim());
+  return EXCLUDED_SEAT_STATUSES.has(normalizeKpiStatusLabel(seat));
+}
+
+function isExcludedFromInterviewBase(seat: string, status: string) {
+  return isExcludedFromSeatBase(seat) || EXCLUDED_INTERVIEW_STATUSES.has(normalizeKpiStatusLabel(status));
+}
+
+function isReservationSlot(seat: string) {
+  return RESERVATION_SLOT_SEAT_STATUSES.has(normalizeKpiStatusLabel(seat));
 }
 
 function isSeated(seat: string) {
@@ -564,8 +594,9 @@ function aggregateRows(
     const member = getMember(row);
     const seminar = getSeminar(row);
     const seat = getSeat(row);
+    const status = getStatus(row);
     const matchesSeminar = selectedSeminars.includes(ALL_SEMINARS) || selectedSeminars.includes(seminar);
-    return member && !isExcludedMember(member) && matchesSeminar && matchesTrafficFilter(row, selectedTraffic, selectedAdSource) && !isExcludedFromSeatBase(seat);
+    return member && !isExcludedMember(member) && matchesSeminar && matchesTrafficFilter(row, selectedTraffic, selectedAdSource) && !isExcludedFromInterviewBase(seat, status);
   });
 
   const memberNames = [...new Set(seminarRows.map((row) => getMember(row)))].sort((a, b) => compareMembersByTeamOrder(a, b, teamDefinitions));
@@ -592,6 +623,7 @@ function aggregateRows(
     const lostReasons = new Map<string, number>();
     const holdReasons = new Map<string, number>();
     const holdReasonDates = new Map<string, Set<string>>();
+    let reservationSlots = 0;
     let seated = 0;
     let closed = 0;
     let tokushinClosed = 0;
@@ -609,6 +641,7 @@ function aggregateRows(
       const holdAnswerDate = getHoldAnswerDate(row);
       const contractPlan = normalizeContractPlan(getContractPlan(row));
 
+      if (isReservationSlot(seat)) reservationSlots += 1;
       if (isSeated(seat)) seated += 1;
       if (isClosedStatus(status)) {
         closed += 1;
@@ -635,6 +668,7 @@ function aggregateRows(
       name,
       team: resolveTeamForMember(name, teamDefinitions),
       leads,
+      reservationSlots,
       seated,
       seatRate: leads ? (seated / leads) * 100 : 0,
       closed,
