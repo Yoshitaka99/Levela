@@ -1068,7 +1068,25 @@ function AdminCustomerPanel({
     ? selectedMember
     : members[0]?.name ?? "";
   const selectedKpi = members.find((member) => member.name === effectiveMember);
-  const memberRows = rows.filter((row) => row.member === effectiveMember);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const memberRowsAll = useMemo(
+    () => rows.filter((row) => row.member === effectiveMember),
+    [effectiveMember, rows],
+  );
+  const statusOptions = useMemo(
+    () =>
+      [...new Set(memberRowsAll.map((row) => row.status.trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, "ja")),
+    [memberRowsAll],
+  );
+  const effectiveStatusFilter = statusFilter === "all" || statusOptions.includes(statusFilter) ? statusFilter : "all";
+  const memberRows = useMemo(
+    () =>
+      effectiveStatusFilter === "all"
+        ? memberRowsAll
+        : memberRowsAll.filter((row) => row.status.trim() === effectiveStatusFilter),
+    [effectiveStatusFilter, memberRowsAll],
+  );
 
   return (
     <section className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-4">
@@ -1097,11 +1115,27 @@ function AdminCustomerPanel({
             ))}
           </select>
         </label>
+        <label className="grid gap-1 text-sm text-slate-300 lg:w-[280px]">
+          <span className="text-xs font-medium text-slate-400">実施後ステータス</span>
+          <select
+            value={effectiveStatusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            className="h-11 rounded-md border border-cyan-300/25 bg-slate-950 px-3 text-sm text-white outline-none"
+          >
+            <option value="all">全ステータス</option>
+            {statusOptions.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {selectedKpi ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <SmallMetric label="対象行" value={`${memberRows.length}件`} />
+          <SmallMetric label="担当者全体" value={`${memberRowsAll.length}件`} />
           <SmallMetric label="予約枠数" value={`${selectedKpi.reservationSlots}件`} />
           <SmallMetric label="着座数" value={`${selectedKpi.seated}件`} />
           <SmallMetric label="成約数" value={`${selectedKpi.closed}件`} />
