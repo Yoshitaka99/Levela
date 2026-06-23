@@ -20,6 +20,7 @@ type TabKey = "overview" | "members" | "reasons" | "alerts";
 type SortKey = "projectedRate" | "closeRate" | "seatRate" | "reservationSlots" | "seated" | "closed" | "projected" | "lost" | "hold";
 type ViewMode = "user" | "admin";
 
+const ALL_ADMIN_MEMBERS = "all";
 const ALL_SEMINARS_LABEL = "全期間";
 const SEMINAR_SEPARATOR = ",";
 
@@ -449,9 +450,11 @@ export function TeamSalesDashboardClient({
   const [onlyAlerts, setOnlyAlerts] = useState(initialOnlyAlerts);
   const [onlyHold, setOnlyHold] = useState(initialOnlyHold);
   const [selectedMember, setSelectedMember] = useState(
-    initialData.members.some((member) => member.name === initialMember)
-      ? initialMember ?? ""
-      : initialData.members[0]?.name ?? "",
+    initialMember === ALL_ADMIN_MEMBERS
+      ? ALL_ADMIN_MEMBERS
+      : initialData.members.some((member) => member.name === initialMember)
+        ? initialMember ?? ""
+        : initialData.members[0]?.name ?? "",
   );
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -485,7 +488,9 @@ export function TeamSalesDashboardClient({
       setSelectedAdSource(nextData.selectedAdSource || requestedAdSource);
       setLastSyncedAt(new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }));
       setSelectedMember((currentMember) =>
-        nextData.members.some((member) => member.name === currentMember) ? currentMember : nextData.members[0]?.name ?? "",
+        currentMember === ALL_ADMIN_MEMBERS || nextData.members.some((member) => member.name === currentMember)
+          ? currentMember
+          : nextData.members[0]?.name ?? "",
       );
     } finally {
       if (requestId === refreshRequestRef.current) setIsRefreshing(false);
@@ -542,6 +547,7 @@ export function TeamSalesDashboardClient({
 
   useEffect(() => {
     if (!filteredMembers.length) return;
+    if (selectedMember === ALL_ADMIN_MEMBERS) return;
     if (!filteredMembers.some((member) => member.name === selectedMember)) {
       setSelectedMember(filteredMembers[0].name);
     }
@@ -876,7 +882,7 @@ export function TeamSalesDashboardClient({
           <AdminCustomerPanel
             members={filteredMembers}
             rows={data.customerRows ?? []}
-            selectedMember={selected?.name ?? ""}
+            selectedMember={selectedMember}
             onSelectMember={selectAdminMember}
           />
         ) : (
@@ -1064,14 +1070,37 @@ function AdminCustomerPanel({
   selectedMember: string;
   onSelectMember: (member: string) => void;
 }) {
-  const effectiveMember = members.some((member) => member.name === selectedMember)
-    ? selectedMember
-    : members[0]?.name ?? "";
+  const isAllMembers = selectedMember === ALL_ADMIN_MEMBERS;
+  const effectiveMember = isAllMembers
+    ? ALL_ADMIN_MEMBERS
+    : members.some((member) => member.name === selectedMember)
+      ? selectedMember
+      : members[0]?.name ?? "";
   const selectedKpi = members.find((member) => member.name === effectiveMember);
+  const summaryKpi = useMemo(() => {
+    if (!isAllMembers) return selectedKpi;
+    const summary = members.reduce(
+      (sum, member) => ({
+        reservationSlots: sum.reservationSlots + member.reservationSlots,
+        seated: sum.seated + member.seated,
+        closed: sum.closed + member.closed,
+        pending: sum.pending + member.pending,
+      }),
+      { reservationSlots: 0, seated: 0, closed: 0, pending: 0 },
+    );
+    return {
+      ...summary,
+      projectedRate: summary.seated ? ((summary.closed + summary.pending) / summary.seated) * 100 : 0,
+    };
+  }, [isAllMembers, members, selectedKpi]);
   const [statusFilter, setStatusFilter] = useState("all");
+  const visibleMemberNames = useMemo(() => new Set(members.map((member) => member.name)), [members]);
   const memberRowsAll = useMemo(
-    () => rows.filter((row) => row.member === effectiveMember),
-    [effectiveMember, rows],
+    () =>
+      isAllMembers
+        ? rows.filter((row) => visibleMemberNames.has(row.member))
+        : rows.filter((row) => row.member === effectiveMember),
+    [effectiveMember, isAllMembers, rows, visibleMemberNames],
   );
   const statusOptions = useMemo(
     () =>
@@ -1108,6 +1137,7 @@ function AdminCustomerPanel({
             onChange={(event) => onSelectMember(event.target.value)}
             className="h-11 rounded-md border border-cyan-300/25 bg-slate-950 px-3 text-sm text-white outline-none"
           >
+            <option value={ALL_ADMIN_MEMBERS}>全て</option>
             {members.map((member) => (
               <option key={member.name} value={member.name}>
                 {member.name}
@@ -1132,14 +1162,14 @@ function AdminCustomerPanel({
         </label>
       </div>
 
-      {selectedKpi ? (
+      {summaryKpi ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <SmallMetric label="対象行" value={`${memberRows.length}件`} />
           <SmallMetric label="担当者全体" value={`${memberRowsAll.length}件`} />
-          <SmallMetric label="予約枠数" value={`${selectedKpi.reservationSlots}件`} />
-          <SmallMetric label="着座数" value={`${selectedKpi.seated}件`} />
-          <SmallMetric label="成約数" value={`${selectedKpi.closed}件`} />
-          <SmallMetric label="予定込み成約率" value={formatPercent(selectedKpi.projectedRate)} />
+          <SmallMetric label="予約枠数" value={`${summaryKpi.reservationSlots}件`} />
+          <SmallMetric label="着座数" value={`${summaryKpi.seated}件`} />
+          <SmallMetric label="成約数" value={`${summaryKpi.closed}件`} />
+          <SmallMetric label="予定込み成約率" value={formatPercent(summaryKpi.projectedRate)} />
         </div>
       ) : null}
 
