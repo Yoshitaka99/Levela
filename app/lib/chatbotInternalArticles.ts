@@ -59,8 +59,10 @@ function loadOcrResults(): RawOcrResult[] {
 const imageBlocksBySourceUrl = loadOcrResults().reduce<
   Record<string, ChatbotInternalArticleBlock[]>
 >((grouped, item) => {
-  const fileName = path.basename(item.local_path);
+  const fileName = item.local_path.replace(/\\/g, "/").split("/").at(-1);
   const blocks = grouped[item.source_url] ?? [];
+
+  if (!fileName) return grouped;
 
   blocks.push({
     type: "image",

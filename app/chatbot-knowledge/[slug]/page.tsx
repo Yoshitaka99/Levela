@@ -153,12 +153,13 @@ function ArticleBlock({
   }
 
   if (block.type === "image") {
-    const size = imageSizes[block.src] ?? { width: 1200, height: 800 };
+    const src = normalizeKnowledgeImageSrc(block.src);
+    const size = imageSizes[src] ?? { width: 1200, height: 800 };
 
     return (
       <div className="overflow-hidden rounded-sm bg-[#202020]">
         <Image
-          src={block.src}
+          src={src}
           alt={block.alt}
           width={size.width}
           height={size.height}
@@ -170,6 +171,13 @@ function ArticleBlock({
   }
 
   return <NotionText markdown={block.markdown} />;
+}
+
+function normalizeKnowledgeImageSrc(src: string) {
+  if (!src.startsWith("/chatbot-knowledge/assets/")) return src;
+
+  const fileName = src.replace(/\\/g, "/").split("/").at(-1);
+  return fileName ? `/chatbot-knowledge/assets/${fileName}` : src;
 }
 
 type ParsedLine =
