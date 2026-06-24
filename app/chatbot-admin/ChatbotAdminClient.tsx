@@ -141,9 +141,23 @@ export function ChatbotAdminClient({
   );
   const filteredQuestionLogs = useMemo(() => {
     const records = questionLogData?.records ?? [];
-    if (questionLogFilter === "all") return records;
+    const visibleRecords =
+      questionLogFilter === "all"
+        ? records
+        : records.filter((record) => record.answerStatus === questionLogFilter);
 
-    return records.filter((record) => record.answerStatus === questionLogFilter);
+    return [...visibleRecords].sort((a, b) => {
+      const statusRank: Record<ChatbotQuestionAnswerStatus, number> = {
+        unanswered: 3,
+        needs_review: 2,
+        answered: 1,
+      };
+
+      return (
+        statusRank[b.answerStatus] - statusRank[a.answerStatus] ||
+        new Date(b.askedAt).getTime() - new Date(a.askedAt).getTime()
+      );
+    });
   }, [questionLogData?.records, questionLogFilter]);
 
   const { messages, sendMessage, status, stop, regenerate, error } = useChat({
@@ -388,7 +402,15 @@ export function ChatbotAdminClient({
               onRefresh={loadQuestionLogs}
             />
 
-          <div className="flex min-h-[520px] flex-col overflow-hidden rounded-lg border border-border bg-card">
+            <details className="rounded-lg border border-slate-800 bg-slate-950/60">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-200 marker:text-slate-500">
+                管理用プロンプトの動作確認
+                <span className="ml-2 text-xs font-normal text-slate-500">
+                  API接続や回答の出方を確認する時だけ開きます
+                </span>
+              </summary>
+
+          <div className="flex min-h-[520px] flex-col overflow-hidden border-t border-slate-800 bg-card">
             <Conversation className="min-h-0">
               <ConversationContent className="min-h-full gap-5 p-4 md:p-6">
                 {messages.length === 0 ? (
@@ -502,6 +524,7 @@ export function ChatbotAdminClient({
               </PromptInput>
             </div>
           </div>
+            </details>
           </div>
         </section>
       </div>
@@ -536,16 +559,16 @@ function QuestionLogPanel({
   ];
 
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <div className="flex flex-col gap-3 border-b border-border pb-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="mb-2 inline-flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground">
+    <section className="rounded-lg border border-slate-800 bg-slate-950/80 p-4 shadow-xl shadow-black/20">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 inline-flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs text-slate-400">
             <ClipboardList className="size-3.5" />
             question logs
           </div>
-          <h2 className="text-lg font-semibold">質問ログ</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            一般ユーザー画面で質問された内容を、大ジャンル・小ジャンル・回答状態で確認します。
+          <h2 className="text-xl font-semibold">質問ログ</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">
+            一般ユーザー画面で質問された内容を、未回答・要確認を見落とさない順番で確認します。
           </p>
         </div>
         <Button
@@ -561,7 +584,7 @@ function QuestionLogPanel({
         </Button>
       </div>
 
-      <div className="grid gap-3 py-4 md:grid-cols-4">
+      <div className="grid gap-2 py-4 md:grid-cols-4">
         <MetricCard
           icon={BarChart3}
           label="質問数"
@@ -587,23 +610,7 @@ function QuestionLogPanel({
         )}
       </div>
 
-      {summary?.byMajorCategory.length ? (
-        <div className="mb-4 flex flex-wrap gap-2">
-          {summary.byMajorCategory.map((item) => (
-            <span
-              key={item.category}
-              className="rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground"
-            >
-              {item.category}
-              <span className="ml-1 font-semibold text-slate-50">
-                {item.count}
-              </span>
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="mb-3 flex flex-wrap gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         {statusFilters.map((item) => {
           const active = filter === item;
           const label =
@@ -616,7 +623,7 @@ function QuestionLogPanel({
               className={
                 active
                   ? "rounded-full border border-cyan-300/60 bg-cyan-300/10 px-3 py-1.5 text-xs font-medium text-cyan-100"
-                  : "rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition hover:border-slate-500 hover:text-slate-50"
+                  : "rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-400 transition hover:border-slate-600 hover:text-slate-100"
               }
               onClick={() => onFilterChange(item)}
             >
@@ -625,6 +632,22 @@ function QuestionLogPanel({
           );
         })}
       </div>
+
+      {summary?.byMajorCategory.length ? (
+        <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-800 pb-4">
+          {summary.byMajorCategory.map((item) => (
+            <span
+              key={item.category}
+              className="rounded-full border border-slate-800 bg-slate-900 px-3 py-1 text-xs text-slate-400"
+            >
+              {item.category}
+              <span className="ml-1 font-semibold text-slate-100">
+                {item.count}
+              </span>
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       {error ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -641,19 +664,10 @@ function QuestionLogPanel({
       ) : null}
 
       {filteredRecords.length > 0 ? (
-        <div className="max-h-[360px] overflow-auto rounded-md border border-border">
-          <div className="grid grid-cols-[148px_132px_132px_112px_1fr] border-b border-border bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
-            <div>日時</div>
-            <div>大ジャンル</div>
-            <div>小ジャンル</div>
-            <div>回答状態</div>
-            <div>質問詳細</div>
-          </div>
-          <div className="divide-y divide-border">
-            {filteredRecords.map((record) => (
-              <QuestionLogRow key={record.id} record={record} />
-            ))}
-          </div>
+        <div className="max-h-[460px] space-y-2 overflow-auto pr-1">
+          {filteredRecords.map((record) => (
+            <QuestionLogRow key={record.id} record={record} />
+          ))}
         </div>
       ) : null}
 
@@ -676,8 +690,8 @@ function MetricCard({
   value: string;
 }) {
   return (
-    <div className="rounded-md border border-border bg-background px-3 py-2">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+    <div className="rounded-md border border-slate-800 bg-slate-900 px-3 py-2">
+      <div className="flex items-center gap-2 text-xs text-slate-400">
         <Icon className="size-3.5" />
         {label}
       </div>
@@ -691,27 +705,38 @@ function QuestionLogRow({ record }: { record: ChatbotQuestionLogRecord }) {
   const Icon = style.icon;
 
   return (
-    <div className="grid grid-cols-[148px_132px_132px_112px_1fr] gap-0 px-3 py-3 text-sm">
-      <div className="text-xs leading-5 text-muted-foreground">
-        {formatAskedAt(record.askedAt)}
+    <article className="rounded-md border border-slate-800 bg-slate-900/70 px-3 py-3 text-sm">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] ${style.className}`}
+          >
+            <Icon className="size-3" />
+            {style.label}
+          </span>
+          <span className="rounded-full border border-slate-700 px-2 py-1 text-[11px] text-slate-300">
+            {record.majorCategory}
+          </span>
+          <span className="rounded-full border border-slate-800 px-2 py-1 text-[11px] text-slate-400">
+            {record.minorCategory}
+          </span>
+        </div>
+        <div className="shrink-0 text-xs leading-5 text-slate-500">
+          {formatAskedAt(record.askedAt)}
+        </div>
       </div>
-      <div className="pr-3 font-medium">{record.majorCategory}</div>
-      <div className="pr-3 text-muted-foreground">{record.minorCategory}</div>
-      <div>
-        <span
-          className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] ${style.className}`}
-        >
-          <Icon className="size-3" />
-          {style.label}
-        </span>
+
+      <p className="mt-3 whitespace-pre-wrap break-words leading-6 text-slate-100">
+        {record.questionText}
+      </p>
+
+      <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
+        <span>参照候補 {record.matchedSourceCount}件</span>
+        {record.answerStatus !== "answered" ? (
+          <span>確認対象として残します</span>
+        ) : null}
       </div>
-      <div className="min-w-0">
-        <p className="line-clamp-2 leading-5">{record.questionText}</p>
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          参照候補 {record.matchedSourceCount}件
-        </p>
-      </div>
-    </div>
+    </article>
   );
 }
 
@@ -766,9 +791,9 @@ function combineQuestionLogRecords(
   second: ChatbotQuestionLogRecord
 ): ChatbotQuestionLogRecord {
   const statusRank: Record<ChatbotQuestionAnswerStatus, number> = {
-    needs_review: 3,
-    answered: 2,
-    unanswered: 1,
+    unanswered: 3,
+    needs_review: 2,
+    answered: 1,
   };
   const answerStatus =
     statusRank[first.answerStatus] >= statusRank[second.answerStatus]

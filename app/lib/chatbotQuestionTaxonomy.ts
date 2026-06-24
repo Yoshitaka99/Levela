@@ -293,8 +293,52 @@ const reviewKeywords = [
   "例外",
 ];
 
+const unansweredAnswerKeywords = [
+  "見つかりません",
+  "見つかりませんでした",
+  "見つけられません",
+  "見つけられませんでした",
+  "見つけれません",
+  "見つけれなかった",
+  "該当しそうな記事を見つけられませんでした",
+  "該当する記事を見つけられませんでした",
+  "該当する情報はありません",
+  "該当情報はありません",
+  "該当なし",
+  "情報不足",
+  "分かりません",
+  "わかりません",
+  "不明です",
+  "確認できません",
+];
+
+const uncertainAnswerKeywords = [
+  "こちらかと思います",
+  "こちらと思います",
+  "近いです",
+  "近そうです",
+  "近そう",
+  "候補です",
+  "候補として",
+  "可能性があります",
+  "かもしれません",
+  "と思われます",
+  "と思います",
+  "推測",
+  "おそらく",
+  "たぶん",
+  "要確認",
+  "確認してください",
+  "確認が必要",
+  "断定できません",
+];
+
 function includesKeyword(text: string, keyword: string) {
   return text.toLowerCase().includes(keyword.toLowerCase());
+}
+
+function normalizeText(text: string) {
+  return text.replace(/\s+/g, " ").trim();
 }
 
 export function classifyChatbotQuestion(
@@ -335,4 +379,34 @@ export function determineChatbotAnswerStatus(
   }
 
   return "answered";
+}
+
+export function determineChatbotAnswerStatusFromAnswer({
+  question,
+  answer,
+  matchedSourceCount,
+}: {
+  question: string;
+  answer: string;
+  matchedSourceCount: number;
+}): ChatbotQuestionAnswerStatus {
+  const normalizedAnswer = normalizeText(answer);
+
+  if (!normalizedAnswer) return "unanswered";
+
+  const hasUnansweredSignal = unansweredAnswerKeywords.some((keyword) =>
+    includesKeyword(normalizedAnswer, keyword)
+  );
+  const hasUncertainSignal = uncertainAnswerKeywords.some((keyword) =>
+    includesKeyword(normalizedAnswer, keyword)
+  );
+
+  if (hasUnansweredSignal && (hasUncertainSignal || matchedSourceCount > 0)) {
+    return "needs_review";
+  }
+
+  if (hasUnansweredSignal) return "unanswered";
+  if (hasUncertainSignal) return "needs_review";
+
+  return determineChatbotAnswerStatus(question, matchedSourceCount);
 }

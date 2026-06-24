@@ -8,7 +8,7 @@ import type {
 import {
   chatbotQuestionAnswerStatusLabels,
   classifyChatbotQuestion,
-  determineChatbotAnswerStatus,
+  determineChatbotAnswerStatusFromAnswer,
   type ChatbotQuestionAnswerStatus,
 } from "./chatbotQuestionTaxonomy";
 
@@ -40,21 +40,11 @@ function inferAnswerStatus(
   questionText: string,
   answerText: string
 ): ChatbotQuestionAnswerStatus {
-  const normalized = answerText.replace(/\s+/g, " ");
-
-  if (
-    !normalized ||
-    normalized.includes("見つかりません") ||
-    normalized.includes("該当") && normalized.includes("ありません") ||
-    normalized.includes("情報不足")
-  ) {
-    return "unanswered";
-  }
-
-  return determineChatbotAnswerStatus(
-    questionText,
-    Math.max(inferMatchedSourceCount(answerText), 1)
-  );
+  return determineChatbotAnswerStatusFromAnswer({
+    question: questionText,
+    answer: answerText,
+    matchedSourceCount: inferMatchedSourceCount(answerText),
+  });
 }
 
 function readRawBrowserLogs() {

@@ -22,6 +22,7 @@ import { appendChatbotQuestionLog } from "@/app/lib/chatbotQuestionLog";
 import {
   classifyChatbotQuestion,
   determineChatbotAnswerStatus,
+  determineChatbotAnswerStatusFromAnswer,
 } from "@/app/lib/chatbotQuestionTaxonomy";
 
 export const maxDuration = 30;
@@ -288,6 +289,37 @@ function createTextResponse(messages: UIMessage[], text: string) {
   return createUIMessageStreamResponse({ stream });
 }
 
+function logQuestionIfNeeded({
+  shouldLogQuestion,
+  lastText,
+  results,
+  answerText,
+}: {
+  shouldLogQuestion: boolean;
+  lastText: string;
+  results: CombinedKnowledgeResult[];
+  answerText?: string;
+}) {
+  if (!shouldLogQuestion || !lastText.trim()) return;
+
+  const classification = classifyChatbotQuestion(lastText);
+
+  appendChatbotQuestionLog({
+    askedAt: new Date().toISOString(),
+    majorCategory: classification.majorCategory,
+    minorCategory: classification.minorCategory,
+    questionText: lastText,
+    answerStatus: answerText
+      ? determineChatbotAnswerStatusFromAnswer({
+          question: lastText,
+          answer: answerText,
+          matchedSourceCount: results.length,
+        })
+      : determineChatbotAnswerStatus(lastText, results.length),
+    matchedSourceCount: results.length,
+  });
+}
+
 export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
   const lastText = extractLastUserText(messages);
@@ -295,28 +327,20 @@ export async function POST(req: Request) {
   const shouldLogQuestion =
     req.headers.get("x-levela-chatbot-surface") === "user";
 
-  if (shouldLogQuestion && lastText.trim()) {
-    const classification = classifyChatbotQuestion(lastText);
-
-    appendChatbotQuestionLog({
-      askedAt: new Date().toISOString(),
-      majorCategory: classification.majorCategory,
-      minorCategory: classification.minorCategory,
-      questionText: lastText,
-      answerStatus: determineChatbotAnswerStatus(lastText, results.length),
-      matchedSourceCount: results.length,
-    });
-  }
-
   if (process.env.CHATBOT_LIVE_OPENAI === "false") {
-    return createTextResponse(messages, buildKnowledgeAnswerV2(lastText));
+    const answerText = buildKnowledgeAnswerV2(lastText);
+    logQuestionIfNeeded({ shouldLogQuestion, lastText, results, answerText });
+
+    return createTextResponse(messages, answerText);
   }
 
   if (!process.env.OPENAI_API_KEY) {
-    return createTextResponse(
-      messages,
-      `${buildKnowledgeAnswerV2(lastText)}\n\n補足: OPENAI_API_KEY が未設定のため、ローカル検索結果を返しています。`
-    );
+    const answerText = `${buildKnowledgeAnswerV2(
+      lastText
+    )}\n\n補足: OPENAI_API_KEY が未設定のため、ローカル検索結果を返しています。`;
+    logQuestionIfNeeded({ shouldLogQuestion, lastText, results, answerText });
+
+    return createTextResponse(messages, answerText);
   }
 
   try {
@@ -352,13 +376,16 @@ export async function POST(req: Request) {
       },
     });
 
-    return createTextResponse(messages, appendVerifiedSourceLinksV2(result.text, results));
+    const answerText = appendVerifiedSourceLinksV2(result.text, results);
+    logQuestionIfNeeded({ shouldLogQuestion, lastText, results, answerText });
+
+    return createTextResponse(messages, answerText);
   } catch (error) {
-    return createTextResponse(
-      messages,
-      `${buildKnowledgeAnswerV2(lastText)}\n\n補足: ${
-        error instanceof Error ? error.message : "OpenAI API 実行に失敗しました。"
-      }`
-    );
+    const answerText = `${buildKnowledgeAnswerV2(lastText)}\n\n補足: ${
+      error instanceof Error ? error.message : "OpenAI API 実行に失敗しました。"
+    }`;
+    logQuestionIfNeeded({ shouldLogQuestion, lastText, results, answerText });
+
+    return createTextResponse(messages, answerText);
   }
 }
