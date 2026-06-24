@@ -1,12 +1,6 @@
-export const chatbotKnowledgeCategories = [
-  "ステータス",
-  "決済",
-  "Lステップ操作",
-  "その他",
-] as const;
+import { chatbotPortalKnowledgeSources } from "./chatbotPortalKnowledgeSources";
 
-export type ChatbotKnowledgeCategory =
-  (typeof chatbotKnowledgeCategories)[number];
+export type ChatbotKnowledgeCategory = string;
 
 export type ChatbotKnowledgeSource = {
   id: string;
@@ -25,7 +19,7 @@ export type ChatbotKnowledgeSearchResult = ChatbotKnowledgeSource & {
   excerpts: string[];
 };
 
-export const chatbotKnowledgeSources: ChatbotKnowledgeSource[] = [
+const baseChatbotKnowledgeSources: ChatbotKnowledgeSource[] = [
   {
     id: "status-seated",
     category: "ステータス",
@@ -336,6 +330,32 @@ export const chatbotKnowledgeSources: ChatbotKnowledgeSource[] = [
     ].join("\n"),
     notes: ["具体的なメンション名はNotion本体参照。"],
   },
+];
+
+function mergeKnowledgeSources(
+  primarySources: ChatbotKnowledgeSource[],
+  additionalSources: ChatbotKnowledgeSource[]
+) {
+  const sourcesByUrl = new Map<string, ChatbotKnowledgeSource>();
+
+  for (const source of additionalSources) {
+    sourcesByUrl.set(source.url, source);
+  }
+
+  for (const source of primarySources) {
+    sourcesByUrl.set(source.url, source);
+  }
+
+  return [...sourcesByUrl.values()];
+}
+
+export const chatbotKnowledgeSources = mergeKnowledgeSources(
+  baseChatbotKnowledgeSources,
+  chatbotPortalKnowledgeSources
+);
+
+export const chatbotKnowledgeCategories = [
+  ...new Set(chatbotKnowledgeSources.map((source) => source.category)),
 ];
 
 type SearchOptions = {

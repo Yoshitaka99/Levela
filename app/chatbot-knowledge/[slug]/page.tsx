@@ -186,7 +186,17 @@ type ParsedLine =
     }
   | {
       type: "list";
+      ordered?: boolean;
       items: string[];
+    }
+  | {
+      type: "quote";
+      text: string;
+    }
+  | {
+      type: "callout";
+      color?: string;
+      lines: string[];
     }
   | {
       type: "divider";
@@ -210,17 +220,48 @@ function NotionText({ markdown }: { markdown: string }) {
         }
 
         if (line.type === "list") {
+          const ListTag = line.ordered ? "ol" : "ul";
           return (
-            <ul
+            <ListTag
               key={index}
-              className="ml-5 list-disc space-y-3 text-[22px] leading-[1.75] marker:text-[#f1f1ef]"
+              className={`ml-6 max-w-full space-y-3 break-words text-[22px] leading-[1.75] marker:text-[#f1f1ef] ${
+                line.ordered ? "list-decimal" : "list-disc"
+              }`}
             >
               {line.items.map((item, itemIndex) => (
                 <li key={`${item}-${itemIndex}`} className="pl-2">
                   <InlineMarkdown value={item} />
                 </li>
               ))}
-            </ul>
+            </ListTag>
+          );
+        }
+
+        if (line.type === "quote") {
+          return (
+            <blockquote
+              key={index}
+              className="max-w-full break-words border-l-4 border-[#5f5f5f] pl-4 text-[21px] leading-[1.7] text-[#d7d7d3]"
+            >
+              <InlineMarkdown value={line.text} />
+            </blockquote>
+          );
+        }
+
+        if (line.type === "callout") {
+          return (
+            <div
+              key={index}
+              className={`max-w-full break-words rounded-md px-4 py-3 text-[20px] leading-[1.7] ${getNotionColorClass(
+                line.color
+              ) || "bg-[#2b2b2b]"}`}
+            >
+              {line.lines.map((item, itemIndex) => (
+                <p key={`${item}-${itemIndex}`} className="my-1">
+                  <InlineMarkdown value={stripHeadingPrefix(item)} />
+                </p>
+              ))}
+            </div>
           );
         }
 
@@ -231,7 +272,7 @@ function NotionText({ markdown }: { markdown: string }) {
             return (
               <h2
                 key={index}
-                className={`mt-10 rounded-md px-1.5 py-1 text-[38px] font-bold leading-[1.2] tracking-normal md:text-[44px] ${getNotionColorClass(
+                className={`mt-10 max-w-full break-words rounded-md px-1.5 py-1 text-[38px] font-bold leading-[1.2] tracking-normal md:text-[44px] ${getNotionColorClass(
                   line.color
                 )}`}
               >
@@ -244,7 +285,7 @@ function NotionText({ markdown }: { markdown: string }) {
             return (
               <h3
                 key={index}
-                className={`mt-8 rounded-md px-1.5 py-1 text-[30px] font-bold leading-[1.25] ${getNotionColorClass(
+                className={`mt-8 max-w-full break-words rounded-md px-1.5 py-1 text-[30px] font-bold leading-[1.25] ${getNotionColorClass(
                   line.color
                 )}`}
               >
@@ -256,7 +297,7 @@ function NotionText({ markdown }: { markdown: string }) {
           return (
             <h4
               key={index}
-              className={`mt-8 rounded-md px-1.5 py-1 text-[26px] font-bold leading-[1.35] ${getNotionColorClass(
+              className={`mt-8 max-w-full break-words rounded-md px-1.5 py-1 text-[26px] font-bold leading-[1.35] ${getNotionColorClass(
                 line.color
               )}`}
             >
@@ -268,7 +309,7 @@ function NotionText({ markdown }: { markdown: string }) {
         return (
           <p
             key={index}
-            className={`rounded-md px-1.5 py-0.5 text-[22px] leading-[1.75] ${getNotionColorClass(
+            className={`max-w-full break-words rounded-md px-1.5 py-0.5 text-[22px] leading-[1.75] ${getNotionColorClass(
               line.color
             )}`}
           >
@@ -300,6 +341,24 @@ function parseNotionMarkdown(markdown: string): ParsedLine[] {
       continue;
     }
 
+    const calloutMatch = rawLine.match(/^<callout(?:\s+color="([^"]+)")?>$/);
+    if (calloutMatch) {
+      const lines: string[] = [];
+      while (rawLines[index + 1] && rawLines[index + 1].trim() !== "</callout>") {
+        index += 1;
+        const calloutLine = rawLines[index].trim();
+        if (calloutLine && calloutLine !== "<empty-block/>") lines.push(calloutLine);
+      }
+      if (rawLines[index + 1]?.trim() === "</callout>") index += 1;
+      parsed.push({ type: "callout", color: calloutMatch[1], lines });
+      continue;
+    }
+
+    if (rawLine.startsWith("> ")) {
+      parsed.push({ type: "quote", text: rawLine.slice(2).trim() });
+      continue;
+    }
+
     if (rawLine.startsWith("- ")) {
       const items = [rawLine.slice(2).trim()];
 
@@ -309,6 +368,19 @@ function parseNotionMarkdown(markdown: string): ParsedLine[] {
       }
 
       parsed.push({ type: "list", items });
+      continue;
+    }
+
+    const orderedMatch = rawLine.match(/^\d+\.\s*(.+)$/);
+    if (orderedMatch) {
+      const items = [orderedMatch[1].trim()];
+
+      while (/^\d+\.\s*/.test(rawLines[index + 1]?.trim() ?? "")) {
+        index += 1;
+        items.push(rawLines[index].trim().replace(/^\d+\.\s*/, "").trim());
+      }
+
+      parsed.push({ type: "list", ordered: true, items });
       continue;
     }
 
@@ -331,16 +403,16 @@ function parseNotionMarkdown(markdown: string): ParsedLine[] {
   return parsed;
 }
 
-function extractNotionColor(value: string) {
-  const colorMatch = value.match(/\s\{color="([^"]+)"\}$/);
+function stripHeadingPrefix(value: string) {
+  return value.replace(/^#{1,6}\s+/, "").replace(/^>\s+/, "");
+}
 
-  if (!colorMatch) {
-    return { text: value, color: undefined };
-  }
+function extractNotionColor(value: string) {
+  const colorMatch = value.match(/\s\{[^}]*color="([^"]+)"[^}]*\}$/);
 
   return {
-    text: value.slice(0, colorMatch.index).trimEnd(),
-    color: colorMatch[1],
+    text: value.replace(/\s\{[^}]+\}$/, "").trimEnd(),
+    color: colorMatch?.[1],
   };
 }
 
@@ -353,13 +425,19 @@ function getNotionColorClass(color?: string) {
     purple_bg: "bg-[#45375a]",
     pink_bg: "bg-[#5a3545]",
     blue_bg: "bg-[#2f405c]",
+    brown_bg: "bg-[#4a3f2a]",
   };
 
   return color ? (classes[color] ?? "") : "";
 }
 
 function InlineMarkdown({ value }: { value: string }) {
-  const segments = value.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+  const cleanValue = value
+    .replace(/<span\b[^>]*>/g, "")
+    .replace(/<\/span>/g, "")
+    .replace(/\\\[/g, "[")
+    .replace(/\\\]/g, "]");
+  const segments = cleanValue.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
 
   return (
     <>
