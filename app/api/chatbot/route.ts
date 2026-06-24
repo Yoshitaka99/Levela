@@ -245,7 +245,7 @@ export async function POST(req: Request) {
   const lastText = extractLastUserText(messages);
   const results = searchCombinedKnowledge(lastText, 5);
 
-  if (results.length === 0 || process.env.CHATBOT_LIVE_OPENAI === "false") {
+  if (process.env.CHATBOT_LIVE_OPENAI === "false") {
     return createTextResponse(messages, buildKnowledgeAnswer(lastText));
   }
 
@@ -268,6 +268,9 @@ export async function POST(req: Request) {
         "ログインID、パスワード、APIキー、カード番号、口座番号などの機密情報は出さないでください。",
         "回答は短めにしてください。目安は2〜5文。必要なら候補URLを2〜3件まで並べてください。",
         "毎回同じ枕詞にしないでください。ユーザーの聞き方に合わせて自然に返してください。",
+        results.length === 0
+          ? "検索候補が0件の場合、挨拶や雑談には自然に返してください。社内ナレッジが必要な質問なら、カテゴリ一覧を出さずに、もう少し具体的なキーワードを聞いてください。"
+          : "",
         "",
         "検索候補:",
         context,
