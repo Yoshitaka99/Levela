@@ -48,11 +48,13 @@ npm run build      # 本番ビルド（変更後に必須）
 
 ## 命名・コーディング規約
 
-- TypeScript は厳格に。`any` を避け、型を明示する。
+- TypeScript は厳格に。`any` を避け、型を明示する。API ルートの入力は `zod` で検証する。
+- コメントは最小限。コード自体で意図が伝わるようにし、複雑な箇所だけ日本語で補足する。
 - コンポーネントは PascalCase、ファイルは既存ディレクトリの慣習に合わせる
   （ページは `page.tsx`、クライアント部品は `XxxClient.tsx`）。
-- 日本語 UI が基本。文言は既存ページのトーンに合わせる。
-- 詳細は `.claude/rules/frontend.md` と `.claude/rules/backend.md` を参照。
+- 日本語 UI が基本。トーンは親しみやすいカジュアル（短め）に寄せる。
+- コミットメッセージは日本語で書く。
+- 詳細は `.claude/rules/frontend.md` / `.claude/rules/backend.md` / `.claude/rules/git.md` を参照。
 
 ## 自律開発の回し方
 
