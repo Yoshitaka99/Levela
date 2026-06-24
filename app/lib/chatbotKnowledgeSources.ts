@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { chatbotPortalKnowledgeSources } from "./chatbotPortalKnowledgeSources";
 
 export type ChatbotKnowledgeCategory = string;
@@ -18,6 +20,71 @@ export type ChatbotKnowledgeSearchResult = ChatbotKnowledgeSource & {
   score: number;
   excerpts: string[];
 };
+
+type RawNotionPage = {
+  title?: string;
+  category?: string;
+  url: string;
+  markdown: string;
+};
+
+const NOTION_PAGES_PATH = path.join(
+  process.cwd(),
+  "data",
+  "chatbot-notion-pages",
+  "pages.json"
+);
+
+function loadNotionPages(): RawNotionPage[] {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(NOTION_PAGES_PATH, "utf8")) as {
+      pages?: RawNotionPage[];
+    };
+    return Array.isArray(parsed.pages) ? parsed.pages : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeNotionUrlForLookup(url: string) {
+  const id = url
+    .split("?")[0]
+    .split("/")
+    .filter(Boolean)
+    .at(-1)
+    ?.replace(/[^a-fA-F0-9]/g, "")
+    .slice(-32)
+    .toLowerCase();
+
+  if (!id || id.length !== 32) return url;
+
+  if (
+    url.startsWith("/p/") ||
+    url.includes("notion.so/") ||
+    url.includes("notion.site/") ||
+    url.includes("app.notion.com/")
+  ) {
+    return `https://app.notion.com/p/${id}`;
+  }
+
+  return url;
+}
+
+function slugifyNotionUrl(url: string) {
+  const id = url.split("?")[0].split("/").filter(Boolean).at(-1) ?? url;
+  return `portal-${id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 32)}`;
+}
+
+const rawNotionPages = loadNotionPages();
+const notionPageBySourceUrl = rawNotionPages.reduce<
+  Record<string, RawNotionPage>
+>((grouped, page) => {
+  if (page.url && page.markdown?.trim()) {
+    grouped[normalizeNotionUrlForLookup(page.url)] = page;
+  }
+
+  return grouped;
+}, {});
 
 const baseChatbotKnowledgeSources: ChatbotKnowledgeSource[] = [
   {
@@ -332,27 +399,79 @@ const baseChatbotKnowledgeSources: ChatbotKnowledgeSource[] = [
   },
 ];
 
-function mergeKnowledgeSources(
-  primarySources: ChatbotKnowledgeSource[],
-  additionalSources: ChatbotKnowledgeSource[]
-) {
+function uniqueValues(values: (string | undefined)[]) {
+  return values
+    .filter((value): value is string => Boolean(value?.trim()))
+    .filter((value, index, list) => list.indexOf(value) === index);
+}
+
+function hydrateSourceWithNotionPage(
+  source: ChatbotKnowledgeSource
+): ChatbotKnowledgeSource {
+  const page = notionPageBySourceUrl[normalizeNotionUrlForLookup(source.url)];
+  if (!page?.markdown?.trim()) return source;
+
+  return {
+    ...source,
+    title: page.title?.trim() || source.title,
+    sourceTitle: page.title?.trim() || source.sourceTitle,
+    content: page.markdown,
+    tags: uniqueValues([
+      ...source.tags,
+      page.category,
+      page.title,
+      source.category,
+      source.sourceTitle,
+    ]),
+  };
+}
+
+function mergeKnowledgeSources(...sourceGroups: ChatbotKnowledgeSource[][]) {
   const sourcesByUrl = new Map<string, ChatbotKnowledgeSource>();
 
-  for (const source of additionalSources) {
-    sourcesByUrl.set(source.url, source);
-  }
-
-  for (const source of primarySources) {
-    sourcesByUrl.set(source.url, source);
+  for (const sourceGroup of sourceGroups) {
+    for (const source of sourceGroup) {
+      const normalizedUrl = normalizeNotionUrlForLookup(source.url);
+      if (!sourcesByUrl.has(normalizedUrl)) {
+        sourcesByUrl.set(normalizedUrl, source);
+      }
+    }
   }
 
   return [...sourcesByUrl.values()];
 }
 
-export const chatbotKnowledgeSources = mergeKnowledgeSources(
+const listedKnowledgeSources = mergeKnowledgeSources(
   baseChatbotKnowledgeSources,
   chatbotPortalKnowledgeSources
+).map(hydrateSourceWithNotionPage);
+
+const listedSourceUrls = new Set(
+  listedKnowledgeSources.map((source) => normalizeNotionUrlForLookup(source.url))
 );
+
+const extraNotionKnowledgeSources: ChatbotKnowledgeSource[] = rawNotionPages
+  .filter(
+    (page) =>
+      page.url &&
+      page.markdown?.trim() &&
+      !listedSourceUrls.has(normalizeNotionUrlForLookup(page.url))
+  )
+  .map((page) => ({
+    id: slugifyNotionUrl(page.url),
+    category: page.category ?? "Notion",
+    title: page.title ?? "Notion page",
+    sourceTitle: page.title ?? "Notion page",
+    url: page.url,
+    provider: "notion" as const,
+    tags: uniqueValues([page.category, page.title, "Notion"]),
+    content: page.markdown,
+  }));
+
+export const chatbotKnowledgeSources = [
+  ...listedKnowledgeSources,
+  ...extraNotionKnowledgeSources,
+];
 
 export const chatbotKnowledgeCategories = [
   ...new Set(chatbotKnowledgeSources.map((source) => source.category)),

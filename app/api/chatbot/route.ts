@@ -128,12 +128,47 @@ function getDisplayLink(source: CombinedKnowledgeResult) {
   return formatMarkdownLink(source.sourceTitle, getDisplayUrl(source.url));
 }
 
-function buildKnowledgeAnswer(query: string) {
+function cleanExcerpt(text: string) {
+  return text
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\{color="[^"]+"\}/g, "")
+    .replace(/^#{1,6}\s*/g, "")
+    .replace(/^\s*[-*]\s+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getUsefulExcerpts(source: CombinedKnowledgeResult, limit = 3) {
+  return source.excerpts
+    .map(cleanExcerpt)
+    .filter((excerpt) => excerpt.length >= 8)
+    .filter((excerpt) => !/^https?:\/\//.test(excerpt))
+    .filter((excerpt, index, list) => list.indexOf(excerpt) === index)
+    .slice(0, limit);
+}
+
+function buildBriefAnswer(source: CombinedKnowledgeResult) {
+  const excerpts = getUsefulExcerpts(source, 3);
+
+  if (excerpts.length === 0) {
+    return `この件は「${source.sourceTitle}」の記事が一番近いです。詳細は記事内で確認できます。`;
+  }
+
+  return [
+    `この件は「${source.sourceTitle}」の内容が近いです。記事上では、`,
+    ...excerpts.map((excerpt) => `- ${excerpt}`),
+    "という扱いになっています。",
+  ].join("\n");
+}
+
+function buildKnowledgeAnswerV2(query: string) {
   const results = searchCombinedKnowledge(query, 5);
 
   if (results.length === 0) {
     return [
-      "今のナレッジでは該当しそうな記事を見つけられませんでした。",
+      "今のナレッジでは、該当しそうな記事を見つけられませんでした。",
       "",
       "登録済みカテゴリ:",
       ...chatbotKnowledgeCategories.map((category) => {
@@ -150,28 +185,28 @@ function buildKnowledgeAnswer(query: string) {
   const related = results.slice(1);
 
   return [
-    `あ、それなら「${primary.sourceTitle}」っぽいです。`,
+    buildBriefAnswer(primary),
     "",
-    `ページ: ${getDisplayLink(primary)}`,
+    `参考記事: ${getDisplayLink(primary)}`,
     ...(related.length
       ? [
           "",
-          "ほかに近そうな候補:",
-          ...related.map(
-            (source) => `- ${getDisplayLink(source)}`
-          ),
+          "近そうな記事:",
+          ...related.map((source) => `- ${getDisplayLink(source)}`),
         ]
       : []),
   ].join("\n");
 }
 
-function buildChatContext(results: CombinedKnowledgeResult[]) {
+function buildChatContextV2(results: CombinedKnowledgeResult[]) {
   return results
-    .slice(0, 3)
+    .slice(0, 4)
     .map((source, index) => {
       const excerpts = source.excerpts
         .filter(Boolean)
-        .slice(0, 4)
+        .slice(0, 6)
+        .map(cleanExcerpt)
+        .filter(Boolean)
         .map((excerpt) => `  - ${excerpt}`)
         .join("\n");
 
@@ -179,7 +214,7 @@ function buildChatContext(results: CombinedKnowledgeResult[]) {
         `候補${index + 1}`,
         `タイトル: ${source.sourceTitle}`,
         `URL: ${getDisplayUrl(source.url)}`,
-        excerpts ? `抜粋:\n${excerpts}` : "",
+        excerpts ? `本文抜粋:\n${excerpts}` : "",
       ]
         .filter(Boolean)
         .join("\n");
@@ -187,7 +222,7 @@ function buildChatContext(results: CombinedKnowledgeResult[]) {
     .join("\n\n");
 }
 
-function appendVerifiedSourceLinks(
+function appendVerifiedSourceLinksV2(
   text: string,
   results: CombinedKnowledgeResult[]
 ) {
@@ -222,7 +257,7 @@ function appendVerifiedSourceLinks(
 
   if (sourceLines.length === 0) return linkedText;
 
-  return [`${linkedText.trim()}`, "", "参照ページ:", ...sourceLines].join("\n");
+  return [`${linkedText.trim()}`, "", "参考記事:", ...sourceLines].join("\n");
 }
 
 function createTextResponse(messages: UIMessage[], text: string) {
@@ -249,22 +284,27 @@ export async function POST(req: Request) {
   const results = searchCombinedKnowledge(lastText, 5);
 
   if (process.env.CHATBOT_LIVE_OPENAI === "false") {
-    return createTextResponse(messages, buildKnowledgeAnswer(lastText));
+    return createTextResponse(messages, buildKnowledgeAnswerV2(lastText));
   }
 
   if (!process.env.OPENAI_API_KEY) {
     return createTextResponse(
       messages,
-      `${buildKnowledgeAnswer(lastText)}\n\n補足: OPENAI_API_KEY が未設定のため、ローカル検索結果を返しています。`
+      `${buildKnowledgeAnswerV2(lastText)}\n\n補足: OPENAI_API_KEY が未設定のため、ローカル検索結果を返しています。`
     );
   }
 
   try {
-    const context = buildChatContext(results);
+    const context = buildChatContextV2(results);
     const recentMessages = messages.slice(-6);
     const result = await generateText({
       model: openai(process.env.OPENAI_TEXT_MODEL || "gpt-4.1-mini"),
       system: [
+        "あなたはLevelaの社内ナレッジ回答ボットです。",
+        "必ず検索候補の本文抜粋だけを根拠にして、日本語で自然に短く回答してください。候補にない内容は推測で補わないでください。",
+        "返答は必ず、1) 質問への短い回答、2) 参考記事リンク、の順にしてください。URLだけを返す回答は禁止です。",
+        "参考記事は内部記事URLを優先し、/chatbot-knowledge/... の相対URLのまま出してください。Notion URLが内部記事化されている場合はNotion URLを出さないでください。",
+        "ログイン情報、APIキー、カード番号、口座番号などの機密情報は出さないでください。",
         "あなたはLevelaの社内向けチャットボットです。返答は自然な日本語で、社内メンバーが次に見るべきページをすぐ分かるように案内してください。",
         "下の検索候補だけを根拠に回答してください。候補にない内容は推測で補わないでください。",
         "必ず候補にあるURLをそのまま含めてください。内部記事URLがある場合はNotion URLではなく内部記事URLを優先してください。ローカル画像パス、画像番号、OCRという言葉、署名付き画像URLは出さないでください。",
@@ -287,11 +327,11 @@ export async function POST(req: Request) {
       },
     });
 
-    return createTextResponse(messages, appendVerifiedSourceLinks(result.text, results));
+    return createTextResponse(messages, appendVerifiedSourceLinksV2(result.text, results));
   } catch (error) {
     return createTextResponse(
       messages,
-      `${buildKnowledgeAnswer(lastText)}\n\n補足: ${
+      `${buildKnowledgeAnswerV2(lastText)}\n\n補足: ${
         error instanceof Error ? error.message : "OpenAI API 実行に失敗しました。"
       }`
     );
