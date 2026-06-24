@@ -4,12 +4,14 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import Link from "next/link";
 import {
+  BookOpen,
   Bot,
   Braces,
   CalendarClock,
   Database,
   ExternalLink,
   FileText,
+  Images,
   RefreshCcw,
   Settings2,
 } from "lucide-react";
@@ -32,6 +34,7 @@ import {
   PromptInputTextarea,
 } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
+import type { ChatbotAdminSource } from "./adminSources";
 import type { ChatbotKnowledgeCategory } from "@/app/lib/chatbotKnowledgeSources";
 
 const adminStarters = [
@@ -58,18 +61,30 @@ type ChatbotAdminClientProps = {
   sourceCount: number;
   sourceCounts: SourceCount[];
   ocrResultCount: number;
+  sources: ChatbotAdminSource[];
 };
 
 export function ChatbotAdminClient({
   sourceCount,
   sourceCounts,
   ocrResultCount,
+  sources,
 }: ChatbotAdminClientProps) {
   const [input, setInput] = useState("");
   const [clientError, setClientError] = useState("");
+  const [selectedSourceSlug, setSelectedSourceSlug] = useState(
+    () => sources[0]?.slug ?? ""
+  );
   const transport = useMemo(
     () => new DefaultChatTransport({ api: "/api/chatbot" }),
     []
+  );
+  const selectedSource = useMemo(
+    () =>
+      sources.find((source) => source.slug === selectedSourceSlug) ??
+      sources[0] ??
+      null,
+    [selectedSourceSlug, sources]
   );
 
   const { messages, sendMessage, status, stop, regenerate, error } = useChat({
@@ -139,21 +154,120 @@ export function ChatbotAdminClient({
             </div>
 
             <div className="rounded-lg border border-border bg-card p-3">
-              <div className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                <FileText className="size-3.5" />
-                保存済み資料
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <FileText className="size-3.5" />
+                  保存済み資料
+                </div>
+                <div className="rounded-full border border-border bg-background px-2 py-0.5 text-xs text-muted-foreground">
+                  {sourceCount}件
+                </div>
               </div>
-              <div className="mb-3 text-2xl font-semibold">{sourceCount}件</div>
-              <div className="space-y-2">
+
+              <div className="mb-3 grid grid-cols-2 gap-2">
                 {sourceCounts.map((item) => (
-                  <ApiSlot
+                  <div
                     key={item.category}
-                    name={item.category}
-                    state={`${item.count}件`}
-                  />
+                    className="rounded-md border border-border bg-background px-2 py-1.5"
+                  >
+                    <div className="truncate text-[11px] text-muted-foreground">
+                      {item.category}
+                    </div>
+                    <div className="mt-0.5 text-sm font-semibold">
+                      {item.count}件
+                    </div>
+                  </div>
                 ))}
-                <ApiSlot name="画像OCR" state={`${ocrResultCount}件`} />
+                <div className="rounded-md border border-border bg-background px-2 py-1.5">
+                  <div className="truncate text-[11px] text-muted-foreground">
+                    画像OCR
+                  </div>
+                  <div className="mt-0.5 text-sm font-semibold">
+                    {ocrResultCount}件
+                  </div>
+                </div>
               </div>
+
+              <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                {sources.map((source) => {
+                  const selected = selectedSource?.slug === source.slug;
+
+                  return (
+                    <button
+                      key={source.slug}
+                      type="button"
+                      onClick={() => setSelectedSourceSlug(source.slug)}
+                      className={
+                        selected
+                          ? "w-full rounded-md border border-cyan-300/70 bg-cyan-300/10 px-3 py-2 text-left shadow-sm shadow-cyan-950/30"
+                          : "w-full rounded-md border border-border bg-background px-3 py-2 text-left transition-colors hover:border-slate-500 hover:bg-slate-900"
+                      }
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold">
+                            {source.title}
+                          </div>
+                          <div className="mt-1 truncate text-xs text-muted-foreground">
+                            {source.category}
+                          </div>
+                        </div>
+                        <BookOpen className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+                        <span className="rounded bg-muted px-1.5 py-0.5">
+                          本文 {source.textBlockCount}
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5">
+                          <Images className="size-3" />
+                          {source.imageCount}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedSource ? (
+                <div className="mt-4 border-t border-border pt-4">
+                  <div className="mb-2 text-xs font-medium text-muted-foreground">
+                    選択中の資料
+                  </div>
+                  <h2 className="text-base font-semibold leading-6">
+                    {selectedSource.title}
+                  </h2>
+                  <p className="mt-2 line-clamp-4 text-xs leading-5 text-muted-foreground">
+                    {selectedSource.preview || "本文プレビューはありません。"}
+                  </p>
+                  <div className="mt-3 grid gap-2">
+                    <Button
+                      asChild
+                      size="sm"
+                      className="justify-start bg-white text-slate-950 hover:bg-slate-200"
+                    >
+                      <Link href={selectedSource.internalPath}>
+                        <BookOpen className="size-3.5" />
+                        内部記事で見る
+                      </Link>
+                    </Button>
+                    <Button
+                      asChild
+                      size="sm"
+                      variant="outline"
+                      className="justify-start border-slate-700 bg-slate-900 text-slate-50 hover:bg-slate-800 hover:text-white"
+                    >
+                      <a
+                        href={selectedSource.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <ExternalLink className="size-3.5" />
+                        元の資料を開く
+                      </a>
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </aside>
 

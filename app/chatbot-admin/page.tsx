@@ -4,6 +4,7 @@ import {
   chatbotKnowledgeSources,
   getKnowledgeSourceCounts,
 } from "@/app/lib/chatbotKnowledgeSources";
+import { getChatbotAdminSources } from "./adminSources";
 import { ChatbotAdminClient } from "./ChatbotAdminClient";
 
 export const metadata: Metadata = {
@@ -20,6 +21,7 @@ export default function ChatbotAdminPage() {
       sourceCount={chatbotKnowledgeSources.length}
       sourceCounts={getKnowledgeSourceCounts()}
       ocrResultCount={getChatbotOcrResultCount()}
+      sources={getChatbotAdminSources()}
     />
   );
 }
