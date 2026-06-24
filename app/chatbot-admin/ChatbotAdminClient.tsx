@@ -107,6 +107,11 @@ export function ChatbotAdminClient({
     sendMessage({ text });
   }
 
+  function openInternalSource(source: ChatbotAdminSource) {
+    setSelectedSourceSlug(source.slug);
+    window.open(source.internalPath, "_blank", "noopener,noreferrer")?.focus();
+  }
+
   return (
     <main className="dark min-h-screen bg-slate-950 text-slate-50">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-5">
@@ -197,6 +202,9 @@ export function ChatbotAdminClient({
                       key={source.slug}
                       type="button"
                       onClick={() => setSelectedSourceSlug(source.slug)}
+                      onDoubleClick={() => openInternalSource(source)}
+                      aria-label={`${source.title}を選択。ダブルクリックで内部記事を別タブで開く`}
+                      title="ダブルクリックで内部記事を別タブで開く"
                       className={
                         selected
                           ? "w-full rounded-md border border-cyan-300/70 bg-cyan-300/10 px-3 py-2 text-left shadow-sm shadow-cyan-950/30"
