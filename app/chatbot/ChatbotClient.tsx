@@ -373,7 +373,7 @@ export function ChatbotClient() {
               >
                 <ArrowLeft className="size-4" />
               </Button>
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#231815] p-1.5 shadow-lg shadow-[#231815]/15 md:hidden">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-[#dfd1bc] bg-white p-1.5 shadow-lg shadow-[#231815]/10 md:hidden">
                 <Image
                   alt=""
                   aria-hidden="true"
@@ -439,7 +439,7 @@ export function ChatbotClient() {
                         <div className="relative p-6 md:p-7">
                           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#231815] via-[#e60012] to-[#231815]" />
                           <div className="mb-5 flex items-center gap-3">
-                            <div className="flex size-12 items-center justify-center rounded-2xl bg-[#231815] p-1.5 shadow-lg shadow-[#231815]/15">
+                            <div className="flex size-12 items-center justify-center rounded-2xl border border-[#dfd1bc] bg-white p-1.5 shadow-lg shadow-[#231815]/10">
                               <Image
                                 alt=""
                                 aria-hidden="true"
