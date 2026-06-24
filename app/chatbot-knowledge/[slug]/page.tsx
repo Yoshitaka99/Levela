@@ -174,6 +174,7 @@ function ArticleBlock({
 }
 
 function normalizeKnowledgeImageSrc(src: string) {
+  if (src.startsWith("/chatbot-knowledge/assets/notion-crawl/")) return src;
   if (!src.startsWith("/chatbot-knowledge/assets/")) return src;
 
   const fileName = src.replace(/\\/g, "/").split("/").at(-1);
@@ -445,11 +446,29 @@ function InlineMarkdown({ value }: { value: string }) {
     .replace(/<\/span>/g, "")
     .replace(/\\\[/g, "[")
     .replace(/\\\]/g, "]");
-  const segments = cleanValue.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+  const segments = cleanValue
+    .split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g)
+    .filter(Boolean);
 
   return (
     <>
       {segments.map((segment, index) => {
+        const linkMatch = segment.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+        if (linkMatch) {
+          const isInternalLink = linkMatch[2].startsWith("/");
+          return (
+            <a
+              key={`${segment}-${index}`}
+              href={linkMatch[2]}
+              target={isInternalLink ? undefined : "_blank"}
+              rel={isInternalLink ? undefined : "noreferrer"}
+              className="underline decoration-[#7b7b7b] underline-offset-4 transition-colors hover:text-white"
+            >
+              {linkMatch[1]}
+            </a>
+          );
+        }
+
         if (segment.startsWith("**") && segment.endsWith("**")) {
           return (
             <strong key={`${segment}-${index}`}>

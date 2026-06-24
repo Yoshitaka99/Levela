@@ -38,11 +38,24 @@ type RawOcrResult = {
   ocr_text?: string;
 };
 
+type RawNotionPage = {
+  title?: string;
+  category?: string;
+  url: string;
+  markdown: string;
+};
+
 const OCR_RESULTS_PATH = path.join(
   process.cwd(),
   "data",
   "chatbot-ocr",
   "ocr-results.json"
+);
+const NOTION_PAGES_PATH = path.join(
+  process.cwd(),
+  "data",
+  "chatbot-notion-pages",
+  "pages.json"
 );
 
 function loadOcrResults(): RawOcrResult[] {
@@ -54,6 +67,59 @@ function loadOcrResults(): RawOcrResult[] {
   } catch {
     return [];
   }
+}
+
+function loadNotionPages(): RawNotionPage[] {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(NOTION_PAGES_PATH, "utf8")) as {
+      pages?: RawNotionPage[];
+    };
+    return Array.isArray(parsed.pages) ? parsed.pages : [];
+  } catch {
+    return [];
+  }
+}
+
+const rawNotionPages = loadNotionPages();
+
+const notionMarkdownBySourceUrl = rawNotionPages.reduce<Record<string, string>>(
+  (grouped, page) => {
+  if (page.url && page.markdown?.trim()) {
+    grouped[page.url] = page.markdown;
+  }
+
+  return grouped;
+  },
+  {}
+);
+
+function slugifyNotionUrl(url: string) {
+  const id = url.split("?")[0].split("/").filter(Boolean).at(-1) ?? url;
+  return `portal-${id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 32)}`;
+}
+
+function normalizeNotionUrlForLookup(url: string) {
+  const id = url
+    .split("?")[0]
+    .split("/")
+    .filter(Boolean)
+    .at(-1)
+    ?.replace(/[^a-fA-F0-9]/g, "")
+    .slice(-32)
+    .toLowerCase();
+
+  if (!id || id.length !== 32) return null;
+
+  if (
+    url.startsWith("/p/") ||
+    url.includes("notion.so/") ||
+    url.includes("notion.site/") ||
+    url.includes("app.notion.com/")
+  ) {
+    return `https://app.notion.com/p/${id}`;
+  }
+
+  return null;
 }
 
 const imageBlocksBySourceUrl = loadOcrResults().reduce<
@@ -436,11 +502,44 @@ const notionMarkdownOverrides: Record<string, string> = {
   ].join("\n"),
 };
 
-const articles: ChatbotInternalArticle[] = chatbotKnowledgeSources.map((source) => {
-  if (source.id === "payment-method") return paymentMethodArticle;
+const sourceUrls = new Set(chatbotKnowledgeSources.map((source) => source.url));
+const extraNotionSources = rawNotionPages
+  .filter((page) => page.url && page.markdown?.trim() && !sourceUrls.has(page.url))
+  .map((page) => ({
+    id: slugifyNotionUrl(page.url),
+    category: page.category ?? "Notion",
+    title: page.title ?? "Notion page",
+    sourceTitle: page.title ?? "Notion page",
+    url: page.url,
+    provider: "notion" as const,
+    tags: [page.category ?? "Notion", page.title ?? "Notion page"],
+    content: page.markdown,
+    notes: [],
+  }));
 
-  const articleMarkdown = notionMarkdownOverrides[source.id] ?? source.content;
-  const articleBlocks = createArticleBlocksFromMarkdown(source.url, articleMarkdown);
+const articleSources = [...chatbotKnowledgeSources, ...extraNotionSources];
+const internalPathBySourceUrl = articleSources.reduce<Record<string, string>>(
+  (grouped, source) => {
+    const normalized = normalizeNotionUrlForLookup(source.url) ?? source.url;
+    grouped[normalized] = `/chatbot-knowledge/${source.id}`;
+    return grouped;
+  },
+  {}
+);
+
+const articles: ChatbotInternalArticle[] = articleSources.map((source) => {
+  if (source.id === "payment-method" && !notionMarkdownBySourceUrl[source.url]) {
+    return paymentMethodArticle;
+  }
+
+  const articleMarkdown =
+    notionMarkdownBySourceUrl[source.url] ??
+    notionMarkdownOverrides[source.id] ??
+    source.content;
+  const articleBlocks = createArticleBlocksFromMarkdown(
+    source.url,
+    rewriteInternalNotionLinks(articleMarkdown)
+  );
 
   return {
     slug: source.id,
@@ -483,10 +582,20 @@ function createArticleBlocksFromMarkdown(
   }
 
   for (const line of markdown.split("\n")) {
-    if (/^\s*!\[[^\]]*\]\([^)]+\)\s*$/.test(line)) {
+    const imageMatch = line.match(/^\s*!\[[^\]]*\]\(([^)]+)\)\s*$/);
+    if (imageMatch) {
       flushText();
-      const image = localImages.shift();
-      if (image) blocks.push(image);
+      const markdownImageSrc = imageMatch[1].trim();
+      if (markdownImageSrc.startsWith("/chatbot-knowledge/assets/")) {
+        blocks.push({
+          type: "image",
+          src: markdownImageSrc,
+          alt: "Notion image",
+        });
+      } else {
+        const image = localImages.shift();
+        if (image) blocks.push(image);
+      }
       continue;
     }
 
@@ -495,6 +604,14 @@ function createArticleBlocksFromMarkdown(
 
   flushText();
   return blocks;
+}
+
+function rewriteInternalNotionLinks(markdown: string) {
+  return markdown.replace(/\]\(([^)]+)\)/g, (match, href: string) => {
+    const normalized = normalizeNotionUrlForLookup(href);
+    const internalPath = normalized ? internalPathBySourceUrl[normalized] : null;
+    return internalPath ? `](${internalPath})` : match;
+  });
 }
 
 function shouldShowArticleNote(note: string) {
