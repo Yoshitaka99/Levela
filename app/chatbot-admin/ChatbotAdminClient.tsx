@@ -4,18 +4,23 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import Link from "next/link";
 import {
+  AlertTriangle,
+  BarChart3,
   BookOpen,
   Bot,
   Braces,
   CalendarClock,
+  CheckCircle2,
+  ClipboardList,
   Database,
   ExternalLink,
   FileText,
+  HelpCircle,
   Images,
   RefreshCcw,
   Settings2,
 } from "lucide-react";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -36,6 +41,11 @@ import {
 import { Button } from "@/components/ui/button";
 import type { ChatbotAdminSource } from "./adminSources";
 import type { ChatbotKnowledgeCategory } from "@/app/lib/chatbotKnowledgeSources";
+import type {
+  ChatbotQuestionLogRecord,
+  ChatbotQuestionLogSummary,
+} from "@/app/lib/chatbotQuestionLog";
+import type { ChatbotQuestionAnswerStatus } from "@/app/lib/chatbotQuestionTaxonomy";
 
 const adminStarters = [
   {
@@ -64,6 +74,39 @@ type ChatbotAdminClientProps = {
   sources: ChatbotAdminSource[];
 };
 
+type QuestionLogResponse = {
+  records: ChatbotQuestionLogRecord[];
+  summary: ChatbotQuestionLogSummary;
+  updatedAt: string;
+};
+
+type QuestionLogFilter = "all" | ChatbotQuestionAnswerStatus;
+
+const answerStatusStyle: Record<
+  ChatbotQuestionAnswerStatus,
+  {
+    label: string;
+    icon: typeof CheckCircle2;
+    className: string;
+  }
+> = {
+  answered: {
+    label: "回答済み",
+    icon: CheckCircle2,
+    className: "border-emerald-400/40 bg-emerald-400/10 text-emerald-200",
+  },
+  needs_review: {
+    label: "要確認",
+    icon: AlertTriangle,
+    className: "border-amber-300/40 bg-amber-300/10 text-amber-100",
+  },
+  unanswered: {
+    label: "未回答",
+    icon: HelpCircle,
+    className: "border-rose-300/40 bg-rose-300/10 text-rose-100",
+  },
+};
+
 export function ChatbotAdminClient({
   sourceCount,
   sourceCounts,
@@ -75,6 +118,12 @@ export function ChatbotAdminClient({
   const [selectedSourceSlug, setSelectedSourceSlug] = useState(
     () => sources[0]?.slug ?? ""
   );
+  const [questionLogData, setQuestionLogData] =
+    useState<QuestionLogResponse | null>(null);
+  const [questionLogLoading, setQuestionLogLoading] = useState(true);
+  const [questionLogError, setQuestionLogError] = useState("");
+  const [questionLogFilter, setQuestionLogFilter] =
+    useState<QuestionLogFilter>("all");
   const transport = useMemo(
     () => new DefaultChatTransport({ api: "/api/chatbot" }),
     []
@@ -86,6 +135,12 @@ export function ChatbotAdminClient({
       null,
     [selectedSourceSlug, sources]
   );
+  const filteredQuestionLogs = useMemo(() => {
+    const records = questionLogData?.records ?? [];
+    if (questionLogFilter === "all") return records;
+
+    return records.filter((record) => record.answerStatus === questionLogFilter);
+  }, [questionLogData?.records, questionLogFilter]);
 
   const { messages, sendMessage, status, stop, regenerate, error } = useChat({
     transport,
@@ -111,6 +166,35 @@ export function ChatbotAdminClient({
     setSelectedSourceSlug(source.slug);
     window.open(source.internalPath, "_blank", "noopener,noreferrer")?.focus();
   }
+
+  const loadQuestionLogs = useCallback(async () => {
+    setQuestionLogLoading(true);
+    setQuestionLogError("");
+
+    try {
+      const response = await fetch("/api/chatbot/question-logs", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("質問ログを取得できませんでした。");
+      }
+
+      setQuestionLogData((await response.json()) as QuestionLogResponse);
+    } catch (currentError) {
+      setQuestionLogError(
+        currentError instanceof Error
+          ? currentError.message
+          : "質問ログを取得できませんでした。"
+      );
+    } finally {
+      setQuestionLogLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadQuestionLogs();
+  }, [loadQuestionLogs]);
 
   return (
     <main className="dark min-h-screen bg-slate-950 text-slate-50">
@@ -279,7 +363,18 @@ export function ChatbotAdminClient({
             </div>
           </aside>
 
-          <div className="flex min-h-[640px] flex-col overflow-hidden rounded-lg border border-border bg-card">
+          <div className="flex min-h-[640px] min-w-0 flex-col gap-4">
+            <QuestionLogPanel
+              data={questionLogData}
+              error={questionLogError}
+              filter={questionLogFilter}
+              filteredRecords={filteredQuestionLogs}
+              isLoading={questionLogLoading}
+              onFilterChange={setQuestionLogFilter}
+              onRefresh={loadQuestionLogs}
+            />
+
+          <div className="flex min-h-[520px] flex-col overflow-hidden rounded-lg border border-border bg-card">
             <Conversation className="min-h-0">
               <ConversationContent className="min-h-full gap-5 p-4 md:p-6">
                 {messages.length === 0 ? (
@@ -393,10 +488,226 @@ export function ChatbotAdminClient({
               </PromptInput>
             </div>
           </div>
+          </div>
         </section>
       </div>
     </main>
   );
+}
+
+function QuestionLogPanel({
+  data,
+  error,
+  filter,
+  filteredRecords,
+  isLoading,
+  onFilterChange,
+  onRefresh,
+}: {
+  data: QuestionLogResponse | null;
+  error: string;
+  filter: QuestionLogFilter;
+  filteredRecords: ChatbotQuestionLogRecord[];
+  isLoading: boolean;
+  onFilterChange: (filter: QuestionLogFilter) => void;
+  onRefresh: () => void;
+}) {
+  const summary = data?.summary;
+  const total = summary?.total ?? 0;
+  const statusFilters: QuestionLogFilter[] = [
+    "all",
+    "answered",
+    "needs_review",
+    "unanswered",
+  ];
+
+  return (
+    <section className="rounded-lg border border-border bg-card p-4">
+      <div className="flex flex-col gap-3 border-b border-border pb-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground">
+            <ClipboardList className="size-3.5" />
+            question logs
+          </div>
+          <h2 className="text-lg font-semibold">質問ログ</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            一般ユーザー画面で質問された内容を、大ジャンル・小ジャンル・回答状態で確認します。
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-fit border-slate-700 bg-slate-900 text-slate-50 hover:bg-slate-800 hover:text-white"
+          onClick={onRefresh}
+          disabled={isLoading}
+        >
+          <RefreshCcw className={isLoading ? "size-3.5 animate-spin" : "size-3.5"} />
+          更新
+        </Button>
+      </div>
+
+      <div className="grid gap-3 py-4 md:grid-cols-4">
+        <MetricCard
+          icon={BarChart3}
+          label="質問数"
+          value={`${total}件`}
+        />
+        {(["answered", "needs_review", "unanswered"] as ChatbotQuestionAnswerStatus[]).map(
+          (status) => {
+            const style = answerStatusStyle[status];
+            const Icon = style.icon;
+            const count =
+              summary?.byAnswerStatus.find((item) => item.status === status)
+                ?.count ?? 0;
+
+            return (
+              <MetricCard
+                key={status}
+                icon={Icon}
+                label={style.label}
+                value={`${count}件`}
+              />
+            );
+          }
+        )}
+      </div>
+
+      {summary?.byMajorCategory.length ? (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {summary.byMajorCategory.map((item) => (
+            <span
+              key={item.category}
+              className="rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground"
+            >
+              {item.category}
+              <span className="ml-1 font-semibold text-slate-50">
+                {item.count}
+              </span>
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mb-3 flex flex-wrap gap-2">
+        {statusFilters.map((item) => {
+          const active = filter === item;
+          const label =
+            item === "all" ? "すべて" : answerStatusStyle[item].label;
+
+          return (
+            <button
+              key={item}
+              type="button"
+              className={
+                active
+                  ? "rounded-full border border-cyan-300/60 bg-cyan-300/10 px-3 py-1.5 text-xs font-medium text-cyan-100"
+                  : "rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition hover:border-slate-500 hover:text-slate-50"
+              }
+              onClick={() => onFilterChange(item)}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {error ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      {!error && filteredRecords.length === 0 ? (
+        <div className="rounded-md border border-border bg-background px-4 py-6 text-center text-sm text-muted-foreground">
+          {isLoading
+            ? "質問ログを読み込み中です。"
+            : "まだ表示できる質問ログはありません。一般ユーザー画面から質問するとここに表示されます。"}
+        </div>
+      ) : null}
+
+      {filteredRecords.length > 0 ? (
+        <div className="max-h-[360px] overflow-auto rounded-md border border-border">
+          <div className="grid grid-cols-[148px_132px_132px_112px_1fr] border-b border-border bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
+            <div>日時</div>
+            <div>大ジャンル</div>
+            <div>小ジャンル</div>
+            <div>回答状態</div>
+            <div>質問詳細</div>
+          </div>
+          <div className="divide-y divide-border">
+            {filteredRecords.map((record) => (
+              <QuestionLogRow key={record.id} record={record} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {summary?.storageNotice ? (
+        <p className="mt-3 text-xs leading-5 text-muted-foreground">
+          {summary.storageNotice}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function MetricCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof BarChart3;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-background px-3 py-2">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Icon className="size-3.5" />
+        {label}
+      </div>
+      <div className="mt-1 text-lg font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function QuestionLogRow({ record }: { record: ChatbotQuestionLogRecord }) {
+  const style = answerStatusStyle[record.answerStatus];
+  const Icon = style.icon;
+
+  return (
+    <div className="grid grid-cols-[148px_132px_132px_112px_1fr] gap-0 px-3 py-3 text-sm">
+      <div className="text-xs leading-5 text-muted-foreground">
+        {formatAskedAt(record.askedAt)}
+      </div>
+      <div className="pr-3 font-medium">{record.majorCategory}</div>
+      <div className="pr-3 text-muted-foreground">{record.minorCategory}</div>
+      <div>
+        <span
+          className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] ${style.className}`}
+        >
+          <Icon className="size-3" />
+          {style.label}
+        </span>
+      </div>
+      <div className="min-w-0">
+        <p className="line-clamp-2 leading-5">{record.questionText}</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          参照候補 {record.matchedSourceCount}件
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function formatAskedAt(value: string) {
+  return new Intl.DateTimeFormat("ja-JP", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function ApiSlot({ name, state }: { name: string; state: string }) {

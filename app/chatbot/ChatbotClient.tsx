@@ -112,7 +112,11 @@ export function ChatbotClient() {
   const [activeChatId, setActiveChatId] = useState(createChatId);
   const [activeMessages, setActiveMessages] = useState<UIMessage[]>([]);
   const transport = useMemo(
-    () => new DefaultChatTransport({ api: "/api/chatbot" }),
+    () =>
+      new DefaultChatTransport({
+        api: "/api/chatbot",
+        headers: { "x-levela-chatbot-surface": "user" },
+      }),
     []
   );
 

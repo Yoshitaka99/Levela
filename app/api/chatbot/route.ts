@@ -18,6 +18,11 @@ import {
   type ChatbotKnowledgeSearchResult,
   searchChatbotKnowledgeSources,
 } from "@/app/lib/chatbotKnowledgeSources";
+import { appendChatbotQuestionLog } from "@/app/lib/chatbotQuestionLog";
+import {
+  classifyChatbotQuestion,
+  determineChatbotAnswerStatus,
+} from "@/app/lib/chatbotQuestionTaxonomy";
 
 export const maxDuration = 30;
 
@@ -287,6 +292,21 @@ export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
   const lastText = extractLastUserText(messages);
   const results = searchCombinedKnowledge(lastText, 5);
+  const shouldLogQuestion =
+    req.headers.get("x-levela-chatbot-surface") === "user";
+
+  if (shouldLogQuestion && lastText.trim()) {
+    const classification = classifyChatbotQuestion(lastText);
+
+    appendChatbotQuestionLog({
+      askedAt: new Date().toISOString(),
+      majorCategory: classification.majorCategory,
+      minorCategory: classification.minorCategory,
+      questionText: lastText,
+      answerStatus: determineChatbotAnswerStatus(lastText, results.length),
+      matchedSourceCount: results.length,
+    });
+  }
 
   if (process.env.CHATBOT_LIVE_OPENAI === "false") {
     return createTextResponse(messages, buildKnowledgeAnswerV2(lastText));
