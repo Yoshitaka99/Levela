@@ -61,7 +61,7 @@ const TOOL_LOADING = "\u78ba\u8a8d\u4e2d\u3067\u3059";
 const NO_HISTORY = "\u307e\u3060\u5c65\u6b74\u306f\u3042\u308a\u307e\u305b\u3093";
 const CLEAR_HISTORY = "\u5c65\u6b74\u3092\u30af\u30ea\u30a2";
 const UNTITLED = "\u65b0\u3057\u3044\u76f8\u8ac7";
-const START_BUTTON = "\u4eca\u65e5\u3082\u30be\u30b9\uff01\uff01";
+const START_BUTTON = "\u7740\u91d1\u6210\u7d04\u3059\u308b";
 
 const starterPrompts = [
   "\u3053\u306e\u5834\u5408\u3069\u3046\u3059\u308c\u3070\u3044\u3044\uff1f",
@@ -275,14 +275,14 @@ export function ChatbotClient() {
           <nav className="space-y-1 border-b border-[#e4dfd5] p-3 text-sm">
             <Link
               className="flex items-center gap-2 rounded-lg bg-[#ece7dc] px-3 py-2 font-medium text-[#1f2933]"
-              href="/chatbot"
+              href="/sale/chatbot"
             >
               <MessageSquareText className="size-4" />
               {USER_LABEL}
             </Link>
             <Link
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-[#5f6670] hover:bg-[#f0ede7]"
-              href="/chatbot-admin"
+              href="/sale/chatbot/admin"
             >
               <Shield className="size-4" />
               {ADMIN_LABEL}
@@ -377,7 +377,7 @@ export function ChatbotClient() {
                 <Home className="size-4" />
               </Button>
               <Button asChild size="icon" variant="ghost">
-                <Link aria-label={ADMIN_LABEL} href="/chatbot-admin">
+                <Link aria-label={ADMIN_LABEL} href="/sale/chatbot/admin">
                   <Shield className="size-4" />
                 </Link>
               </Button>
