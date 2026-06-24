@@ -275,14 +275,14 @@ export function ChatbotClient() {
           <nav className="space-y-1 border-b border-[#e4dfd5] p-3 text-sm">
             <Link
               className="flex items-center gap-2 rounded-lg bg-[#ece7dc] px-3 py-2 font-medium text-[#1f2933]"
-              href="/chatbot"
+              href="/sale/chatbot"
             >
               <MessageSquareText className="size-4" />
               {USER_LABEL}
             </Link>
             <Link
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-[#5f6670] hover:bg-[#f0ede7]"
-              href="/chatbot-admin"
+              href="/sale/chatbot/admin"
             >
               <Shield className="size-4" />
               {ADMIN_LABEL}
@@ -377,7 +377,7 @@ export function ChatbotClient() {
                 <Home className="size-4" />
               </Button>
               <Button asChild size="icon" variant="ghost">
-                <Link aria-label={ADMIN_LABEL} href="/chatbot-admin">
+                <Link aria-label={ADMIN_LABEL} href="/sale/chatbot/admin">
                   <Shield className="size-4" />
                 </Link>
               </Button>

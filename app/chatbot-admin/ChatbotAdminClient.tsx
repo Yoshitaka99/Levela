@@ -93,7 +93,7 @@ export function ChatbotAdminClient({
   }
 
   return (
-    <main className="dark min-h-screen bg-background text-foreground">
+    <main className="dark min-h-screen bg-slate-950 text-slate-50">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-5">
         <header className="flex flex-col gap-3 border-b border-border pb-4 md:flex-row md:items-end md:justify-between">
           <div>
@@ -108,8 +108,12 @@ export function ChatbotAdminClient({
               API接続、資料URL、実データ連携の確認用画面です。一般ユーザーには見せない前提の操作席です。
             </p>
           </div>
-          <Button asChild variant="outline" className="w-fit">
-            <Link href="/chatbot">
+          <Button
+            asChild
+            variant="outline"
+            className="w-fit border-slate-700 bg-slate-900 text-slate-50 hover:bg-slate-800 hover:text-white"
+          >
+            <Link href="/sale/chatbot">
               一般ユーザー画面を開く
               <ExternalLink className="size-3.5" />
             </Link>
@@ -191,7 +195,13 @@ export function ChatbotAdminClient({
                 ) : (
                   messages.map((message) => (
                     <Message from={message.role} key={message.id}>
-                      <MessageContent>
+                      <MessageContent
+                        className={
+                          message.role === "assistant"
+                            ? "max-w-[min(760px,100%)] text-slate-50"
+                            : "max-w-[min(78%,720px)] bg-white text-slate-950"
+                        }
+                      >
                         {message.parts.map((part, index) => {
                           if (part.type === "text") {
                             return (
@@ -229,12 +239,15 @@ export function ChatbotAdminClient({
             )}
 
             <div className="border-t border-border p-3 md:p-4">
-              <PromptInput onSubmit={submit}>
+              <PromptInput
+                className="rounded-2xl bg-slate-900 text-slate-50 shadow-lg shadow-black/30"
+                onSubmit={submit}
+              >
                 <PromptInputTextarea
                   value={input}
                   onChange={(event) => setInput(event.currentTarget.value)}
                   placeholder="例: 決済まわりの資料URLを確認したい"
-                  className="min-h-20"
+                  className="min-h-20 text-slate-50 placeholder:text-slate-400"
                   disabled={busy}
                 />
                 <div className="flex items-center justify-between gap-2 px-2 pb-2">
@@ -251,6 +264,7 @@ export function ChatbotAdminClient({
                   <PromptInputSubmit
                     status={status}
                     onStop={stop}
+                    className="bg-white text-slate-950 hover:bg-slate-200"
                     disabled={!input.trim() && !busy}
                   />
                 </div>
