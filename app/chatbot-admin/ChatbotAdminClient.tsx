@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Database,
+  Download,
   ExternalLink,
   FileText,
   HelpCircle,
@@ -86,6 +87,11 @@ type QuestionLogResponse = {
 
 type QuestionLogFilter = "all" | ChatbotQuestionAnswerStatus;
 
+type QuestionLogMonthOption = {
+  value: string;
+  label: string;
+};
+
 const answerStatusStyle: Record<
   ChatbotQuestionAnswerStatus,
   {
@@ -128,6 +134,7 @@ export function ChatbotAdminClient({
   const [questionLogError, setQuestionLogError] = useState("");
   const [questionLogFilter, setQuestionLogFilter] =
     useState<QuestionLogFilter>("all");
+  const [questionLogMonth, setQuestionLogMonth] = useState("all");
   const transport = useMemo(
     () => new DefaultChatTransport({ api: "/api/chatbot" }),
     []
@@ -139,12 +146,29 @@ export function ChatbotAdminClient({
       null,
     [selectedSourceSlug, sources]
   );
-  const filteredQuestionLogs = useMemo(() => {
+  const questionLogMonthOptions = useMemo(
+    () => createQuestionLogMonthOptions(questionLogData?.records ?? []),
+    [questionLogData?.records]
+  );
+  const periodQuestionLogs = useMemo(() => {
     const records = questionLogData?.records ?? [];
+    if (questionLogMonth === "all") return records;
+
+    return records.filter(
+      (record) => getQuestionLogMonthKey(record.askedAt) === questionLogMonth
+    );
+  }, [questionLogData?.records, questionLogMonth]);
+  const periodQuestionLogSummary = useMemo(
+    () => summarizeQuestionLogsForBrowser(periodQuestionLogs),
+    [periodQuestionLogs]
+  );
+  const filteredQuestionLogs = useMemo(() => {
     const visibleRecords =
       questionLogFilter === "all"
-        ? records
-        : records.filter((record) => record.answerStatus === questionLogFilter);
+        ? periodQuestionLogs
+        : periodQuestionLogs.filter(
+            (record) => record.answerStatus === questionLogFilter
+          );
 
     return [...visibleRecords].sort((a, b) => {
       const statusRank: Record<ChatbotQuestionAnswerStatus, number> = {
@@ -158,7 +182,7 @@ export function ChatbotAdminClient({
         new Date(b.askedAt).getTime() - new Date(a.askedAt).getTime()
       );
     });
-  }, [questionLogData?.records, questionLogFilter]);
+  }, [periodQuestionLogs, questionLogFilter]);
 
   const { messages, sendMessage, status, stop, regenerate, error } = useChat({
     transport,
@@ -223,6 +247,15 @@ export function ChatbotAdminClient({
   useEffect(() => {
     void loadQuestionLogs();
   }, [loadQuestionLogs]);
+
+  useEffect(() => {
+    if (
+      questionLogMonth !== "all" &&
+      !questionLogMonthOptions.some((option) => option.value === questionLogMonth)
+    ) {
+      setQuestionLogMonth("all");
+    }
+  }, [questionLogMonth, questionLogMonthOptions]);
 
   return (
     <main className="dark min-h-screen bg-slate-950 text-slate-50">
@@ -393,12 +426,23 @@ export function ChatbotAdminClient({
 
           <div className="flex min-h-[640px] min-w-0 flex-col gap-4">
             <QuestionLogPanel
-              data={questionLogData}
               error={questionLogError}
               filter={questionLogFilter}
               filteredRecords={filteredQuestionLogs}
               isLoading={questionLogLoading}
+              monthFilter={questionLogMonth}
+              monthOptions={questionLogMonthOptions}
+              periodSummary={periodQuestionLogSummary}
               onFilterChange={setQuestionLogFilter}
+              onMonthChange={setQuestionLogMonth}
+              onDownloadCsv={() =>
+                downloadQuestionLogCsv({
+                  records: filteredQuestionLogs,
+                  statusFilter: questionLogFilter,
+                  monthFilter: questionLogMonth,
+                  monthOptions: questionLogMonthOptions,
+                })
+              }
               onRefresh={loadQuestionLogs}
             />
 
@@ -533,24 +577,32 @@ export function ChatbotAdminClient({
 }
 
 function QuestionLogPanel({
-  data,
   error,
   filter,
   filteredRecords,
   isLoading,
+  monthFilter,
+  monthOptions,
+  periodSummary,
   onFilterChange,
+  onMonthChange,
+  onDownloadCsv,
   onRefresh,
 }: {
-  data: QuestionLogResponse | null;
   error: string;
   filter: QuestionLogFilter;
   filteredRecords: ChatbotQuestionLogRecord[];
   isLoading: boolean;
+  monthFilter: string;
+  monthOptions: QuestionLogMonthOption[];
+  periodSummary: ChatbotQuestionLogSummary;
   onFilterChange: (filter: QuestionLogFilter) => void;
+  onMonthChange: (value: string) => void;
+  onDownloadCsv: () => void;
   onRefresh: () => void;
 }) {
-  const summary = data?.summary;
-  const total = summary?.total ?? 0;
+  const summary = periodSummary;
+  const total = summary.total;
   const statusFilters: QuestionLogFilter[] = [
     "all",
     "answered",
@@ -584,6 +636,37 @@ function QuestionLogPanel({
         </Button>
       </div>
 
+      <div className="mt-4 grid gap-3 rounded-md border border-slate-800 bg-slate-900/50 p-3 md:grid-cols-[minmax(220px,280px)_1fr_auto] md:items-end">
+        <label className="grid gap-1 text-xs text-slate-400">
+          対象月
+          <select
+            value={monthFilter}
+            onChange={(event) => onMonthChange(event.currentTarget.value)}
+            className="h-10 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-slate-50 outline-none transition focus:border-cyan-300"
+          >
+            <option value="all">すべての期間</option>
+            {monthOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="text-xs leading-5 text-slate-500">
+          表示中の対象月と回答状態フィルタが、そのままCSVダウンロードにも反映されます。
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-fit border-slate-700 bg-slate-950 text-slate-50 hover:bg-slate-800 hover:text-white"
+          onClick={onDownloadCsv}
+          disabled={filteredRecords.length === 0}
+        >
+          <Download className="size-3.5" />
+          CSVダウンロード
+        </Button>
+      </div>
+
       <div className="grid gap-2 py-4 md:grid-cols-4">
         <MetricCard
           icon={BarChart3}
@@ -595,7 +678,7 @@ function QuestionLogPanel({
             const style = answerStatusStyle[status];
             const Icon = style.icon;
             const count =
-              summary?.byAnswerStatus.find((item) => item.status === status)
+              summary.byAnswerStatus.find((item) => item.status === status)
                 ?.count ?? 0;
 
             return (
@@ -633,7 +716,7 @@ function QuestionLogPanel({
         })}
       </div>
 
-      {summary?.byMajorCategory.length ? (
+      {summary.byMajorCategory.length ? (
         <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-800 pb-4">
           {summary.byMajorCategory.map((item) => (
             <span
@@ -671,7 +754,7 @@ function QuestionLogPanel({
         </div>
       ) : null}
 
-      {summary?.storageNotice ? (
+      {summary.storageNotice ? (
         <p className="mt-3 text-xs leading-5 text-muted-foreground">
           {summary.storageNotice}
         </p>
@@ -747,6 +830,108 @@ function formatAskedAt(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatCsvAskedAt(value: string) {
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(value));
+}
+
+function getQuestionLogMonthKey(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "unknown";
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}`;
+}
+
+function formatQuestionLogMonthLabel(monthKey: string) {
+  const [year, month] = monthKey.split("-");
+  if (!year || !month) return "日時不明";
+
+  return `${year}年${Number(month)}月`;
+}
+
+function createQuestionLogMonthOptions(records: ChatbotQuestionLogRecord[]) {
+  const monthKeys = new Set<string>();
+
+  for (const record of records) {
+    const monthKey = getQuestionLogMonthKey(record.askedAt);
+    if (monthKey !== "unknown") monthKeys.add(monthKey);
+  }
+
+  return [...monthKeys]
+    .sort((a, b) => b.localeCompare(a))
+    .map((value) => ({
+      value,
+      label: formatQuestionLogMonthLabel(value),
+    }));
+}
+
+function escapeCsvCell(value: string | number) {
+  const text = String(value).replace(/\r?\n/g, "\n");
+
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadQuestionLogCsv({
+  records,
+  statusFilter,
+  monthFilter,
+  monthOptions,
+}: {
+  records: ChatbotQuestionLogRecord[];
+  statusFilter: QuestionLogFilter;
+  monthFilter: string;
+  monthOptions: QuestionLogMonthOption[];
+}) {
+  if (records.length === 0) return;
+
+  const headers = [
+    "質問日時",
+    "大ジャンル",
+    "小ジャンル",
+    "回答状態",
+    "質問詳細",
+    "参照候補数",
+  ];
+  const rows = records.map((record) => [
+    formatCsvAskedAt(record.askedAt),
+    record.majorCategory,
+    record.minorCategory,
+    answerStatusStyle[record.answerStatus].label,
+    record.questionText,
+    record.matchedSourceCount,
+  ]);
+  const csv = [headers, ...rows]
+    .map((row) => row.map(escapeCsvCell).join(","))
+    .join("\r\n");
+  const blob = new Blob([`\uFEFF${csv}`], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const monthLabel =
+    monthFilter === "all"
+      ? "all-periods"
+      : monthOptions.find((option) => option.value === monthFilter)?.value ??
+        monthFilter;
+  const statusLabel = statusFilter === "all" ? "all-statuses" : statusFilter;
+
+  link.href = url;
+  link.download = `levela-question-logs_${monthLabel}_${statusLabel}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function mergeQuestionLogs(records: ChatbotQuestionLogRecord[]) {
