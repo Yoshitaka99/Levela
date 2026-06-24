@@ -322,14 +322,70 @@ export const MessageBranchPage = ({
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
 const streamdownPlugins = { cjk, code, math, mermaid };
+const streamdownComponents: MessageResponseProps["components"] = {
+  a: (linkProps) => {
+    const { children, className, href } = linkProps;
+    const props = { ...linkProps };
+    delete props.children;
+    delete props.className;
+    delete props.href;
+    delete props.node;
+    delete props.rel;
+    delete props.target;
+
+    if (!href || href === "streamdown:incomplete-link") {
+      return (
+        <span
+          className={cn(
+            "wrap-anywhere font-semibold text-[#b9000f] underline underline-offset-4",
+            className
+          )}
+          data-incomplete={!href || href === "streamdown:incomplete-link"}
+          data-streamdown="link"
+          {...props}
+        >
+          {children}
+        </span>
+      );
+    }
+
+    const isInternalLink = href.startsWith("/") || href.startsWith("#");
+
+    return (
+      <a
+        className={cn(
+          "wrap-anywhere font-semibold text-[#b9000f] underline underline-offset-4 decoration-[#e60012]/50 transition-colors hover:text-[#e60012]",
+          className
+        )}
+        data-streamdown="link"
+        href={href}
+        rel={isInternalLink ? undefined : "noreferrer"}
+        target={isInternalLink ? undefined : "_blank"}
+        {...props}
+      >
+        {children}
+      </a>
+    );
+  },
+};
+const streamdownLinkSafety: MessageResponseProps["linkSafety"] = {
+  enabled: false,
+};
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
+  ({
+    className,
+    components,
+    linkSafety = streamdownLinkSafety,
+    ...props
+  }: MessageResponseProps) => (
     <Streamdown
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
       )}
+      components={{ ...streamdownComponents, ...components }}
+      linkSafety={linkSafety}
       plugins={streamdownPlugins}
       {...props}
     />
