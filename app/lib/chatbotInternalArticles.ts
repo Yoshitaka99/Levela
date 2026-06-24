@@ -68,30 +68,6 @@ const imageBlocksBySourceUrl = loadOcrResults().reduce<
     alt: `${item.source_title} 画像${item.image_index}`,
   });
 
-  const ocrText = item.ocr_text?.trim();
-  if (ocrText) {
-    blocks.push({
-      type: "text",
-      markdown: `画像内テキスト ${item.image_index}\n\n${ocrText}`,
-    });
-  }
-
-  grouped[item.source_url] = blocks;
-  return grouped;
-}, {});
-
-const textBlocksBySourceUrl = loadOcrResults().reduce<
-  Record<string, ChatbotInternalArticleBlock[]>
->((grouped, item) => {
-  const ocrText = item.ocr_text?.trim();
-  if (!ocrText) return grouped;
-
-  const blocks = grouped[item.source_url] ?? [];
-  blocks.push({
-    type: "text",
-    markdown: `画像内テキスト ${item.image_index}\n\n${ocrText}`,
-  });
-
   grouped[item.source_url] = blocks;
   return grouped;
 }, {});
@@ -153,9 +129,6 @@ const paymentMethodArticle: ChatbotInternalArticle = {
       href: "https://app.notion.com/p/221f082e36c2802b8014fff009a3c4c7",
       label: "https://app.notion.com/p/221f082e36c2802b8014fff009a3c4c7",
     },
-    ...(textBlocksBySourceUrl[
-      "https://app.notion.com/p/a5366ab3bdd08386886f81efd3993067"
-    ] ?? []),
     { type: "empty" },
     { type: "empty" },
   ],
@@ -175,7 +148,7 @@ const articles: ChatbotInternalArticle[] = chatbotKnowledgeSources.map((source) 
         type: "text",
         markdown: source.content,
       },
-      ...(source.notes ?? []).map(
+      ...(source.notes ?? []).filter(shouldShowArticleNote).map(
         (note): ChatbotInternalArticleBlock => ({
           type: "text",
           markdown: note,
@@ -185,6 +158,10 @@ const articles: ChatbotInternalArticle[] = chatbotKnowledgeSources.map((source) 
     ],
   };
 });
+
+function shouldShowArticleNote(note: string) {
+  return /https?:\/\//.test(note);
+}
 
 export function getInternalArticleBySlug(slug: string) {
   return articles.find((article) => article.slug === slug) ?? null;
