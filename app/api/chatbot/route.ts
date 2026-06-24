@@ -200,7 +200,7 @@ function buildKnowledgeAnswerV2(query: string) {
 
 function buildChatContextV2(results: CombinedKnowledgeResult[]) {
   return results
-    .slice(0, 4)
+    .slice(0, 3)
     .map((source, index) => {
       const excerpts = source.excerpts
         .filter(Boolean)
@@ -251,13 +251,18 @@ function appendVerifiedSourceLinksV2(
     );
   }, normalizedText);
 
+  const clickableText = linkedText.replace(
+    /(^|[\s　])(\/chatbot-knowledge\/[a-zA-Z0-9-]+)/g,
+    (_match, prefix: string, url: string) => `${prefix}[${url}](${url})`
+  );
+
   const sourceLines = sources
-    .filter((source) => !linkedText.includes(`](${source.url})`))
+    .filter((source) => !clickableText.includes(`](${source.url})`))
     .map((source) => `- ${formatMarkdownLink(source.title, source.url)}`);
 
-  if (sourceLines.length === 0) return linkedText;
+  if (sourceLines.length === 0) return clickableText;
 
-  return [`${linkedText.trim()}`, "", "参考記事:", ...sourceLines].join("\n");
+  return [`${clickableText.trim()}`, "", "参考記事:", ...sourceLines].join("\n");
 }
 
 function createTextResponse(messages: UIMessage[], text: string) {
