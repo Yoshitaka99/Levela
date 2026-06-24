@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, BadgeCheck, ExternalLink, ImageIcon, MessageSquare, Smile } from "lucide-react";
 import {
   getInternalArticleBySlug,
   listInternalArticles,
@@ -71,40 +71,56 @@ export default async function ChatbotKnowledgeArticlePage({
   if (!article) notFound();
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <article className="mx-auto w-full max-w-3xl px-4 py-8 md:py-12">
+    <main className="min-h-screen bg-[#191919] text-[#f1f1ef]">
+      <article className="mx-auto w-full max-w-[1060px] px-4 py-6 md:px-10 md:py-8">
         <Link
           href="/chatbot-knowledge"
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          className="inline-flex items-center gap-2 text-[15px] font-medium text-[#a9a9a9] transition-colors hover:text-[#f1f1ef]"
         >
           <ArrowLeft className="size-4" />
           内部記事一覧へ
         </Link>
 
-        <header className="mt-6 border-b border-border pb-6">
-          <div className="mb-3 text-sm text-muted-foreground">
-            {article.category}
-          </div>
-          <h1 className="text-3xl font-semibold tracking-normal">
+        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[#8a8a8a]">
+          <span className="inline-flex items-center gap-1.5">
+            <Smile className="size-4" />
+            アイコンを追加
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <ImageIcon className="size-4" />
+            カバー画像を追加
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <BadgeCheck className="size-4" />
+            認証を追加
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <MessageSquare className="size-4" />
+            コメントを追加
+          </span>
+        </div>
+
+        <header className="mt-6 pb-8">
+          <h1 className="text-[44px] font-bold leading-[1.12] tracking-normal md:text-[58px]">
             {article.title}
           </h1>
         </header>
 
-        <section className="mt-7 space-y-6">
+        <section className="space-y-5">
           {article.blocks.map((block, index) => (
             <ArticleBlock block={block} index={index} key={index} />
           ))}
         </section>
 
-        <footer className="mt-10 border-t border-border pt-5">
+        <footer className="mt-14 border-t border-[#3f3f3f] pt-6">
           <a
             href={article.sourceUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex items-center gap-2 text-[15px] font-medium text-[#f1f1ef] transition-colors hover:text-[#cfcfcf]"
           >
             元のNotionページを開く
-            <ExternalLink className="size-3.5" />
+            <ExternalLink className="size-4" />
           </a>
         </footer>
       </article>
@@ -129,7 +145,7 @@ function ArticleBlock({
         href={block.href}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex break-all text-sm text-primary underline-offset-4 hover:underline"
+        className="inline-flex break-all text-[20px] leading-8 text-[#d6d6d6] underline decoration-[#7b7b7b] underline-offset-4 hover:text-[#f1f1ef]"
       >
         {block.label}
       </a>
@@ -140,7 +156,7 @@ function ArticleBlock({
     const size = imageSizes[block.src] ?? { width: 1200, height: 800 };
 
     return (
-      <div className="overflow-hidden rounded-lg border border-border bg-muted">
+      <div className="overflow-hidden rounded-sm bg-[#202020]">
         <Image
           src={block.src}
           alt={block.alt}
@@ -156,32 +172,190 @@ function ArticleBlock({
   return <NotionText markdown={block.markdown} />;
 }
 
+type ParsedLine =
+  | {
+      type: "heading";
+      level: 1 | 2 | 3;
+      text: string;
+      color?: string;
+    }
+  | {
+      type: "paragraph";
+      text: string;
+      color?: string;
+    }
+  | {
+      type: "list";
+      items: string[];
+    }
+  | {
+      type: "divider";
+    }
+  | {
+      type: "empty";
+    };
+
 function NotionText({ markdown }: { markdown: string }) {
-  const colorMatch = markdown.match(/\s\{color="([^"]+)"\}$/);
-  const color = colorMatch?.[1];
-  const body = colorMatch
-    ? markdown.slice(0, colorMatch.index).trimEnd()
-    : markdown;
-  const parts = body.split("<br>");
+  const lines = parseNotionMarkdown(markdown);
 
   return (
-    <div
-      className={
-        color === "pink_bg"
-          ? "whitespace-pre-wrap rounded-md bg-rose-500/15 px-3 py-2 text-sm leading-7"
-          : color === "blue_bg"
-            ? "whitespace-pre-wrap rounded-md bg-sky-500/15 px-3 py-2 text-sm leading-7"
-            : "whitespace-pre-wrap text-sm leading-7"
-      }
-    >
-      {parts.map((part, index) => (
-        <span key={`${part}-${index}`}>
-          <InlineMarkdown value={part} />
-          {index < parts.length - 1 ? <br /> : null}
-        </span>
-      ))}
+    <div className="space-y-4">
+      {lines.map((line, index) => {
+        if (line.type === "empty") {
+          return <div key={index} className="h-2" aria-hidden="true" />;
+        }
+
+        if (line.type === "divider") {
+          return <hr key={index} className="my-8 border-[#4a4a4a]" />;
+        }
+
+        if (line.type === "list") {
+          return (
+            <ul
+              key={index}
+              className="ml-5 list-disc space-y-3 text-[22px] leading-[1.75] marker:text-[#f1f1ef]"
+            >
+              {line.items.map((item, itemIndex) => (
+                <li key={`${item}-${itemIndex}`} className="pl-2">
+                  <InlineMarkdown value={item} />
+                </li>
+              ))}
+            </ul>
+          );
+        }
+
+        if (line.type === "heading") {
+          const content = <InlineMarkdown value={line.text} />;
+
+          if (line.level === 1) {
+            return (
+              <h2
+                key={index}
+                className={`mt-10 rounded-md px-1.5 py-1 text-[38px] font-bold leading-[1.2] tracking-normal md:text-[44px] ${getNotionColorClass(
+                  line.color
+                )}`}
+              >
+                {content}
+              </h2>
+            );
+          }
+
+          if (line.level === 2) {
+            return (
+              <h3
+                key={index}
+                className={`mt-8 rounded-md px-1.5 py-1 text-[30px] font-bold leading-[1.25] ${getNotionColorClass(
+                  line.color
+                )}`}
+              >
+                {content}
+              </h3>
+            );
+          }
+
+          return (
+            <h4
+              key={index}
+              className={`mt-8 rounded-md px-1.5 py-1 text-[26px] font-bold leading-[1.35] ${getNotionColorClass(
+                line.color
+              )}`}
+            >
+              {content}
+            </h4>
+          );
+        }
+
+        return (
+          <p
+            key={index}
+            className={`rounded-md px-1.5 py-0.5 text-[22px] leading-[1.75] ${getNotionColorClass(
+              line.color
+            )}`}
+          >
+            <InlineMarkdown value={line.text} />
+          </p>
+        );
+      })}
     </div>
   );
+}
+
+function parseNotionMarkdown(markdown: string): ParsedLine[] {
+  const rawLines = markdown
+    .replace(/<br\s*\/?>/g, "\n")
+    .split("\n")
+    .map((line) => line.trimEnd());
+  const parsed: ParsedLine[] = [];
+
+  for (let index = 0; index < rawLines.length; index += 1) {
+    const rawLine = rawLines[index].trim();
+
+    if (!rawLine || rawLine === "<empty-block/>") {
+      parsed.push({ type: "empty" });
+      continue;
+    }
+
+    if (rawLine === "---") {
+      parsed.push({ type: "divider" });
+      continue;
+    }
+
+    if (rawLine.startsWith("- ")) {
+      const items = [rawLine.slice(2).trim()];
+
+      while (rawLines[index + 1]?.trim().startsWith("- ")) {
+        index += 1;
+        items.push(rawLines[index].trim().slice(2).trim());
+      }
+
+      parsed.push({ type: "list", items });
+      continue;
+    }
+
+    const { text, color } = extractNotionColor(rawLine);
+    const headingMatch = text.match(/^(#{1,3})\s+(.+)$/);
+
+    if (headingMatch) {
+      parsed.push({
+        type: "heading",
+        level: headingMatch[1].length as 1 | 2 | 3,
+        text: headingMatch[2].trim(),
+        color,
+      });
+      continue;
+    }
+
+    parsed.push({ type: "paragraph", text, color });
+  }
+
+  return parsed;
+}
+
+function extractNotionColor(value: string) {
+  const colorMatch = value.match(/\s\{color="([^"]+)"\}$/);
+
+  if (!colorMatch) {
+    return { text: value, color: undefined };
+  }
+
+  return {
+    text: value.slice(0, colorMatch.index).trimEnd(),
+    color: colorMatch[1],
+  };
+}
+
+function getNotionColorClass(color?: string) {
+  const classes: Record<string, string> = {
+    yellow_bg: "bg-[#4f4324]",
+    gray_bg: "bg-[#373938]",
+    red_bg: "bg-[#5a2f2f]",
+    green_bg: "bg-[#314a39]",
+    purple_bg: "bg-[#45375a]",
+    pink_bg: "bg-[#5a3545]",
+    blue_bg: "bg-[#2f405c]",
+  };
+
+  return color ? (classes[color] ?? "") : "";
 }
 
 function InlineMarkdown({ value }: { value: string }) {
