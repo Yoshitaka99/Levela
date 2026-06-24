@@ -33,6 +33,7 @@ import {
   PromptInputTextarea,
 } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
+import { appendBrowserQuestionLogFromMessages } from "@/app/lib/chatbotQuestionLogBrowser";
 
 type StoredChat = {
   id: string;
@@ -127,6 +128,7 @@ export function ChatbotClient() {
     onError: (currentError) => setClientError(currentError.message),
     onFinish: ({ messages: finishedMessages }) => {
       persistChat(finishedMessages);
+      appendBrowserQuestionLogFromMessages(finishedMessages);
     },
   });
 

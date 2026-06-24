@@ -46,6 +46,10 @@ import type {
   ChatbotQuestionLogSummary,
 } from "@/app/lib/chatbotQuestionLog";
 import type { ChatbotQuestionAnswerStatus } from "@/app/lib/chatbotQuestionTaxonomy";
+import {
+  listBrowserQuestionLogs,
+  summarizeQuestionLogsForBrowser,
+} from "@/app/lib/chatbotQuestionLogBrowser";
 
 const adminStarters = [
   {
@@ -180,7 +184,17 @@ export function ChatbotAdminClient({
         throw new Error("質問ログを取得できませんでした。");
       }
 
-      setQuestionLogData((await response.json()) as QuestionLogResponse);
+      const data = (await response.json()) as QuestionLogResponse;
+      const records = mergeQuestionLogs([
+        ...listBrowserQuestionLogs(),
+        ...data.records,
+      ]);
+
+      setQuestionLogData({
+        ...data,
+        records,
+        summary: summarizeQuestionLogsForBrowser(records),
+      });
     } catch (currentError) {
       setQuestionLogError(
         currentError instanceof Error
@@ -708,6 +722,72 @@ function formatAskedAt(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function mergeQuestionLogs(records: ChatbotQuestionLogRecord[]) {
+  const groupedById = new Map<string, ChatbotQuestionLogRecord>();
+
+  for (const record of records) {
+    groupedById.set(record.id, record);
+  }
+
+  const sorted = [...groupedById.values()].sort(
+    (a, b) =>
+      new Date(b.askedAt).getTime() - new Date(a.askedAt).getTime()
+  );
+  const merged: ChatbotQuestionLogRecord[] = [];
+
+  for (const record of sorted) {
+    const duplicateIndex = merged.findIndex(
+      (existing) =>
+        existing.questionText === record.questionText &&
+        Math.abs(
+          new Date(existing.askedAt).getTime() -
+            new Date(record.askedAt).getTime()
+        ) < 60_000
+    );
+
+    if (duplicateIndex === -1) {
+      merged.push(record);
+      continue;
+    }
+
+    merged[duplicateIndex] = combineQuestionLogRecords(
+      merged[duplicateIndex],
+      record
+    );
+  }
+
+  return merged;
+}
+
+function combineQuestionLogRecords(
+  first: ChatbotQuestionLogRecord,
+  second: ChatbotQuestionLogRecord
+): ChatbotQuestionLogRecord {
+  const statusRank: Record<ChatbotQuestionAnswerStatus, number> = {
+    needs_review: 3,
+    answered: 2,
+    unanswered: 1,
+  };
+  const answerStatus =
+    statusRank[first.answerStatus] >= statusRank[second.answerStatus]
+      ? first.answerStatus
+      : second.answerStatus;
+  const askedAt =
+    new Date(first.askedAt).getTime() >= new Date(second.askedAt).getTime()
+      ? first.askedAt
+      : second.askedAt;
+
+  return {
+    ...first,
+    askedAt,
+    answerStatus,
+    matchedSourceCount: Math.max(
+      first.matchedSourceCount,
+      second.matchedSourceCount
+    ),
+  };
 }
 
 function ApiSlot({ name, state }: { name: string; state: string }) {

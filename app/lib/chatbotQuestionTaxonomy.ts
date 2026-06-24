@@ -164,13 +164,13 @@ const rules: Rule[] = [
   },
   {
     majorCategory: "決済・請求",
-    minorCategory: "支払い方法",
-    keywords: ["支払い方法", "カード", "銀行振込", "クレカ", "口座"],
+    minorCategory: "ローン・分割",
+    keywords: ["ローン", "分割", "lifety", "ライフティ"],
   },
   {
     majorCategory: "決済・請求",
-    minorCategory: "ローン・分割",
-    keywords: ["ローン", "分割", "lifety", "ライフティ"],
+    minorCategory: "支払い方法",
+    keywords: ["支払い方法", "カード", "銀行振込", "クレカ", "口座"],
   },
   {
     majorCategory: "決済・請求",
