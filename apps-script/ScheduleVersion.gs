@@ -11,7 +11,7 @@ const SLOTS = ['8:30 - 10:00','10:00 - 11:30','11:30 - 13:00','13:00 - 14:30','1
 const APPO_HEADERS = ['eventId','calendarId','担当者','開始日時','終了日時','日付','時間','お客様名','予定タイトル','説明','場所','ゲストメール','最終同期日時'];
 
 function onOpen(){
-  SpreadsheetApp.getUi().createMenu('🔧 dormswap')
+  SpreadsheetApp.getUi().createMenu('🔧 levela')
     .addItem('🔗 カレンダー連携セットアップ','setupCalendarIntegration')
     .addItem('🔄 今すぐ同期','syncCalendarAppointments')
     .addSeparator()
@@ -218,9 +218,9 @@ function columnLetter_(col){
 function resetSetup(){
   const s=sh(S_SETUP); s.clear();
   s.getRange('A1:C12').setValues([
-    ['dormswap 営業管理システム — セットアップ','',''],['','',''],['','STEP 1','ファイル → コピーを作成 → 自分のGoogleドライブにコピーしてください'],['','',''],
+    ['levela 営業管理システム — セットアップ','',''],['','',''],['','STEP 1','ファイル → コピーを作成 → 自分のGoogleドライブにコピーしてください'],['','',''],
     ['','STEP 2','C7にGoogleカレンダーのメールアドレス、C8に担当者名を入力'],['','',''],['','📧 カレンダーメール',''],['','担当者名',''],
-    ['','STEP 3','メニュー「🔧 dormswap」→「🔗 カレンダー連携セットアップ」をクリック'],['','ステータス','⏳ 未設定'],['','',''],['','⚠️ 初回実行時に権限確認が表示されます。許可してください。','']
+    ['','STEP 3','メニュー「🔧 levela」→「🔗 カレンダー連携セットアップ」をクリック'],['','ステータス','⏳ 未設定'],['','',''],['','⚠️ 初回実行時に権限確認が表示されます。許可してください。','']
   ]);
   s.getRange('A1:C1').merge().setFontSize(18).setFontWeight('bold').setBackground('#111827').setFontColor('#fff');
   s.getRange('B3:B10').setFontWeight('bold').setBackground('#E0F2FE'); s.getRange('C7:C8').setBackground('#FEF3C7'); s.setColumnWidth(3,560);

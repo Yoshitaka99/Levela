@@ -5,7 +5,7 @@
 
 ## プロジェクト概要
 
-- **名前**: Levela（旧 dormswap）
+- **名前**: Levela
 - **種別**: Next.js（App Router）Web アプリ
 - **目的**: 営業・チーム運営・チャットボット・ロールプレイ等の社内向け業務支援ツール群
 - **主要技術**: Next.js 16 / React 19 / TypeScript / Tailwind CSS v4 / shadcn/ui / Vercel AI SDK (`ai`, `@ai-sdk/*`)

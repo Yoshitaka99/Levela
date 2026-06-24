@@ -125,11 +125,11 @@
 
 ## 保存した画面証跡
 
-- C:\Users\celic\dormswap\line_amata_window_visible.png
-- C:\Users\celic\dormswap\line_amata_scroll1.png
-- C:\Users\celic\dormswap\line_amata_scroll2.png
-- C:\Users\celic\dormswap\line_amata_scroll3.png
-- C:\Users\celic\dormswap\line_amata_scroll4.png
-- C:\Users\celic\dormswap\line_amata_scroll5.png
-- C:\Users\celic\dormswap\line_amata_scroll6.png
-- C:\Users\celic\dormswap\line_amata_scroll7.png
+- C:\Users\celic\levela\line_amata_window_visible.png
+- C:\Users\celic\levela\line_amata_scroll1.png
+- C:\Users\celic\levela\line_amata_scroll2.png
+- C:\Users\celic\levela\line_amata_scroll3.png
+- C:\Users\celic\levela\line_amata_scroll4.png
+- C:\Users\celic\levela\line_amata_scroll5.png
+- C:\Users\celic\levela\line_amata_scroll6.png
+- C:\Users\celic\levela\line_amata_scroll7.png

@@ -5,7 +5,7 @@
 ## まとめ
 
 提出候補フォルダ:
-`C:\Users\celic\dormswap\amata_collect_2026-05-20`
+`C:\Users\celic\levela\amata_collect_2026-05-20`
 
 現時点でこちらで集められたもの:
 
@@ -55,7 +55,7 @@
 
 候補:
 
-- `C:\Users\celic\dormswap\amata_collect_2026-05-20\08_家計表\家計表原本.pdf`
+- `C:\Users\celic\levela\amata_collect_2026-05-20\08_家計表\家計表原本.pdf`
 
 不足:
 
@@ -72,7 +72,7 @@
 
 候補:
 
-- `C:\Users\celic\dormswap\amata_collect_2026-05-20\04_給与・源泉\20064166_2026-03-19.pdf`
+- `C:\Users\celic\levela\amata_collect_2026-05-20\04_給与・源泉\20064166_2026-03-19.pdf`
 
 不足:
 
@@ -84,7 +84,7 @@
 
 最有力候補:
 
-- `C:\Users\celic\dormswap\amata_collect_2026-05-20\02_Levela報酬・契約\26年4月 田仲由敬(訂正).pdf`
+- `C:\Users\celic\levela\amata_collect_2026-05-20\02_Levela報酬・契約\26年4月 田仲由敬(訂正).pdf`
 
 内容確認:
 
@@ -98,8 +98,8 @@
 
 補助候補:
 
-- `C:\Users\celic\dormswap\amata_collect_2026-05-20\02_Levela報酬・契約\★【株式会社Levela】業務委託契約書（営業） (1).pdf`
-- `C:\Users\celic\dormswap\amata_collect_2026-05-20\02_Levela報酬・契約\tanaka_4月ローンチ_v3.xlsx`
+- `C:\Users\celic\levela\amata_collect_2026-05-20\02_Levela報酬・契約\★【株式会社Levela】業務委託契約書（営業） (1).pdf`
+- `C:\Users\celic\levela\amata_collect_2026-05-20\02_Levela報酬・契約\tanaka_4月ローンチ_v3.xlsx`
 
 ### 6. ゆうちょ銀行口座履歴 令和8年1月21日から現在
 
@@ -116,8 +116,8 @@
 
 候補:
 
-- `C:\Users\celic\dormswap\amata_collect_2026-05-20\05_口座履歴\AC00101_1059072839_20260315154137.pdf`
-- `C:\Users\celic\dormswap\amata_collect_2026-05-20\05_口座履歴\田仲  由敬様　住信SBI.pdf`
+- `C:\Users\celic\levela\amata_collect_2026-05-20\05_口座履歴\AC00101_1059072839_20260315154137.pdf`
+- `C:\Users\celic\levela\amata_collect_2026-05-20\05_口座履歴\田仲  由敬様　住信SBI.pdf`
 
 不足:
 
@@ -167,9 +167,9 @@ LINE上では、あまた法律事務所から「全ての車・バイクが無�
 
 収集済み候補:
 
-- `C:\Users\celic\dormswap\amata_collect_2026-05-20\06_車両・廃車\リード125返納書.pdf`
-- `C:\Users\celic\dormswap\amata_collect_2026-05-20\06_車両・廃車\田仲様 チェイサー支払証明書,.pdf`
-- `C:\Users\celic\dormswap\amata_collect_2026-05-20\06_車両・廃車\KSGLOBAL様 チェイサー支払証明書,.jpg`
+- `C:\Users\celic\levela\amata_collect_2026-05-20\06_車両・廃車\リード125返納書.pdf`
+- `C:\Users\celic\levela\amata_collect_2026-05-20\06_車両・廃車\田仲様 チェイサー支払証明書,.pdf`
+- `C:\Users\celic\levela\amata_collect_2026-05-20\06_車両・廃車\KSGLOBAL様 チェイサー支払証明書,.jpg`
 
 LINE上で送信済みと見えたもの:
 

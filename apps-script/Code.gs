@@ -39,7 +39,7 @@ const OPTIONS = {
 
 function onOpen() {
   SpreadsheetApp.getUi()
-    .createMenu('🔧 dormswap')
+    .createMenu('🔧 levela')
     .addItem('🔗 カレンダー連携セットアップ', 'setupCalendarIntegration')
     .addItem('🔄 今すぐ同期', 'syncCalendarAppointments')
     .addSeparator()
@@ -81,7 +81,7 @@ function setupCalendarIntegration() {
   syncCalendarAppointments();
 
   setupSheet.getRange(CONFIG.statusCell).setValue('✅ 連携済み: ' + calendarId);
-  SpreadsheetApp.getActive().toast('カレンダー連携が完了しました', 'dormswap', 5);
+  SpreadsheetApp.getActive().toast('カレンダー連携が完了しました', 'levela', 5);
 }
 
 function syncCalendarAppointments() {
@@ -154,7 +154,7 @@ function syncCalendarAppointments() {
 
   props.setProperty('lastSyncAt', now.toISOString());
   setupSheet.getRange(CONFIG.statusCell).setValue('✅ 最終同期: ' + formatDateTime_(now));
-  SpreadsheetApp.getActive().toast(appointmentRows.length + '件の予定を同期しました', 'dormswap', 5);
+  SpreadsheetApp.getActive().toast(appointmentRows.length + '件の予定を同期しました', 'levela', 5);
 }
 
 function prepareTemplateBase() {
@@ -191,7 +191,7 @@ function resetTemplateBaseNoUi() {
   resetSetupSheet_();
   rebuildKpiDashboard();
 
-  SpreadsheetApp.getActive().toast('ひな型化しました。C7にカレンダーメールを入れてセットアップできます。', 'dormswap', 5);
+  SpreadsheetApp.getActive().toast('ひな型化しました。C7にカレンダーメールを入れてセットアップできます。', 'levela', 5);
 }
 
 function ensureWorkbookStructure() {
@@ -273,7 +273,7 @@ function createSalespersonCopyPrompt() {
 
   const salespersonName = nameResponse.getResponseText().trim() || inferSalespersonName_(email);
   const copied = DriveApp.getFileById(SpreadsheetApp.getActiveSpreadsheet().getId())
-    .makeCopy('dormswap 営業管理システム - ' + salespersonName);
+    .makeCopy('levela 営業管理システム - ' + salespersonName);
 
   const copiedSpreadsheet = SpreadsheetApp.openById(copied.getId());
   const setupSheet = copiedSpreadsheet.getSheetByName(CONFIG.setupSheetName);
@@ -298,7 +298,7 @@ function resetSetupSheet_() {
   sheet.clear();
 
   sheet.getRange('A1:C12').setValues([
-    ['dormswap 営業管理システム — セットアップ', '', ''],
+    ['levela 営業管理システム — セットアップ', '', ''],
     ['', '', ''],
     ['', 'STEP 1', 'ファイル → コピーを作成 → 自分のGoogleドライブにコピーしてください'],
     ['', '', ''],
@@ -306,7 +306,7 @@ function resetSetupSheet_() {
     ['', '', ''],
     ['', '📧 カレンダーメール', ''],
     ['', '担当者名', ''],
-    ['', 'STEP 3', 'メニュー「🔧 dormswap」→「🔗 カレンダー連携セットアップ」をクリック'],
+    ['', 'STEP 3', 'メニュー「🔧 levela」→「🔗 カレンダー連携セットアップ」をクリック'],
     ['', 'ステータス', '⏳ 未設定'],
     ['', '', ''],
     ['', '⚠️ 初回実行時に権限確認が表示されます。許可してください。', ''],

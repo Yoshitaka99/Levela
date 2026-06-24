@@ -1,5 +1,5 @@
 /*
- * dormswap patch:
+ * levela patch:
  * - C7 = calendar email
  * - C8 = salesperson name
  * - only calendar events containing C8 are synced
@@ -39,7 +39,7 @@ const PATCH_OPTIONS = {
 
 function onOpen() {
   SpreadsheetApp.getUi()
-    .createMenu('🔧 dormswap')
+    .createMenu('🔧 levela')
     .addItem('🔗 カレンダー連携セットアップ', 'setupCalendarIntegration')
     .addItem('🔄 今すぐ同期', 'syncCalendarAppointments')
     .addSeparator()
@@ -138,7 +138,7 @@ function syncCalendarAppointments() {
   rebuildKpiDashboard();
 
   setup.getRange('C10').setValue('✅ 最終同期: ' + patchFormatDateTime_(now));
-  SpreadsheetApp.getActive().toast(appointmentRows.length + '件の予定を同期しました', 'dormswap', 5);
+  SpreadsheetApp.getActive().toast(appointmentRows.length + '件の予定を同期しました', 'levela', 5);
 }
 
 function prepareTemplateBase() {
@@ -221,7 +221,7 @@ function patchResetSetupSheet_() {
   const sheet = patchSheet_(PATCH_SETUP_SHEET);
   sheet.clear();
   sheet.getRange('A1:C12').setValues([
-    ['dormswap 営業管理システム — セットアップ', '', ''],
+    ['levela 営業管理システム — セットアップ', '', ''],
     ['', '', ''],
     ['', 'STEP 1', 'ファイル → コピーを作成 → 自分のGoogleドライブにコピーしてください'],
     ['', '', ''],
@@ -229,7 +229,7 @@ function patchResetSetupSheet_() {
     ['', '', ''],
     ['', '📧 カレンダーメール', ''],
     ['', '担当者名', ''],
-    ['', 'STEP 3', 'メニュー「🔧 dormswap」→「🔗 カレンダー連携セットアップ」をクリック'],
+    ['', 'STEP 3', 'メニュー「🔧 levela」→「🔗 カレンダー連携セットアップ」をクリック'],
     ['', 'ステータス', '⏳ 未設定'],
     ['', '', ''],
     ['', '⚠️ 初回実行時に権限確認が表示されます。許可してください。', ''],

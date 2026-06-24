@@ -19,7 +19,7 @@ App Router の Route Handler / AI SDK / Apps Script 連携 / 自動化スクリ�
 - 新規 env を追加したら名前・用途をドキュメント化し、ユーザーに伝える。
 
 ## Apps Script / 自動化（`apps-script/`, `tools/`）
-- `apps-script/` は Google Apps Script。デプロイ手順は `docs/dormswap-apps-script-setup.md` 等を参照。
+- `apps-script/` は Google Apps Script。デプロイ手順は `docs/levela-apps-script-setup.md` 等を参照。
 - `tools/` の自動化スクリプトはシークレットをハードコードしない（`automation:secret` 等を利用）。
 
 ## 品質

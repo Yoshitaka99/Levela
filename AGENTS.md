@@ -22,4 +22,4 @@ npm run dev
 1. このフォルダを GitHub リポジトリとして push する。
 2. iPhone の ChatGPT アプリで Codex を開く。
 3. GitHub 連携を有効化し、このリポジトリを選ぶ。
-4. 依頼時は「dormswap の GitHub リポジトリで作業して」と伝える。
+4. 依頼時は「levela の GitHub リポジトリで作業して」と伝える。
