@@ -98,7 +98,7 @@ const textBlocksBySourceUrl = loadOcrResults().reduce<
 
 const paymentMethodArticle: ChatbotInternalArticle = {
   slug: "payment-method",
-  title: "決済の種類",
+  title: "決済方法",
   category: "決済",
   sourceUrl: "https://app.notion.com/p/a5366ab3bdd08386886f81efd3993067",
   internalPath: "/chatbot-knowledge/payment-method",
@@ -166,7 +166,7 @@ const articles: ChatbotInternalArticle[] = chatbotKnowledgeSources.map((source) 
 
   return {
     slug: source.id,
-    title: source.sourceTitle,
+    title: source.title,
     category: source.category,
     sourceUrl: source.url,
     internalPath: `/chatbot-knowledge/${source.id}`,
