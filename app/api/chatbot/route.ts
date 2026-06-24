@@ -112,6 +112,22 @@ function getDisplayUrl(sourceUrl: string) {
   return getInternalArticlePathForSourceUrl(sourceUrl) ?? sourceUrl;
 }
 
+function escapeMarkdownLinkText(text: string) {
+  return text.replace(/[[\]\\]/g, "\\$&");
+}
+
+function escapeRegExp(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function formatMarkdownLink(title: string, url: string) {
+  return `[${escapeMarkdownLinkText(title)}](${url})`;
+}
+
+function getDisplayLink(source: CombinedKnowledgeResult) {
+  return formatMarkdownLink(source.sourceTitle, getDisplayUrl(source.url));
+}
+
 function buildKnowledgeAnswer(query: string) {
   const results = searchCombinedKnowledge(query, 5);
 
@@ -136,13 +152,13 @@ function buildKnowledgeAnswer(query: string) {
   return [
     `あ、それなら「${primary.sourceTitle}」っぽいです。`,
     "",
-    `ページ: ${getDisplayUrl(primary.url)}`,
+    `ページ: ${getDisplayLink(primary)}`,
     ...(related.length
       ? [
           "",
           "ほかに近そうな候補:",
           ...related.map(
-            (source) => `- ${source.sourceTitle}: ${getDisplayUrl(source.url)}`
+            (source) => `- ${getDisplayLink(source)}`
           ),
         ]
       : []),
@@ -184,18 +200,26 @@ function appendVerifiedSourceLinks(
     if (!leaf) return current;
 
     return current.replace(
-      new RegExp(`(^|[\\s(])/${leaf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"),
+      new RegExp(`(^|[\\s(])/${escapeRegExp(leaf)}\\b`, "g"),
       `$1${source.url}`
     );
   }, text);
 
+  const linkedText = sources.reduce((current, source) => {
+    const urlPattern = new RegExp(`(?<!\\]\\()${escapeRegExp(source.url)}`, "g");
+    return current.replace(
+      urlPattern,
+      formatMarkdownLink(source.title, source.url)
+    );
+  }, normalizedText);
+
   const sourceLines = sources
-    .filter((source) => !normalizedText.includes(source.url))
-    .map((source) => `- ${source.title}: ${source.url}`);
+    .filter((source) => !linkedText.includes(`](${source.url})`))
+    .map((source) => `- ${formatMarkdownLink(source.title, source.url)}`);
 
-  if (sourceLines.length === 0) return normalizedText;
+  if (sourceLines.length === 0) return linkedText;
 
-  return [`${normalizedText.trim()}`, "", "参照ページ:", ...sourceLines].join("\n");
+  return [`${linkedText.trim()}`, "", "参照ページ:", ...sourceLines].join("\n");
 }
 
 function createTextResponse(messages: UIMessage[], text: string) {
