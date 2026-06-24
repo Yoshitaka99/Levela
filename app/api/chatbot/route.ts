@@ -206,7 +206,10 @@ function appendVerifiedSourceLinks(
   }, text);
 
   const linkedText = sources.reduce((current, source) => {
-    const urlPattern = new RegExp(`(?<!\\]\\()${escapeRegExp(source.url)}`, "g");
+    const urlPattern = new RegExp(
+      `(?<![\\]\\(\\w/:.-])${escapeRegExp(source.url)}`,
+      "g"
+    );
     return current.replace(
       urlPattern,
       formatMarkdownLink(source.title, source.url)
@@ -265,6 +268,7 @@ export async function POST(req: Request) {
         "あなたはLevelaの社内向けチャットボットです。返答は自然な日本語で、社内メンバーが次に見るべきページをすぐ分かるように案内してください。",
         "下の検索候補だけを根拠に回答してください。候補にない内容は推測で補わないでください。",
         "必ず候補にあるURLをそのまま含めてください。内部記事URLがある場合はNotion URLではなく内部記事URLを優先してください。ローカル画像パス、画像番号、OCRという言葉、署名付き画像URLは出さないでください。",
+        "内部記事URLは /chatbot-knowledge/... のような相対URLのまま出してください。勝手にドメインを付けないでください。",
         "ログインID、パスワード、APIキー、カード番号、口座番号などの機密情報は出さないでください。",
         "回答は短めにしてください。目安は2〜5文。必要なら候補URLを2〜3件まで並べてください。",
         "毎回同じ枕詞にしないでください。ユーザーの聞き方に合わせて自然に返してください。",
