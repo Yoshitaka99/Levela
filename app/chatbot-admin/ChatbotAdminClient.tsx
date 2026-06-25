@@ -11,6 +11,7 @@ import {
   Braces,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
   Database,
   Download,
@@ -20,8 +21,16 @@ import {
   Images,
   RefreshCcw,
   Settings2,
+  type LucideIcon,
 } from "lucide-react";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Conversation,
   ConversationContent,
@@ -259,24 +268,24 @@ export function ChatbotAdminClient({
 
   return (
     <main className="dark min-h-screen bg-slate-950 text-slate-50">
-      <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-5">
-        <header className="flex flex-col gap-3 border-b border-border pb-4 md:flex-row md:items-end md:justify-between">
+      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-3 py-3 sm:px-4 md:py-5">
+        <header className="flex flex-col gap-3 border-b border-slate-800 pb-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-md border border-border bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+            <div className="mb-2 inline-flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs text-slate-400">
               <Settings2 className="size-3.5" />
               chatbot admin
             </div>
-            <h1 className="text-2xl font-semibold tracking-normal md:text-3xl">
+            <h1 className="text-xl font-semibold tracking-normal md:text-3xl">
               Levela Bot 管理画面
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              API接続、資料URL、実データ連携の確認用画面です。一般ユーザーには見せない前提の操作席です。
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">
+              質問ログの確認と出力を中心に、必要な管理項目だけ展開して使います。
             </p>
           </div>
           <Button
             asChild
             variant="outline"
-            className="w-fit border-slate-700 bg-slate-900 text-slate-50 hover:bg-slate-800 hover:text-white"
+            className="w-full border-slate-700 bg-slate-900 text-slate-50 hover:bg-slate-800 hover:text-white sm:w-fit"
           >
             <Link href="/sale/chatbot">
               一般ユーザー画面を開く
@@ -285,42 +294,39 @@ export function ChatbotAdminClient({
           </Button>
         </header>
 
-        <section className="grid min-h-0 flex-1 gap-4 py-4 lg:grid-cols-[300px_1fr]">
-          <aside className="space-y-4">
-            <div className="rounded-lg border border-border bg-card p-3">
-              <div className="mb-3 text-xs font-medium text-muted-foreground">
-                API slots
-              </div>
+        <section className="grid min-h-0 flex-1 gap-3 py-3 lg:grid-cols-[320px_1fr] lg:gap-4 lg:py-4">
+          <aside className="order-2 space-y-3 lg:order-1">
+            <AdminFolder
+              title="接続状態"
+              description="API・外部連携の確認"
+              icon={Database}
+              meta="4 slots"
+            >
               <div className="space-y-2 text-sm">
                 <ApiSlot name="OpenAI API" state="env gated" />
                 <ApiSlot name="Notion / tl;dv" state="URL registry" />
                 <ApiSlot name="Google Sheets" state="mock tool" />
                 <ApiSlot name="Discord" state="mock tool" />
               </div>
-              <div className="mt-4 rounded-md border border-border bg-background p-3 text-xs leading-5 text-muted-foreground">
+              <div className="mt-3 rounded-md border border-slate-800 bg-slate-950 p-3 text-xs leading-5 text-slate-500">
                 実APIを使う場合は <code>CHATBOT_LIVE_OPENAI=true</code> と{" "}
                 <code>OPENAI_API_KEY</code> を設定します。
               </div>
-            </div>
+            </AdminFolder>
 
-            <div className="rounded-lg border border-border bg-card p-3">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <FileText className="size-3.5" />
-                  保存済み資料
-                </div>
-                <div className="rounded-full border border-border bg-background px-2 py-0.5 text-xs text-muted-foreground">
-                  {sourceCount}件
-                </div>
-              </div>
-
+            <AdminFolder
+              title="保存済み資料"
+              description="資料一覧・内部記事の確認"
+              icon={FileText}
+              meta={`${sourceCount}件`}
+            >
               <div className="mb-3 grid grid-cols-2 gap-2">
                 {sourceCounts.map((item) => (
                   <div
                     key={item.category}
-                    className="rounded-md border border-border bg-background px-2 py-1.5"
+                    className="rounded-md border border-slate-800 bg-slate-950 px-2 py-1.5"
                   >
-                    <div className="truncate text-[11px] text-muted-foreground">
+                    <div className="truncate text-[11px] text-slate-500">
                       {item.category}
                     </div>
                     <div className="mt-0.5 text-sm font-semibold">
@@ -328,8 +334,8 @@ export function ChatbotAdminClient({
                     </div>
                   </div>
                 ))}
-                <div className="rounded-md border border-border bg-background px-2 py-1.5">
-                  <div className="truncate text-[11px] text-muted-foreground">
+                <div className="rounded-md border border-slate-800 bg-slate-950 px-2 py-1.5">
+                  <div className="truncate text-[11px] text-slate-500">
                     画像OCR
                   </div>
                   <div className="mt-0.5 text-sm font-semibold">
@@ -338,7 +344,7 @@ export function ChatbotAdminClient({
                 </div>
               </div>
 
-              <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+              <div className="max-h-[280px] space-y-2 overflow-y-auto pr-1">
                 {sources.map((source) => {
                   const selected = selectedSource?.slug === source.slug;
 
@@ -353,7 +359,7 @@ export function ChatbotAdminClient({
                       className={
                         selected
                           ? "w-full rounded-md border border-cyan-300/70 bg-cyan-300/10 px-3 py-2 text-left shadow-sm shadow-cyan-950/30"
-                          : "w-full rounded-md border border-border bg-background px-3 py-2 text-left transition-colors hover:border-slate-500 hover:bg-slate-900"
+                          : "w-full rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-left transition-colors hover:border-slate-600 hover:bg-slate-900"
                       }
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -361,17 +367,17 @@ export function ChatbotAdminClient({
                           <div className="truncate text-sm font-semibold">
                             {source.title}
                           </div>
-                          <div className="mt-1 truncate text-xs text-muted-foreground">
+                          <div className="mt-1 truncate text-xs text-slate-500">
                             {source.category}
                           </div>
                         </div>
-                        <BookOpen className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                        <BookOpen className="mt-0.5 size-4 shrink-0 text-slate-500" />
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
-                        <span className="rounded bg-muted px-1.5 py-0.5">
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-slate-500">
+                        <span className="rounded bg-slate-900 px-1.5 py-0.5">
                           本文 {source.textBlockCount}
                         </span>
-                        <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5">
+                        <span className="inline-flex items-center gap-1 rounded bg-slate-900 px-1.5 py-0.5">
                           <Images className="size-3" />
                           {source.imageCount}
                         </span>
@@ -382,17 +388,17 @@ export function ChatbotAdminClient({
               </div>
 
               {selectedSource ? (
-                <div className="mt-4 border-t border-border pt-4">
-                  <div className="mb-2 text-xs font-medium text-muted-foreground">
-                    選択中の資料
+                <div className="mt-3 border-t border-slate-800 pt-3">
+                  <div className="mb-1 text-xs font-medium text-slate-500">
+                    選択中
                   </div>
-                  <h2 className="text-base font-semibold leading-6">
+                  <h2 className="text-sm font-semibold leading-6">
                     {selectedSource.title}
                   </h2>
-                  <p className="mt-2 line-clamp-4 text-xs leading-5 text-muted-foreground">
+                  <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-500">
                     {selectedSource.preview || "本文プレビューはありません。"}
                   </p>
-                  <div className="mt-3 grid gap-2">
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                     <Button
                       asChild
                       size="sm"
@@ -400,7 +406,7 @@ export function ChatbotAdminClient({
                     >
                       <Link href={selectedSource.internalPath}>
                         <BookOpen className="size-3.5" />
-                        内部記事で見る
+                        内部記事
                       </Link>
                     </Button>
                     <Button
@@ -415,16 +421,16 @@ export function ChatbotAdminClient({
                         rel="noreferrer"
                       >
                         <ExternalLink className="size-3.5" />
-                        元の資料を開く
+                        元資料
                       </a>
                     </Button>
                   </div>
                 </div>
               ) : null}
-            </div>
+            </AdminFolder>
           </aside>
 
-          <div className="flex min-h-[640px] min-w-0 flex-col gap-4">
+          <div className="order-1 flex min-h-[640px] min-w-0 flex-col gap-3 lg:order-2 lg:gap-4">
             <QuestionLogPanel
               error={questionLogError}
               filter={questionLogFilter}
@@ -446,11 +452,15 @@ export function ChatbotAdminClient({
               onRefresh={loadQuestionLogs}
             />
 
-            <details className="rounded-lg border border-slate-800 bg-slate-950/60">
-              <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-200 marker:text-slate-500">
-                管理用プロンプトの動作確認
-                <span className="ml-2 text-xs font-normal text-slate-500">
-                  API接続や回答の出方を確認する時だけ開きます
+            <details className="group rounded-lg border border-slate-800 bg-slate-950/70">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm font-medium text-slate-200 marker:text-slate-500 md:px-4">
+                <span className="flex min-w-0 items-center gap-2">
+                  <Bot className="size-4 shrink-0 text-slate-500" />
+                  <span className="truncate">管理用プロンプトの動作確認</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2 text-xs font-normal text-slate-500">
+                  必要時のみ
+                  <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
                 </span>
               </summary>
 
@@ -576,6 +586,47 @@ export function ChatbotAdminClient({
   );
 }
 
+function AdminFolder({
+  title,
+  description,
+  icon: Icon,
+  meta,
+  children,
+}: {
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  meta: string;
+  children: ReactNode;
+}) {
+  return (
+    <details className="group rounded-lg border border-slate-800 bg-slate-950/70">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 marker:text-slate-500">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-slate-800 bg-slate-900 text-slate-400">
+            <Icon className="size-4" />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-slate-100">
+              {title}
+            </span>
+            <span className="block truncate text-xs text-slate-500">
+              {description}
+            </span>
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="rounded-full border border-slate-800 bg-slate-900 px-2 py-0.5 text-xs text-slate-400">
+            {meta}
+          </span>
+          <ChevronDown className="size-3.5 text-slate-500 transition-transform group-open:rotate-180" />
+        </span>
+      </summary>
+      <div className="border-t border-slate-800 px-3 py-3">{children}</div>
+    </details>
+  );
+}
+
 function QuestionLogPanel({
   error,
   filter,
@@ -620,14 +671,14 @@ function QuestionLogPanel({
           </div>
           <h2 className="text-xl font-semibold">質問ログ</h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">
-            一般ユーザー画面で質問された内容を、未回答・要確認を見落とさない順番で確認します。
+            未回答・要確認を先に見て、必要な分だけ出力します。
           </p>
         </div>
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="w-fit border-slate-700 bg-slate-900 text-slate-50 hover:bg-slate-800 hover:text-white"
+          className="w-full border-slate-700 bg-slate-900 text-slate-50 hover:bg-slate-800 hover:text-white sm:w-fit"
           onClick={onRefresh}
           disabled={isLoading}
         >
@@ -636,7 +687,7 @@ function QuestionLogPanel({
         </Button>
       </div>
 
-      <div className="mt-4 grid gap-3 rounded-md border border-slate-800 bg-slate-900/50 p-3 md:grid-cols-[minmax(220px,280px)_1fr_auto] md:items-end">
+      <div className="mt-4 grid gap-3 rounded-md border border-slate-800 bg-slate-900/50 p-3 md:grid-cols-[minmax(200px,260px)_1fr_auto] md:items-end">
         <label className="grid gap-1 text-xs text-slate-400">
           対象月
           <select
@@ -652,13 +703,13 @@ function QuestionLogPanel({
             ))}
           </select>
         </label>
-        <div className="text-xs leading-5 text-slate-500">
-          表示中の対象月と回答状態フィルタが、そのままCSVダウンロードにも反映されます。
+        <div className="hidden text-xs leading-5 text-slate-500 md:block">
+          表示中の対象月と回答状態フィルタが、そのままCSVに反映されます。
         </div>
         <Button
           type="button"
           variant="outline"
-          className="w-fit border-slate-700 bg-slate-950 text-slate-50 hover:bg-slate-800 hover:text-white"
+          className="w-full border-slate-700 bg-slate-950 text-slate-50 hover:bg-slate-800 hover:text-white md:w-fit"
           onClick={onDownloadCsv}
           disabled={filteredRecords.length === 0}
         >
@@ -667,7 +718,7 @@ function QuestionLogPanel({
         </Button>
       </div>
 
-      <div className="grid gap-2 py-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 py-3 md:grid-cols-4">
         <MetricCard
           icon={BarChart3}
           label="質問数"
@@ -693,7 +744,7 @@ function QuestionLogPanel({
         )}
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-1">
         {statusFilters.map((item) => {
           const active = filter === item;
           const label =
@@ -705,8 +756,8 @@ function QuestionLogPanel({
               type="button"
               className={
                 active
-                  ? "rounded-full border border-cyan-300/60 bg-cyan-300/10 px-3 py-1.5 text-xs font-medium text-cyan-100"
-                  : "rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-400 transition hover:border-slate-600 hover:text-slate-100"
+                  ? "shrink-0 rounded-full border border-cyan-300/60 bg-cyan-300/10 px-3 py-1.5 text-xs font-medium text-cyan-100"
+                  : "shrink-0 rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-400 transition hover:border-slate-600 hover:text-slate-100"
               }
               onClick={() => onFilterChange(item)}
             >
@@ -717,19 +768,25 @@ function QuestionLogPanel({
       </div>
 
       {summary.byMajorCategory.length ? (
-        <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-800 pb-4">
-          {summary.byMajorCategory.map((item) => (
-            <span
-              key={item.category}
-              className="rounded-full border border-slate-800 bg-slate-900 px-3 py-1 text-xs text-slate-400"
-            >
-              {item.category}
-              <span className="ml-1 font-semibold text-slate-100">
-                {item.count}
+        <details className="group mb-3 rounded-md border border-slate-800 bg-slate-900/50">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-medium text-slate-300 marker:text-slate-500">
+            <span>ジャンル内訳</span>
+            <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="flex flex-wrap gap-2 border-t border-slate-800 px-3 py-3">
+            {summary.byMajorCategory.map((item) => (
+              <span
+                key={item.category}
+                className="rounded-full border border-slate-800 bg-slate-950 px-3 py-1 text-xs text-slate-400"
+              >
+                {item.category}
+                <span className="ml-1 font-semibold text-slate-100">
+                  {item.count}
+                </span>
               </span>
-            </span>
-          ))}
-        </div>
+            ))}
+          </div>
+        </details>
       ) : null}
 
       {error ? (
@@ -747,7 +804,7 @@ function QuestionLogPanel({
       ) : null}
 
       {filteredRecords.length > 0 ? (
-        <div className="max-h-[460px] space-y-2 overflow-auto pr-1">
+        <div className="max-h-[62vh] space-y-2 overflow-auto pr-0.5 md:max-h-[520px]">
           {filteredRecords.map((record) => (
             <QuestionLogRow key={record.id} record={record} />
           ))}
