@@ -211,8 +211,18 @@ function parseSheetDate(value: string) {
   return null;
 }
 
+function getAppointmentSeminar(row: SourceRow) {
+  const parsedDate = parseSheetDate(getAppointmentDate(row));
+  if (!parsedDate) return "";
+  return `${String(parsedDate.year).slice(-2)}年${parsedDate.month}月セミナー`;
+}
+
+function getEffectiveSeminar(row: SourceRow) {
+  return isAdTraffic(row) ? getAppointmentSeminar(row) || getSeminar(row) : getSeminar(row);
+}
+
 function getWeekLabel(row: SourceRow) {
-  const seminar = getSeminar(row);
+  const seminar = getEffectiveSeminar(row);
   const parsedDate = parseSheetDate(getAppointmentDate(row));
   if (!parsedDate) {
     return {
@@ -400,7 +410,7 @@ function getSeminarOptions(rows: SourceRow[]) {
   const seminars = [
     ...new Set(
       rows
-        .map((row) => getSeminar(row))
+        .map((row) => getEffectiveSeminar(row))
         .filter((seminar) => seminar.includes("セミナー")),
     ),
   ].sort((a, b) => a.localeCompare(b, "ja", { numeric: true }));
@@ -562,7 +572,7 @@ function aggregateRows(
 
   const seminarRows = rows.filter((row) => {
     const member = getMember(row);
-    const seminar = getSeminar(row);
+    const seminar = getEffectiveSeminar(row);
     const seat = getSeat(row);
     const matchesSeminar = selectedSeminars.includes(ALL_SEMINARS) || selectedSeminars.includes(seminar);
     return member && !isExcludedMember(member) && matchesSeminar && matchesTrafficFilter(row, selectedTraffic, selectedAdSource) && !isExcludedFromSeatBase(seat);
