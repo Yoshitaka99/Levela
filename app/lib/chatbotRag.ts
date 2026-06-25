@@ -14,7 +14,7 @@ export type ChatbotRagSearchResult = {
 
 type ChatbotRagChunk = {
   id: string;
-  kind: "notion" | "ocr";
+  kind: "core" | "notion" | "ocr";
   sourceUrl: string;
   title: string;
   category: string;
@@ -34,6 +34,47 @@ type ChatbotRagIndex = {
 
 const RAG_INDEX_PATH = path.join(process.cwd(), "data", "chatbot-rag", "index.json");
 const DEFAULT_RAG_SCORE_FLOOR = 0.18;
+const SONOBA_PATTERN = /【その場】|その場|Zoom入室後|入室後すぐ|面談中|商談動画提出必須/;
+const SONOBA_QUERY_PATTERN = /【その場】|その場|Zoom|ズーム|入室後|面談中|口頭|すぐ|直後|商談動画/;
+const DOMAIN_TERMS = [
+  "着座",
+  "飛び",
+  "日程調整",
+  "返信なし",
+  "リスケ",
+  "事前キャンセル",
+  "重複予約",
+  "無効アポ",
+  "営業マン都合キャンセル",
+  "成約",
+  "成約予定",
+  "保留",
+  "失注",
+  "クーリングオフ",
+  "MLM",
+  "クレジットカード",
+  "クレカ",
+  "銀行振込",
+  "特別決済",
+  "ライフティ",
+  "契約書",
+  "入金",
+  "予約変更",
+  "Lステップ",
+  "当日トラブル",
+  "代打",
+  "議事録",
+  "相談先",
+  "決済リンク",
+  "返信",
+  "相談",
+  "発行",
+];
+const STATUS_QUERY_PATTERN =
+  /ステータス|着座|飛び|日程調整|返信|リスケ|キャンセル|重複予約|無効アポ|成約|成約予定|保留|失注|クーリングオフ|MLM/;
+const CONSULT_QUERY_PATTERN = /誰|どこ|相談|相談先|問い合わせ|確認|発行|担当/;
+const PAYMENT_QUERY_PATTERN =
+  /決済|決済リンク|クレジットカード|クレカ|銀行振込|特別決済|ライフティ|契約|入金/;
 
 let cachedIndex: ChatbotRagIndex | null | undefined;
 let cachedClient: OpenAI | null = null;
@@ -103,6 +144,42 @@ function keywordBoost(query: string, text: string) {
   return Math.min(hitCount * 0.015, 0.06);
 }
 
+function domainTermBoost(query: string, chunk: ChatbotRagChunk) {
+  const haystack = `${chunk.title}\n${chunk.category}\n${chunk.text}`;
+  const matchedTerms = DOMAIN_TERMS.filter(
+    (term) => query.includes(term) && haystack.includes(term)
+  );
+  const titleMatches = matchedTerms.filter((term) => chunk.title.includes(term));
+
+  return Math.min(matchedTerms.length * 0.025 + titleMatches.length * 0.025, 0.14);
+}
+
+function rulePenalty(query: string, chunk: ChatbotRagChunk) {
+  const queryMentionsSonoba = SONOBA_QUERY_PATTERN.test(query);
+  if (queryMentionsSonoba) return 0;
+
+  return SONOBA_PATTERN.test(`${chunk.title}\n${chunk.text}`) ? 0.045 : 0;
+}
+
+function routingBoost(query: string, chunk: ChatbotRagChunk) {
+  const haystack = `${chunk.title}\n${chunk.category}\n${chunk.text}`;
+  let boost = 0;
+
+  if (STATUS_QUERY_PATTERN.test(query) && chunk.category.includes("ステータス")) {
+    boost += 0.12;
+  }
+
+  if (CONSULT_QUERY_PATTERN.test(query) && /相談|相談先|不明事項/.test(haystack)) {
+    boost += 0.14;
+  }
+
+  if (PAYMENT_QUERY_PATTERN.test(query) && chunk.category.includes("決済")) {
+    boost += 0.08;
+  }
+
+  return Math.min(boost, 0.2);
+}
+
 export function isChatbotRagReady() {
   const index = loadRagIndex();
   return Boolean(index?.chunks?.length);
@@ -134,7 +211,10 @@ export async function searchChatbotRag(
       chunk,
       score:
         cosineSimilarity(queryEmbedding, chunk.embedding) +
-        keywordBoost(trimmedQuery, `${chunk.title}\n${chunk.category}\n${chunk.text}`),
+        keywordBoost(trimmedQuery, `${chunk.title}\n${chunk.category}\n${chunk.text}`) +
+        domainTermBoost(trimmedQuery, chunk) -
+        rulePenalty(trimmedQuery, chunk) +
+        routingBoost(trimmedQuery, chunk),
     }))
     .filter((item) => item.score >= scoreFloor)
     .sort((a, b) => b.score - a.score)

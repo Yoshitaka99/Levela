@@ -1,0 +1,29 @@
+{
+  "cases": [
+    {
+      "id": "credit-card-payment",
+      "query": "クレジットカードで決済するときの注意点は？",
+      "expectedTitleIncludes": ["契約作業", "決済"]
+    },
+    {
+      "id": "reschedule-no-reply",
+      "query": "日程調整中のお客さんから返信がない場合はどうする？",
+      "expectedTitleIncludes": ["着座ステータス", "顧客管理シート"]
+    },
+    {
+      "id": "payment-link-owner",
+      "query": "決済リンクの発行は誰に相談すればいい？",
+      "expectedTitleIncludes": ["不明事項の相談先"]
+    },
+    {
+      "id": "reservation-change",
+      "query": "予約変更するときLステップで何に気をつける？",
+      "expectedTitleIncludes": ["予約キャンセル・予約変更方法"]
+    },
+    {
+      "id": "cooling-off",
+      "query": "入金後にクーリングオフ連絡が来たらどうする？",
+      "expectedTitleIncludes": ["クーリングオフ"]
+    }
+  ]
+}

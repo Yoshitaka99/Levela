@@ -169,6 +169,99 @@ function cleanExcerpt(text: string) {
     .trim();
 }
 
+function createEvidenceTerms(query: string) {
+  const normalizedQuery = query
+    .replace(/[！？?!。、,，.．「」『』（）()【】\[\]：:]/g, " ")
+    .toLowerCase();
+  const splitTerms = normalizedQuery
+    .split(
+      /\s+|について|とは|どこ|どれ|どの|どう|なに|何|です|ます|する|した|して|場合|とき|時|の|を|は|が|に|で|へ|や|も|から|まで|なら/g
+    )
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2);
+  const domainTerms = [
+    "着座",
+    "飛び",
+    "日程調整",
+    "返信なし",
+    "リスケ",
+    "事前キャンセル",
+    "重複予約",
+    "無効アポ",
+    "成約",
+    "成約予定",
+    "保留",
+    "失注",
+    "クーリングオフ",
+    "MLM",
+    "クレジットカード",
+    "クレカ",
+    "銀行振込",
+    "特別決済",
+    "ライフティ",
+    "契約書",
+    "入金",
+    "予約変更",
+    "Lステップ",
+    "当日トラブル",
+    "代打",
+    "議事録",
+    "相談先",
+    "決済リンク",
+  ].filter((term) => query.includes(term));
+
+  return [...new Set([...domainTerms, ...splitTerms])];
+}
+
+function queryMentionsSonoba(query: string) {
+  return /【その場】|その場|Zoom|ズーム|入室後|面談中|口頭|すぐ|直後|商談動画/.test(
+    query
+  );
+}
+
+function lineConflictsWithQuery(line: string, query: string) {
+  if (queryMentionsSonoba(query)) return false;
+  return /【その場】|Zoom入室後|入室後すぐ|面談中にリスケ|商談動画提出必須/.test(line);
+}
+
+function getEvidenceLines(
+  source: CombinedKnowledgeResult,
+  query: string,
+  limit = 6
+) {
+  const terms = createEvidenceTerms(query);
+  const lines = source.excerpts
+    .flatMap((excerpt) =>
+      excerpt
+        .split(/\n|。|！|!|\?|？/)
+        .map(cleanExcerpt)
+        .filter((line) => line.length >= 8)
+    )
+    .filter((line) => !/^https?:\/\//.test(line))
+    .filter((line) => !lineConflictsWithQuery(line, query))
+    .filter((line, index, list) => list.indexOf(line) === index);
+
+  if (terms.length === 0) return lines.slice(0, limit);
+
+  const ranked = lines
+    .map((line) => {
+      const normalizedLine = line.toLowerCase();
+      const hitCount = terms.reduce(
+        (count, term) => count + (normalizedLine.includes(term.toLowerCase()) ? 1 : 0),
+        0
+      );
+      return { line, hitCount };
+    })
+    .filter((item) => item.hitCount > 0);
+
+  if (ranked.length === 0) return lines.slice(0, limit);
+
+  return ranked
+    .sort((a, b) => b.hitCount - a.hitCount)
+    .map((item) => item.line)
+    .slice(0, limit);
+}
+
 function getUsefulExcerpts(source: CombinedKnowledgeResult, limit = 3) {
   return source.excerpts
     .map(cleanExcerpt)
@@ -226,15 +319,11 @@ function buildKnowledgeAnswerV2(query: string, results: CombinedKnowledgeResult[
   ].join("\n");
 }
 
-function buildChatContextV2(results: CombinedKnowledgeResult[]) {
+function buildChatContextV2(query: string, results: CombinedKnowledgeResult[]) {
   return results
     .slice(0, 3)
     .map((source, index) => {
-      const excerpts = source.excerpts
-        .filter(Boolean)
-        .slice(0, 6)
-        .map(cleanExcerpt)
-        .filter(Boolean)
+      const excerpts = getEvidenceLines(source, query, 6)
         .map((excerpt) => `  - ${excerpt}`)
         .join("\n");
 
@@ -242,7 +331,7 @@ function buildChatContextV2(results: CombinedKnowledgeResult[]) {
         `候補${index + 1}`,
         `タイトル: ${source.sourceTitle}`,
         `URL: ${getDisplayUrl(source.url)}`,
-        excerpts ? `本文抜粋:\n${excerpts}` : "",
+        excerpts ? `質問に関連する根拠行:\n${excerpts}` : "",
       ]
         .filter(Boolean)
         .join("\n");
@@ -375,7 +464,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const context = buildChatContextV2(results);
+    const context = buildChatContextV2(lastText, results);
     const recentMessages = messages.slice(-6);
     const result = await generateText({
       model: openai(process.env.OPENAI_TEXT_MODEL || "gpt-4.1-mini"),
@@ -393,6 +482,7 @@ export async function POST(req: Request) {
         "回答は短めにしてください。目安は2〜5文。必要なら候補URLを2〜3件まで並べてください。",
         "毎回同じ枕詞にしないでください。ユーザーの聞き方に合わせて自然に返してください。",
         "「【その場】」と付くステータス条件は、ユーザーがその場・Zoom入室後・面談中の話をしている場合だけ使ってください。通常のステータスと混同しないでください。",
+        "検索候補に複数条件が含まれる場合、質問文に明示された条件と一致する根拠行だけを使ってください。近いが条件が違う行は回答に混ぜないでください。",
         isChatbotRagReady()
           ? "検索候補はRAGの意味検索で抽出した本文チャンクを優先しています。質問と意味が近い本文だけを要約してください。"
           : "RAGインデックス未生成のため、キーワード検索候補を使っています。",

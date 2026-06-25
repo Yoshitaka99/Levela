@@ -6,6 +6,7 @@ import OpenAI from "openai";
 const rootDir = process.cwd();
 const notionPagesPath = path.join(rootDir, "data", "chatbot-notion-pages", "pages.json");
 const ocrResultsPath = path.join(rootDir, "data", "chatbot-ocr", "ocr-results.json");
+const coreSourcesPath = path.join(rootDir, "data", "chatbot-rag", "core-sources.json");
 const outputDir = path.join(rootDir, "data", "chatbot-rag");
 const outputPath = path.join(outputDir, "index.json");
 
@@ -152,7 +153,28 @@ function chunkText(text) {
 function buildDocuments() {
   const notionData = loadJson(notionPagesPath, { pages: [] });
   const ocrData = loadJson(ocrResultsPath, { results: [] });
+  const coreData = loadJson(coreSourcesPath, { sources: [] });
   const documents = [];
+
+  for (const source of coreData.sources ?? []) {
+    if (!source?.url || !source?.markdown?.trim()) continue;
+
+    const title = source.title || "Core knowledge";
+    const category = source.category || "Core";
+    const body = [`# ${title}`, cleanMarkdown(source.markdown)].join("\n\n");
+
+    for (const [index, text] of chunkText(body).entries()) {
+      documents.push({
+        id: stableId("core", source.url, String(index), text),
+        kind: "core",
+        sourceUrl: source.url,
+        title,
+        category,
+        chunkIndex: index,
+        text,
+      });
+    }
+  }
 
   for (const page of notionData.pages ?? []) {
     if (!page?.url || !page?.markdown?.trim()) continue;
