@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "chatbot:rag": "node scripts/build-chatbot-rag-index.mjs",
     "automation:secret": "node tools/generate-automation-secret.mjs",
     "automation:trigger": "node tools/automation-trigger.mjs",
     "discord:register-command": "node tools/register-discord-command.mjs"

@@ -24,6 +24,11 @@ import {
   determineChatbotAnswerStatus,
   determineChatbotAnswerStatusFromAnswer,
 } from "@/app/lib/chatbotQuestionTaxonomy";
+import {
+  isChatbotRagReady,
+  searchChatbotRag,
+  type ChatbotRagSearchResult,
+} from "@/app/lib/chatbotRag";
 
 export const maxDuration = 30;
 
@@ -38,7 +43,7 @@ function extractLastUserText(messages: UIMessage[]) {
 }
 
 type CombinedKnowledgeResult = {
-  kind: "article" | "image-ocr";
+  kind: "article" | "image-ocr" | "rag";
   title: string;
   sourceTitle: string;
   url: string;
@@ -74,7 +79,23 @@ function fromOcrResult(
   };
 }
 
-function searchCombinedKnowledge(query: string, limit = 5) {
+function fromRagResult(source: ChatbotRagSearchResult): CombinedKnowledgeResult {
+  return {
+    kind: "rag",
+    title: source.title,
+    sourceTitle: source.sourceTitle,
+    url: source.url,
+    score: source.score,
+    excerpts: source.excerpts,
+    notes: source.notes,
+  };
+}
+
+async function searchCombinedKnowledge(query: string, limit = 5) {
+  const ragResults =
+    process.env.OPENAI_API_KEY && isChatbotRagReady()
+      ? await searchChatbotRag(query, { limit: limit * 2 }).catch(() => [])
+      : [];
   const articleResults = searchChatbotKnowledgeSources(query, {
     limit: limit * 2,
   }).map(fromArticleResult);
@@ -84,7 +105,7 @@ function searchCombinedKnowledge(query: string, limit = 5) {
 
   const grouped = new Map<string, CombinedKnowledgeResult>();
 
-  for (const result of [...articleResults, ...ocrResults]) {
+  for (const result of [...ragResults.map(fromRagResult), ...articleResults, ...ocrResults]) {
     const existing = grouped.get(result.url);
 
     if (!existing) {
@@ -103,7 +124,9 @@ function searchCombinedKnowledge(query: string, limit = 5) {
         .filter(Boolean)
         .filter((note, index, list) => list.indexOf(note) === index),
       kind:
-        existing.kind === "image-ocr" || result.kind === "image-ocr"
+        existing.kind === "rag" || result.kind === "rag"
+          ? "rag"
+          : existing.kind === "image-ocr" || result.kind === "image-ocr"
           ? "image-ocr"
           : "article",
     });
@@ -169,9 +192,7 @@ function buildBriefAnswer(source: CombinedKnowledgeResult) {
   ].join("\n");
 }
 
-function buildKnowledgeAnswerV2(query: string) {
-  const results = searchCombinedKnowledge(query, 5);
-
+function buildKnowledgeAnswerV2(query: string, results: CombinedKnowledgeResult[]) {
   if (results.length === 0) {
     return [
       "今のナレッジでは、該当しそうな記事を見つけられませんでした。",
@@ -184,6 +205,7 @@ function buildKnowledgeAnswerV2(query: string) {
         return `- ${category}: ${count}件`;
       }),
       `- OCR画像: ${getChatbotOcrResultCount()}件`,
+      isChatbotRagReady() ? "- RAG: 有効" : "- RAG: 未生成",
     ].join("\n");
   }
 
@@ -236,6 +258,10 @@ function appendVerifiedSourceLinksV2(
     title: source.sourceTitle,
     url: getDisplayUrl(source.url),
   }));
+  const domainlessText = text.replace(
+    /https?:\/\/[^/\s)]+(\/chatbot-knowledge\/[a-zA-Z0-9-]+)/g,
+    "$1"
+  );
   const normalizedText = sources.reduce((current, source) => {
     const leaf = source.url.split("/").filter(Boolean).at(-1);
     if (!leaf) return current;
@@ -244,7 +270,7 @@ function appendVerifiedSourceLinksV2(
       new RegExp(`(^|[\\s(])/${escapeRegExp(leaf)}\\b`, "g"),
       `$1${source.url}`
     );
-  }, text);
+  }, domainlessText);
 
   const linkedText = sources.reduce((current, source) => {
     const urlPattern = new RegExp(
@@ -268,7 +294,11 @@ function appendVerifiedSourceLinksV2(
 
   if (sourceLines.length === 0) return clickableText;
 
-  return [`${clickableText.trim()}`, "", "参考記事:", ...sourceLines].join("\n");
+  const heading = /参考記事[:：]/.test(clickableText)
+    ? "ほかに近い記事:"
+    : "参考記事:";
+
+  return [`${clickableText.trim()}`, "", heading, ...sourceLines].join("\n");
 }
 
 function createTextResponse(messages: UIMessage[], text: string) {
@@ -323,12 +353,12 @@ function logQuestionIfNeeded({
 export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
   const lastText = extractLastUserText(messages);
-  const results = searchCombinedKnowledge(lastText, 5);
+  const results = await searchCombinedKnowledge(lastText, 5);
   const shouldLogQuestion =
     req.headers.get("x-levela-chatbot-surface") === "user";
 
   if (process.env.CHATBOT_LIVE_OPENAI === "false") {
-    const answerText = buildKnowledgeAnswerV2(lastText);
+    const answerText = buildKnowledgeAnswerV2(lastText, results);
     logQuestionIfNeeded({ shouldLogQuestion, lastText, results, answerText });
 
     return createTextResponse(messages, answerText);
@@ -336,7 +366,8 @@ export async function POST(req: Request) {
 
   if (!process.env.OPENAI_API_KEY) {
     const answerText = `${buildKnowledgeAnswerV2(
-      lastText
+      lastText,
+      results
     )}\n\n補足: OPENAI_API_KEY が未設定のため、ローカル検索結果を返しています。`;
     logQuestionIfNeeded({ shouldLogQuestion, lastText, results, answerText });
 
@@ -361,6 +392,10 @@ export async function POST(req: Request) {
         "ログインID、パスワード、APIキー、カード番号、口座番号などの機密情報は出さないでください。",
         "回答は短めにしてください。目安は2〜5文。必要なら候補URLを2〜3件まで並べてください。",
         "毎回同じ枕詞にしないでください。ユーザーの聞き方に合わせて自然に返してください。",
+        "「【その場】」と付くステータス条件は、ユーザーがその場・Zoom入室後・面談中の話をしている場合だけ使ってください。通常のステータスと混同しないでください。",
+        isChatbotRagReady()
+          ? "検索候補はRAGの意味検索で抽出した本文チャンクを優先しています。質問と意味が近い本文だけを要約してください。"
+          : "RAGインデックス未生成のため、キーワード検索候補を使っています。",
         results.length === 0
           ? "検索候補が0件の場合、挨拶や雑談には自然に返してください。社内ナレッジが必要な質問なら、カテゴリ一覧を出さずに、もう少し具体的なキーワードを聞いてください。"
           : "",
@@ -381,7 +416,7 @@ export async function POST(req: Request) {
 
     return createTextResponse(messages, answerText);
   } catch (error) {
-    const answerText = `${buildKnowledgeAnswerV2(lastText)}\n\n補足: ${
+    const answerText = `${buildKnowledgeAnswerV2(lastText, results)}\n\n補足: ${
       error instanceof Error ? error.message : "OpenAI API 実行に失敗しました。"
     }`;
     logQuestionIfNeeded({ shouldLogQuestion, lastText, results, answerText });
