@@ -430,7 +430,7 @@ export function ChatbotAdminClient({
             </AdminFolder>
           </aside>
 
-          <div className="order-1 flex min-h-[640px] min-w-0 flex-col gap-3 lg:order-2 lg:gap-4">
+          <div className="order-1 flex min-w-0 flex-col gap-3 lg:order-2 lg:min-h-[640px] lg:gap-4">
             <QuestionLogPanel
               error={questionLogError}
               filter={questionLogFilter}
@@ -464,7 +464,7 @@ export function ChatbotAdminClient({
                 </span>
               </summary>
 
-          <div className="flex min-h-[520px] flex-col overflow-hidden border-t border-slate-800 bg-card">
+          <div className="flex min-h-[360px] flex-col overflow-hidden border-t border-slate-800 bg-card md:min-h-[520px]">
             <Conversation className="min-h-0">
               <ConversationContent className="min-h-full gap-5 p-4 md:p-6">
                 {messages.length === 0 ? (
@@ -662,7 +662,7 @@ function QuestionLogPanel({
   ];
 
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-950/80 p-4 shadow-xl shadow-black/20">
+    <section className="rounded-lg border border-slate-800 bg-slate-950/80 p-3 shadow-xl shadow-black/20 md:p-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="mb-2 inline-flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs text-slate-400">
@@ -687,7 +687,7 @@ function QuestionLogPanel({
         </Button>
       </div>
 
-      <div className="mt-4 grid gap-3 rounded-md border border-slate-800 bg-slate-900/50 p-3 md:grid-cols-[minmax(200px,260px)_1fr_auto] md:items-end">
+      <div className="mt-4 grid gap-2 rounded-md border border-slate-800 bg-slate-900/50 p-2.5 md:grid-cols-[minmax(200px,260px)_1fr_auto] md:items-end md:gap-3 md:p-3">
         <label className="grid gap-1 text-xs text-slate-400">
           対象月
           <select
@@ -804,7 +804,7 @@ function QuestionLogPanel({
       ) : null}
 
       {filteredRecords.length > 0 ? (
-        <div className="max-h-[62vh] space-y-2 overflow-auto pr-0.5 md:max-h-[520px]">
+        <div className="space-y-2 pr-0.5 md:max-h-[520px] md:overflow-auto">
           {filteredRecords.map((record) => (
             <QuestionLogRow key={record.id} record={record} />
           ))}
@@ -830,12 +830,12 @@ function MetricCard({
   value: string;
 }) {
   return (
-    <div className="rounded-md border border-slate-800 bg-slate-900 px-3 py-2">
-      <div className="flex items-center gap-2 text-xs text-slate-400">
-        <Icon className="size-3.5" />
-        {label}
+    <div className="min-w-0 rounded-md border border-slate-800 bg-slate-900 px-2.5 py-2 md:px-3">
+      <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-slate-400 md:gap-2 md:text-xs">
+        <Icon className="size-3.5 shrink-0" />
+        <span className="min-w-0 truncate">{label}</span>
       </div>
-      <div className="mt-1 text-lg font-semibold">{value}</div>
+      <div className="mt-1 text-base font-semibold md:text-lg">{value}</div>
     </div>
   );
 }
@@ -849,15 +849,15 @@ function QuestionLogRow({ record }: { record: ChatbotQuestionLogRecord }) {
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] ${style.className}`}
+            className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[11px] ${style.className}`}
           >
             <Icon className="size-3" />
             {style.label}
           </span>
-          <span className="rounded-full border border-slate-700 px-2 py-1 text-[11px] text-slate-300">
+          <span className="max-w-full rounded-full border border-slate-700 px-2 py-1 text-[11px] text-slate-300">
             {record.majorCategory}
           </span>
-          <span className="rounded-full border border-slate-800 px-2 py-1 text-[11px] text-slate-400">
+          <span className="max-w-full rounded-full border border-slate-800 px-2 py-1 text-[11px] text-slate-400">
             {record.minorCategory}
           </span>
         </div>
@@ -870,7 +870,7 @@ function QuestionLogRow({ record }: { record: ChatbotQuestionLogRecord }) {
         {record.questionText}
       </p>
 
-      <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
         <span>参照候補 {record.matchedSourceCount}件</span>
         {record.answerStatus !== "answered" ? (
           <span>確認対象として残します</span>
