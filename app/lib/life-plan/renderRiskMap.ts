@@ -14,8 +14,21 @@ export type LifePlanRiskMapForm = {
 const WIDTH = 1800;
 const HEIGHT = 970;
 const NATIONAL_AVERAGE_ANNUAL_INCOME = 478;
-const CONSERVATIVE_ANNUAL_INCOME_GROWTH_RATE = 0.005;
 const MORTGAGE_YEARS = 35;
+const NATIONAL_AGE_INCOME_CURVE = [
+  { age: 19, income: 118 },
+  { age: 22, income: 277 },
+  { age: 27, income: 407 },
+  { age: 32, income: 449 },
+  { age: 37, income: 482 },
+  { age: 42, income: 516 },
+  { age: 47, income: 540 },
+  { age: 52, income: 559 },
+  { age: 57, income: 572 },
+  { age: 62, income: 473 },
+  { age: 67, income: 370 },
+  { age: 72, income: 305 },
+];
 
 function escapeXml(value: string) {
   return value
@@ -46,7 +59,26 @@ function firstNumber(text = "") {
   return match ? Number(match[1]) : 0;
 }
 
-function annualIncomeFromForm(text = "") {
+function nationalAverageIncomeForAge(age: number) {
+  if (!Number.isFinite(age) || age <= 0) return NATIONAL_AVERAGE_ANNUAL_INCOME;
+
+  const curve = NATIONAL_AGE_INCOME_CURVE;
+  if (age <= curve[0].age) return curve[0].income;
+
+  for (let index = 1; index < curve.length; index += 1) {
+    const previous = curve[index - 1];
+    const current = curve[index];
+
+    if (age <= current.age) {
+      const progress = (age - previous.age) / (current.age - previous.age);
+      return previous.income + (current.income - previous.income) * progress;
+    }
+  }
+
+  return curve[curve.length - 1].income;
+}
+
+function annualIncomeFromForm(text = "", currentAge = 0) {
   const personAnnual = amountFrom(text, "本人年収");
   const spouseAnnual = amountFrom(text, "配偶者年収");
   const householdAnnual = amountFrom(text, "世帯年収") || amountFrom(text, "年収");
@@ -79,14 +111,17 @@ function annualIncomeFromForm(text = "") {
   }
 
   return {
-    amount: NATIONAL_AVERAGE_ANNUAL_INCOME,
+    amount: Math.round(nationalAverageIncomeForAge(currentAge)),
     usedAverage: true,
   };
 }
 
-function annualIncomeAt(baseAnnualIncome: number, months: number) {
-  const years = Math.max(0, months / 12);
-  return Math.round((baseAnnualIncome * (1 + CONSERVATIVE_ANNUAL_INCOME_GROWTH_RATE * years)) / 10) * 10;
+function annualIncomeAt(baseAnnualIncome: number, currentAge: number, months: number) {
+  const currentAverage = nationalAverageIncomeForAge(currentAge);
+  const futureAverage = nationalAverageIncomeForAge(currentAge + Math.max(0, months / 12));
+  const incomeRatio = currentAverage > 0 ? baseAnnualIncome / currentAverage : 1;
+
+  return Math.round((futureAverage * incomeRatio) / 10) * 10;
 }
 
 function extractMonthlySavings(form: LifePlanRiskMapForm) {
@@ -335,9 +370,9 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   const spouseAge = extractAge(form.family, "配偶者");
   const childAges = extractChildrenAges(form.family);
   const yearsTo65 = Math.max(1, 65 - personAge);
-  const income = annualIncomeFromForm(form.income);
+  const income = annualIncomeFromForm(form.income, personAge);
   const baseAnnualIncome = income.amount;
-  const currentAnnualIncome = annualIncomeAt(baseAnnualIncome, 0);
+  const currentAnnualIncome = annualIncomeAt(baseAnnualIncome, personAge, 0);
   const monthlyExpenses = amountFrom(form.expenses, "生活費") || 28;
   const currentHousing = amountFrom(form.expenses, "住宅ローン") || amountFrom(form.expenses, "家賃") || 9;
   const plannedHomePurchase = extractPlannedHomePurchase(form);
@@ -363,7 +398,7 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
     return currentAnnualExpense;
   };
   const rowValues = (months: number, extraExpense: number) => {
-    const rowIncome = annualIncomeAt(baseAnnualIncome, months);
+    const rowIncome = annualIncomeAt(baseAnnualIncome, personAge, months);
     const expense = baseAnnualExpenseAt(months) + extraExpense;
     return {
       income: `${rowIncome.toLocaleString()}万円`,
@@ -384,7 +419,7 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   ];
   const incomeText = [
     `年収 約${currentAnnualIncome.toLocaleString()}万円${income.usedAverage ? "（平均）" : ""}`,
-    `保守上昇 年${(CONSERVATIVE_ANNUAL_INCOME_GROWTH_RATE * 100).toFixed(1)}%`,
+    "年齢別平均カーブ反映",
     monthlySavings
       ? `貯金 ${monthlySavings}万円/月から支出逆算`
       : `生活費 ${monthlyExpenses}万円/月`,
