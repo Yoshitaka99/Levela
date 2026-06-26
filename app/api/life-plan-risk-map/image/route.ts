@@ -88,6 +88,7 @@ function buildIdealProductionPrompt(sourcePrompt: string) {
     "- Finished premium consulting slide, not rough poster.",
     "- Preserve people illustrations, family illustration, A/B/C target person cards, and future-scene visuals.",
     "- Prioritize visuals over text. Use short, large Japanese labels only.",
+    "- Show the client's emotion/wish/anxiety tags briefly inside the A/B/C target person cards.",
     "- Do not use fake logos, watermarks, distorted UI, or paragraphs of tiny text.",
     "- Add a full-width soft pink bottom band with this exact 3-line Japanese message: SnsClubで正しい環境でチャレンジする事で / あなたの強みが見つかって / その強みを活かした運用方法をプロの講師から学び、この未来を未来を叶えましょう✨",
     "",
