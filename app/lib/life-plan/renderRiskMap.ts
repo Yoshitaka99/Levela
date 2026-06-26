@@ -86,7 +86,26 @@ function annualIncomeFromForm(text = "") {
 
 function annualIncomeAt(baseAnnualIncome: number, months: number) {
   const years = Math.max(0, months / 12);
-  return Math.round((baseAnnualIncome * Math.pow(1 + NATIONAL_AVERAGE_INCOME_GROWTH_RATE, years)) / 10) * 10;
+  return Math.round((baseAnnualIncome * (1 + NATIONAL_AVERAGE_INCOME_GROWTH_RATE * years)) / 10) * 10;
+}
+
+function extractMonthlySavings(form: LifePlanRiskMapForm) {
+  const source = [form.assets, form.expenses, form.income]
+    .filter(Boolean)
+    .join("\n");
+
+  const line = source
+    .split(/\r?\n/)
+    .find((item) => (
+      /(毎月|月々|月額|月あたり|\/月|月)/.test(item)
+      && /(貯金|預金|積立|資産形成|黒字|余剰|NISA|ニーサ|iDeCo)/i.test(item)
+      && /(\d+(?:\.\d+)?)\s*万/.test(item)
+    ));
+
+  if (!line) return 0;
+
+  const match = line.match(/(\d+(?:\.\d+)?)\s*万/);
+  return match ? Number(match[1]) : 0;
 }
 
 function extractTimingMonths(line: string) {
@@ -323,6 +342,7 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   const currentHousing = amountFrom(form.expenses, "住宅ローン") || amountFrom(form.expenses, "家賃") || 9;
   const plannedHomePurchase = extractPlannedHomePurchase(form);
   const nisaMonthly = amountFrom(form.assets, "NISA") || 0;
+  const monthlySavings = extractMonthlySavings(form) || nisaMonthly || 0;
   const savings = amountFrom(form.assets, "貯金") || 0;
   const targetRetirementMonthly = amountFrom(form.retirement, "生活費") || firstNumber(form.retirement) || 38;
   const pensionMonthly = 22;
@@ -331,12 +351,16 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   const educationMin = childAges.length * 1000 || 1000;
   const educationMax = childAges.length * 2000 || 2000;
   const imageTitle = `${extractCustomerDisplayName(form.family)}の生涯ライフプラン年棒`;
+  const currentHousingAnnual = Math.round(currentHousing * 12);
+  const currentAnnualExpense = monthlySavings
+    ? Math.max(0, Math.round(currentAnnualIncome - monthlySavings * 12))
+    : Math.round(monthlyExpenses * 12 + currentHousingAnnual);
   const baseAnnualExpenseAt = (months: number) => {
-    const housingAnnual = plannedHomePurchase && months >= plannedHomePurchase.startMonths
-      ? plannedHomePurchase.annualPayment
-      : Math.round(currentHousing * 12);
+    if (plannedHomePurchase && months >= plannedHomePurchase.startMonths) {
+      return Math.max(0, Math.round(currentAnnualExpense - currentHousingAnnual + plannedHomePurchase.annualPayment));
+    }
 
-    return Math.round(monthlyExpenses * 12 + housingAnnual);
+    return currentAnnualExpense;
   };
   const rowValues = (months: number, extraExpense: number) => {
     const rowIncome = annualIncomeAt(baseAnnualIncome, months);
@@ -360,8 +384,10 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   ];
   const incomeText = [
     `年収 約${currentAnnualIncome.toLocaleString()}万円${income.usedAverage ? "（平均）" : ""}`,
-    `上昇率 年${(NATIONAL_AVERAGE_INCOME_GROWTH_RATE * 100).toFixed(1)}%`,
-    `生活費 ${monthlyExpenses}万円/月`,
+    `単利上昇 年${(NATIONAL_AVERAGE_INCOME_GROWTH_RATE * 100).toFixed(1)}%`,
+    monthlySavings
+      ? `貯金 ${monthlySavings}万円/月から支出逆算`
+      : `生活費 ${monthlyExpenses}万円/月`,
     plannedHomePurchase
       ? `住宅購入 ${plannedHomePurchase.price.toLocaleString()}万円`
       : `住宅 ${currentHousing}万円/月`,
