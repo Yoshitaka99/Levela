@@ -13,6 +13,9 @@ export type LifePlanRiskMapForm = {
 
 const WIDTH = 1800;
 const HEIGHT = 970;
+const NATIONAL_AVERAGE_ANNUAL_INCOME = 478;
+const NATIONAL_AVERAGE_INCOME_GROWTH_RATE = 0.039;
+const MORTGAGE_YEARS = 35;
 
 function escapeXml(value: string) {
   return value
@@ -41,6 +44,88 @@ function amountFrom(text = "", label: string) {
 function firstNumber(text = "") {
   const match = text.match(/(\d+(?:\.\d+)?)/);
   return match ? Number(match[1]) : 0;
+}
+
+function annualIncomeFromForm(text = "") {
+  const personAnnual = amountFrom(text, "本人年収");
+  const spouseAnnual = amountFrom(text, "配偶者年収");
+  const householdAnnual = amountFrom(text, "世帯年収") || amountFrom(text, "年収");
+
+  if (personAnnual || spouseAnnual) {
+    return {
+      amount: personAnnual + spouseAnnual,
+      usedAverage: false,
+    };
+  }
+
+  if (householdAnnual) {
+    return {
+      amount: householdAnnual,
+      usedAverage: false,
+    };
+  }
+
+  const personMonthly = amountFrom(text, "本人月収");
+  const spouseMonthly = amountFrom(text, "配偶者月収");
+  const genericMonthly = personMonthly || spouseMonthly ? 0 : amountFrom(text, "月収");
+  const monthlyIncome = personMonthly + spouseMonthly + genericMonthly;
+  const bonus = amountFrom(text, "ボーナス");
+
+  if (monthlyIncome || bonus) {
+    return {
+      amount: Math.round(monthlyIncome * 12 + bonus),
+      usedAverage: false,
+    };
+  }
+
+  return {
+    amount: NATIONAL_AVERAGE_ANNUAL_INCOME,
+    usedAverage: true,
+  };
+}
+
+function annualIncomeAt(baseAnnualIncome: number, months: number) {
+  const years = Math.max(0, months / 12);
+  return Math.round((baseAnnualIncome * Math.pow(1 + NATIONAL_AVERAGE_INCOME_GROWTH_RATE, years)) / 10) * 10;
+}
+
+function extractTimingMonths(line: string) {
+  const monthMatch = line.match(/(\d{1,2})\s*(?:ヶ月|か月|カ月|ヵ月|ケ月)後/);
+  if (monthMatch) return Number(monthMatch[1]);
+
+  const yearMatch = line.match(/(\d{1,2})\s*年後/);
+  if (yearMatch) return Number(yearMatch[1]) * 12;
+
+  return 36;
+}
+
+function extractPlannedHomePurchase(form: LifePlanRiskMapForm) {
+  const source = [form.expenses, form.idealsBeforeRetirement]
+    .filter(Boolean)
+    .join("\n");
+
+  const line = source
+    .split(/\r?\n/)
+    .find((item) => (
+      /(住宅|家|マイホーム|マンション|戸建|注文住宅)/.test(item)
+      && /(購入|買|建て|建築|取得|予定|希望|検討)/.test(item)
+      && /(\d+(?:\.\d+)?)\s*万/.test(item)
+    ));
+
+  if (!line) return null;
+
+  const priceMatch = line.match(/(\d+(?:\.\d+)?)\s*万/);
+  const price = priceMatch ? Number(priceMatch[1]) : 0;
+  if (!price || price < 1000) return null;
+
+  const annualPayment = Math.round(price / MORTGAGE_YEARS);
+
+  return {
+    price,
+    startMonths: extractTimingMonths(line),
+    annualPayment,
+    monthlyPayment: Math.round((price / (MORTGAGE_YEARS * 12)) * 10) / 10,
+  };
 }
 
 function extractAge(text = "", label: string) {
@@ -231,12 +316,12 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   const spouseAge = extractAge(form.family, "配偶者");
   const childAges = extractChildrenAges(form.family);
   const yearsTo65 = Math.max(1, 65 - personAge);
-  const monthlyIncome = amountFrom(form.income, "本人月収") + amountFrom(form.income, "配偶者月収");
-  const bonus = amountFrom(form.income, "ボーナス");
-  const annualIncome = Math.round(monthlyIncome * 12 + bonus);
+  const income = annualIncomeFromForm(form.income);
+  const baseAnnualIncome = income.amount;
+  const currentAnnualIncome = annualIncomeAt(baseAnnualIncome, 0);
   const monthlyExpenses = amountFrom(form.expenses, "生活費") || 28;
-  const housing = amountFrom(form.expenses, "住宅ローン") || amountFrom(form.expenses, "家賃") || 9;
-  const baseAnnualExpense = Math.round((monthlyExpenses + housing) * 12);
+  const currentHousing = amountFrom(form.expenses, "住宅ローン") || amountFrom(form.expenses, "家賃") || 9;
+  const plannedHomePurchase = extractPlannedHomePurchase(form);
   const nisaMonthly = amountFrom(form.assets, "NISA") || 0;
   const savings = amountFrom(form.assets, "貯金") || 0;
   const targetRetirementMonthly = amountFrom(form.retirement, "生活費") || firstNumber(form.retirement) || 38;
@@ -245,18 +330,21 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   const retirementTotalGap = retirementGap * 12 * 30;
   const educationMin = childAges.length * 1000 || 1000;
   const educationMax = childAges.length * 2000 || 2000;
-  const totalThemeMin = educationMin + retirementTotalGap + 1000;
-  const totalThemeMax = educationMax + retirementTotalGap + 1000;
   const imageTitle = `${extractCustomerDisplayName(form.family)}の生涯ライフプラン年棒`;
-  const fallbackAnnualIncome = baseAnnualExpense + 120;
-  const displayAnnualIncome = annualIncome || fallbackAnnualIncome;
-  const incomeLabel = `${displayAnnualIncome.toLocaleString()}万円`;
-  const rowValues = (extraExpense: number) => {
-    const expense = baseAnnualExpense + extraExpense;
+  const baseAnnualExpenseAt = (months: number) => {
+    const housingAnnual = plannedHomePurchase && months >= plannedHomePurchase.startMonths
+      ? plannedHomePurchase.annualPayment
+      : Math.round(currentHousing * 12);
+
+    return Math.round(monthlyExpenses * 12 + housingAnnual);
+  };
+  const rowValues = (months: number, extraExpense: number) => {
+    const rowIncome = annualIncomeAt(baseAnnualIncome, months);
+    const expense = baseAnnualExpenseAt(months) + extraExpense;
     return {
-      income: incomeLabel,
+      income: `${rowIncome.toLocaleString()}万円`,
       expense: `${expense.toLocaleString()}万円`,
-      diff: `${(displayAnnualIncome - expense).toLocaleString()}万円`,
+      diff: `${(rowIncome - expense).toLocaleString()}万円`,
     };
   };
 
@@ -271,20 +359,25 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
     `貯金 ${savings || "-"}万円`,
   ];
   const incomeText = [
-    `年収 約${annualIncome || "-"}万円`,
-    `月収 約${monthlyIncome || "-"}万円`,
+    `年収 約${currentAnnualIncome.toLocaleString()}万円${income.usedAverage ? "（平均）" : ""}`,
+    `上昇率 年${(NATIONAL_AVERAGE_INCOME_GROWTH_RATE * 100).toFixed(1)}%`,
     `生活費 ${monthlyExpenses}万円/月`,
-    `住宅 ${housing}万円/月`,
-  ];
+    plannedHomePurchase
+      ? `住宅購入 ${plannedHomePurchase.price.toLocaleString()}万円`
+      : `住宅 ${currentHousing}万円/月`,
+    plannedHomePurchase
+      ? `35年ローン 約${plannedHomePurchase.monthlyPayment}万円/月`
+      : "",
+  ].filter(Boolean);
   const idealText = [
     ...(form.idealsBeforeRetirement || "").split(/\r?\n/).filter(Boolean).slice(0, 4),
   ];
-  const threeMonths = rowValues(30);
-  const sixMonths = rowValues(80);
-  const oneYear = rowValues(120);
-  const threeYears = rowValues(180);
-  const fiveYears = rowValues(250);
-  const educationPeak = rowValues(220);
+  const threeMonths = rowValues(3, 30);
+  const sixMonths = rowValues(6, 80);
+  const oneYear = rowValues(12, 120);
+  const threeYears = rowValues(36, 180);
+  const fiveYears = rowValues(60, 250);
+  const educationPeak = rowValues(240, 220);
   const retirementRow = {
     income: `${pensionMonthly * 12}万円`,
     expense: `${targetRetirementMonthly * 12}万円`,
@@ -313,7 +406,7 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
     card(4, cardsX + (cardW + gap) * 3 + 36, topY, cardW, 250, "教育費", [`子ども${childAges.length || 1}人`, `${educationMin.toLocaleString()}〜${educationMax.toLocaleString()}万円`, "進学で大きく変動"]),
     card(5, cardsX + (cardW + gap) * 4 + 36, topY, cardW, 250, "老後不足", [`月${targetRetirementMonthly}万 - 年金${pensionMonthly}万`, `月${retirementGap}万円不足`, `30年で約${retirementTotalGap.toLocaleString()}万円`]),
     card(6, cardsX + (cardW + gap) * 5 + 36, topY, cardW, 250, "準備目安", [`残り${yearsTo65}年`, `NISA 月${nisaMonthly}万円`, "差額の見える化"]),
-    card(7, cardsX + (cardW + gap) * 6 + 36, topY, cardW, 250, "大きな準備", [`教育＋老後だけで`, `${totalThemeMin.toLocaleString()}〜${totalThemeMax.toLocaleString()}万円規模`, "住宅・車・旅行も追加"]),
+    card(7, cardsX + (cardW + gap) * 6 + 36, topY, cardW, 250, "将来テーマ", ["住宅・車・旅行", "時期ごとに支出増", "年表で個別に確認"]),
   ].join("");
 
   const phase = `
@@ -358,7 +451,7 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
     <rect x="${comparisonX}" y="444" width="420" height="390" rx="8" fill="#fff" stroke="#0b2a5b" stroke-width="3"/>
     <rect x="${comparisonX}" y="444" width="420" height="50" rx="8" fill="#0b2a5b"/>
     <text x="${comparisonX + 210}" y="478" text-anchor="middle" font-size="25" font-weight="900" fill="#fff">一般的な必要額との比較</text>
-    ${textLines({ x: comparisonX + 38, y: 540, lines: [`教育費：${educationMin.toLocaleString()}〜${educationMax.toLocaleString()}万円/人`, "住宅：6,000万円規模", "車：1,500〜2,500万円規模", `老後：約${retirementTotalGap.toLocaleString()}万円不足`], size: 26, weight: 900, lineHeight: 58 })}
+    ${textLines({ x: comparisonX + 38, y: 540, lines: [`教育費：${educationMin.toLocaleString()}〜${educationMax.toLocaleString()}万円/人`, plannedHomePurchase ? `住宅：${plannedHomePurchase.price.toLocaleString()}万円` : "住宅：6,000万円規模", "車：1,500〜2,500万円規模", `老後：約${retirementTotalGap.toLocaleString()}万円不足`], size: 26, weight: 900, lineHeight: 58 })}
     <rect x="${comparisonX + 30}" y="688" width="360" height="2" fill="#cbd5e1"/>
     ${textLines({ x: comparisonX + 38, y: 735, lines: wrapText(`積立がある場合でも、教育・住宅・旅行・老後まで含めると必要額との差は見えにくい状態です。人生全体で必要になるお金として整理することが大切です。`, 18, 5), size: 21, fill: "#b91c1c", weight: 900, lineHeight: 31 })}
   `;
