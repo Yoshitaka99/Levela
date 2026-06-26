@@ -14,7 +14,7 @@ export type LifePlanRiskMapForm = {
 const WIDTH = 1800;
 const HEIGHT = 970;
 const NATIONAL_AVERAGE_ANNUAL_INCOME = 478;
-const NATIONAL_AVERAGE_INCOME_GROWTH_RATE = 0.039;
+const CONSERVATIVE_ANNUAL_INCOME_GROWTH_RATE = 0.005;
 const MORTGAGE_YEARS = 35;
 
 function escapeXml(value: string) {
@@ -86,7 +86,7 @@ function annualIncomeFromForm(text = "") {
 
 function annualIncomeAt(baseAnnualIncome: number, months: number) {
   const years = Math.max(0, months / 12);
-  return Math.round((baseAnnualIncome * (1 + NATIONAL_AVERAGE_INCOME_GROWTH_RATE * years)) / 10) * 10;
+  return Math.round((baseAnnualIncome * (1 + CONSERVATIVE_ANNUAL_INCOME_GROWTH_RATE * years)) / 10) * 10;
 }
 
 function extractMonthlySavings(form: LifePlanRiskMapForm) {
@@ -384,7 +384,7 @@ export async function renderLifePlanRiskMapPng(form: LifePlanRiskMapForm) {
   ];
   const incomeText = [
     `年収 約${currentAnnualIncome.toLocaleString()}万円${income.usedAverage ? "（平均）" : ""}`,
-    `単利上昇 年${(NATIONAL_AVERAGE_INCOME_GROWTH_RATE * 100).toFixed(1)}%`,
+    `保守上昇 年${(CONSERVATIVE_ANNUAL_INCOME_GROWTH_RATE * 100).toFixed(1)}%`,
     monthlySavings
       ? `貯金 ${monthlySavings}万円/月から支出逆算`
       : `生活費 ${monthlyExpenses}万円/月`,
