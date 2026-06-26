@@ -48,6 +48,30 @@ function isUnconfirmedIncomeGoal(line: string) {
     && /(副業|収入|月収|年収|万円|円)/.test(line);
 }
 
+function emotionSignalLabel(line: string) {
+  if (/(不安|心配|怖い|足りない|厳しい|無理|困|悩|迷|焦|モヤ|しんどい|苦しい)/.test(line)) {
+    return "現状の不安";
+  }
+
+  if (/(嬉しい|楽しい|悔しい|安心|ワクワク|寂しい|悲しい|感動|自信|葛藤)/.test(line)) {
+    return "感情";
+  }
+
+  if (/(できてない|やれてない|してない|始めてない|続かない|まだ|後回し|踏み出せない)/.test(line)) {
+    return "やれていない事";
+  }
+
+  if (/(やりたい|挑戦|始めたい|変わりたい|発信|学びたい|作りたい|増やしたい)/.test(line)) {
+    return "やりたい事";
+  }
+
+  if (/(叶えたい|なりたい|したい|欲しい|理想|夢|希望|憧れ|目指)/.test(line)) {
+    return "願望";
+  }
+
+  return "";
+}
+
 function organizeLocally(memo: string) {
   const form = { ...emptyForm };
   const lines = memo
@@ -56,6 +80,12 @@ function organizeLocally(memo: string) {
     .filter(Boolean);
 
   for (const line of lines) {
+    const signalLabel = emotionSignalLabel(line);
+
+    if (signalLabel) {
+      appendLine(form, "strengths", `${signalLabel}：${line}`);
+    }
+
     if (isUnconfirmedIncomeGoal(line)) {
       appendLine(form, "income", `副業目標（参考・収入計算には含めない）：${line}`);
       continue;
@@ -96,7 +126,7 @@ function organizeLocally(memo: string) {
       continue;
     }
 
-    if (/(強み|得意|好き|経験|悩み|相談|褒め|挑戦|発信|Instagram|インスタ)/i.test(line)) {
+    if (!signalLabel && /(強み|得意|好き|経験|悩み|相談|褒め|挑戦|発信|Instagram|インスタ)/i.test(line)) {
       appendLine(form, "strengths", line);
       continue;
     }
@@ -167,6 +197,9 @@ async function organizeWithOpenAI(memo: string) {
       "- idealsBeforeRetirement: 老後までにしたい旅行、家族時間、趣味、叶えたい暮らし",
       "- retirement: 老後、年金、退職後生活費、介護、子や孫に残したいこと",
       "- strengths: 経験、好きなこと、得意なこと、褒められたこと、悩み、発信テーマ",
+      "- 文字起こしが含まれる場合、感情、願望、現状の不安、やれていない事、やりたい事を必ず拾い、strengthsに短いタグで残す",
+      "- strengthsには「感情：〇〇」「願望：〇〇」「現状の不安：〇〇」「やれていない事：〇〇」「やりたい事：〇〇」のように整理する",
+      "- 長文をそのまま貼らず、各タグは画像に使える短い言葉へ圧縮する",
       "",
       "相談メモ:",
       memo,
