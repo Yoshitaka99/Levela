@@ -647,7 +647,6 @@ function aggregateRows(
       matchesSeminar &&
       matchesTrafficFilter(row, selectedTraffic, selectedAdSource) &&
       !isExcludedFromInterviewBase(seat, status) &&
-      !isReservationSlot(seat) &&
       !isBlankReservationSlot(row)
     );
   });
