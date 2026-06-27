@@ -432,9 +432,13 @@ function isReservationSlot(seat: string) {
   return RESERVATION_SLOT_SEAT_STATUSES.has(normalizeKpiStatusLabel(seat));
 }
 
+function isBlankReservationSlot(row: SourceRow) {
+  return !getSeat(row).trim() && !getStatus(row).trim();
+}
+
 function isSeated(seat: string) {
   const normalized = seat.trim();
-  return normalized === "着座" || normalized === "着席";
+  return normalized === "着座" || normalized === "着席" || normalized.endsWith("→着座");
 }
 
 function getSeminarOptions(rows: SourceRow[]) {
@@ -637,7 +641,15 @@ function aggregateRows(
     const seat = getSeat(row);
     const status = getStatus(row);
     const matchesSeminar = selectedSeminars.includes(ALL_SEMINARS) || selectedSeminars.includes(seminar);
-    return member && !isExcludedMember(member) && matchesSeminar && matchesTrafficFilter(row, selectedTraffic, selectedAdSource) && !isExcludedFromInterviewBase(seat, status);
+    return (
+      member &&
+      !isExcludedMember(member) &&
+      matchesSeminar &&
+      matchesTrafficFilter(row, selectedTraffic, selectedAdSource) &&
+      !isExcludedFromInterviewBase(seat, status) &&
+      !isReservationSlot(seat) &&
+      !isBlankReservationSlot(row)
+    );
   });
 
   const memberNames = [...new Set(seminarRows.map((row) => getMember(row)))].sort((a, b) => compareMembersByTeamOrder(a, b, teamDefinitions));
