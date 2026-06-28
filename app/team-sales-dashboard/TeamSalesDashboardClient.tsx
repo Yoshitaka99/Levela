@@ -93,6 +93,14 @@ function formatPlanBreakdown(member: Pick<TeamMemberKpi, "tokushinClosed" | "bas
   return `特進 ${member.tokushinClosed} / ベーシック ${member.basicClosed}`;
 }
 
+function formatCount(value: number | undefined) {
+  return `${value ?? 0}件`;
+}
+
+function holdConversionBase(member: Pick<TeamMemberKpi, "holdClosed" | "holdLost" | "hold">) {
+  return (member.holdClosed ?? 0) + (member.holdLost ?? 0) + (member.hold ?? 0);
+}
+
 function splitSeminars(value?: string) {
   return (value ?? "")
     .split(SEMINAR_SEPARATOR)
@@ -1001,6 +1009,20 @@ export function TeamSalesDashboardClient({
                 <SmallMetric label="着座率" value={formatPercent(selected.seatRate)} />
                 <SmallMetric label="成約予定" value={`${selected.pending}件`} />
                 <SmallMetric label="成約内訳" value={formatPlanBreakdown(selected)} />
+              </div>
+              <div className="mt-4 rounded-lg border border-amber-300/15 bg-amber-300/10 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-amber-100">保留→成約率の内訳</h3>
+                  <span className="rounded-md bg-amber-300/10 px-2 py-1 text-sm font-semibold text-amber-100">
+                    {formatPercent(selected.holdConversionRate)}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                  <SmallMetric label="保留→成約" value={formatCount(selected.holdClosed)} />
+                  <SmallMetric label="保留→失注" value={formatCount(selected.holdLost)} />
+                  <SmallMetric label="未決着保留" value={formatCount(selected.hold)} />
+                  <SmallMetric label="母数" value={formatCount(holdConversionBase(selected))} />
+                </div>
               </div>
               <div className="mt-5">
                 <h3 className="mb-2 text-sm font-semibold text-white">KPIバランス</h3>
