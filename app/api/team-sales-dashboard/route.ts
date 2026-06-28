@@ -416,6 +416,16 @@ function isHoldStatus(status: string) {
   return status.trim() === "保留";
 }
 
+function isHoldClosedStatus(status: string) {
+  const normalized = status.trim();
+  return normalized.includes("保留") && isClosedStatus(normalized);
+}
+
+function isHoldLostStatus(status: string) {
+  const normalized = status.trim();
+  return normalized.includes("保留") && isLostStatus(normalized);
+}
+
 function normalizeKpiStatusLabel(value: string) {
   return value.trim().replace(/／/g, "/").replace(/\s+/g, "");
 }
@@ -682,6 +692,8 @@ function aggregateRows(
     let basicClosed = 0;
     let pending = 0;
     let hold = 0;
+    let holdClosed = 0;
+    let holdLost = 0;
     let alert = 0;
 
     memberRows.forEach((row) => {
@@ -707,6 +719,8 @@ function aggregateRows(
         incrementReasonWithDate(holdReasons, holdReasonDates, holdReason, holdAnswerDate);
         incrementReasonWithDate(allHoldReasons, allHoldReasonDates, holdReason, holdAnswerDate);
       }
+      if (isHoldClosedStatus(status)) holdClosed += 1;
+      if (isHoldLostStatus(status)) holdLost += 1;
       if (isLostStatus(status)) {
         increment(lostReasons, lostReason);
         increment(allLostReasons, lostReason);
@@ -715,6 +729,7 @@ function aggregateRows(
 
     const leads = memberRows.length;
     const projected = closed + pending;
+    const resolvedHold = holdClosed + holdLost;
 
     return {
       name,
@@ -731,6 +746,9 @@ function aggregateRows(
       projected,
       projectedRate: seated ? (projected / seated) * 100 : 0,
       hold,
+      holdClosed,
+      holdLost,
+      holdConversionRate: resolvedHold ? (holdClosed / resolvedHold) * 100 : 0,
       alert,
       lostReasons: toReasonCounts(lostReasons, 5),
       holdReasons: toReasonCounts(holdReasons, 5, holdReasonDates),

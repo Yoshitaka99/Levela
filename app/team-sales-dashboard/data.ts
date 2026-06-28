@@ -29,6 +29,9 @@ export type TeamMemberKpi = {
   projected: number;
   projectedRate: number;
   hold: number;
+  holdClosed: number;
+  holdLost: number;
+  holdConversionRate: number;
   alert: number;
   lostReasons: ReasonCount[];
   holdReasons: ReasonCount[];
