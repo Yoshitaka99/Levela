@@ -729,7 +729,7 @@ function aggregateRows(
 
     const leads = memberRows.length;
     const projected = closed + pending;
-    const resolvedHold = holdClosed + holdLost;
+    const resolvedHold = holdClosed + holdLost + hold;
 
     return {
       name,
