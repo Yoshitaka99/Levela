@@ -14,9 +14,9 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AdSourceFilter, ReasonCount, TeamMemberKpi, TeamSalesDashboardData, TrafficFilter } from "./data";
+import type { AdSourceFilter, CustomerManagementRow, ReasonCount, TeamMemberKpi, TeamSalesDashboardData, TrafficFilter } from "./data";
 
-type TabKey = "overview" | "members" | "reasons" | "alerts";
+type TabKey = "overview" | "appointments" | "members" | "reasons" | "alerts";
 type SortKey = "projectedRate" | "closeRate" | "seatRate" | "reservationSlots" | "seated" | "closed" | "projected" | "lost" | "hold";
 type ViewMode = "user" | "admin";
 type AdminSortKey = "appointmentDesc" | "appointmentAsc" | "memberAsc" | "memberDesc";
@@ -27,6 +27,7 @@ const SEMINAR_SEPARATOR = ",";
 
 const tabs: { key: TabKey; label: string }[] = [
   { key: "overview", label: "全体" },
+  { key: "appointments", label: "週間アポ" },
   { key: "members", label: "メンバー" },
   { key: "reasons", label: "理由分析" },
   { key: "alerts", label: "アラート" },
@@ -117,6 +118,103 @@ function normalizeSeminarSelection(value: string, options: string[]) {
   if (!selected.length) return options[0] ? [options[0]] : [];
   if (selected.includes(ALL_SEMINARS_LABEL)) return [ALL_SEMINARS_LABEL];
   return selected;
+}
+
+type AppointmentTone = "closed" | "pending" | "hold" | "lost" | "seated" | "future" | "other";
+
+type CalendarAppointment = CustomerManagementRow & {
+  id: string;
+  startsAt: Date;
+  dayKey: string;
+  hourKey: string;
+  timeLabel: string;
+  statusLabel: string;
+  tone: AppointmentTone;
+  memberInitial: string;
+  memberColor: string;
+};
+
+const memberColorClasses = [
+  "bg-teal-300 text-slate-950",
+  "bg-sky-300 text-slate-950",
+  "bg-amber-300 text-slate-950",
+  "bg-violet-300 text-slate-950",
+  "bg-rose-300 text-slate-950",
+  "bg-lime-300 text-slate-950",
+  "bg-cyan-300 text-slate-950",
+  "bg-orange-300 text-slate-950",
+  "bg-fuchsia-300 text-slate-950",
+  "bg-emerald-300 text-slate-950",
+];
+
+const appointmentToneClasses: Record<AppointmentTone, string> = {
+  closed: "border-emerald-300/30 bg-emerald-400/12 text-emerald-50",
+  pending: "border-amber-300/30 bg-amber-300/12 text-amber-50",
+  hold: "border-violet-300/30 bg-violet-400/12 text-violet-50",
+  lost: "border-rose-300/30 bg-rose-400/12 text-rose-50",
+  seated: "border-sky-300/30 bg-sky-400/12 text-sky-50",
+  future: "border-slate-400/25 bg-slate-700/35 text-slate-100",
+  other: "border-orange-300/30 bg-orange-300/12 text-orange-50",
+};
+
+function parseAppointmentDate(value: string) {
+  const match = value.match(/(\d{4})年(\d{1,2})月(\d{1,2})日.*?(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+}
+
+function getWeekStart(date = new Date()) {
+  const weekStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = weekStart.getDay();
+  weekStart.setDate(weekStart.getDate() + (day === 0 ? -6 : 1 - day));
+  return weekStart;
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function formatDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatDayLabel(date: Date) {
+  return date.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
+}
+
+function formatTimeLabel(date: Date) {
+  return date.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function isExcludedCalendarRow(row: CustomerManagementRow, startsAt: Date) {
+  const seat = row.seat.trim();
+  const status = row.status.trim();
+  if (!seat && !status) return startsAt <= new Date();
+  return ["重複予約", "無効アポ", "担当者変更"].some((label) => seat.includes(label) || status.includes(label));
+}
+
+function getAppointmentTone(row: CustomerManagementRow, startsAt: Date): { label: string; tone: AppointmentTone } {
+  const seat = row.seat.trim();
+  const status = row.status.trim();
+  const isSeated = seat === "着座" || seat === "着席" || seat.endsWith("→着座");
+
+  if (status.includes("失注") || status.includes("クーリングオフ")) return { label: "失注", tone: "lost" };
+  if (status.endsWith("成約") || status.includes("→成約")) return { label: "成約", tone: "closed" };
+  if (status.includes("成約予定")) return { label: "成約予定", tone: "pending" };
+  if (status === "保留") return { label: "保留", tone: "hold" };
+  if (isSeated) return { label: "着座", tone: "seated" };
+  if (startsAt > new Date() && !status) return { label: "未来アポ", tone: "future" };
+  return { label: status || seat || "未反映", tone: "other" };
+}
+
+function getMemberInitial(member: string, firstLetterCounts: Map<string, number>) {
+  const compactName = member.replace(/\s+/g, "");
+  const letters = Array.from(compactName);
+  const first = letters[0] ?? "?";
+  return (firstLetterCounts.get(first) ?? 0) > 1 ? letters.slice(0, 2).join("") || first : first;
 }
 
 function ProgressBar({ value, tone = "teal" }: { value: number; tone?: "teal" | "amber" | "rose" }) {
@@ -571,7 +669,9 @@ export function TeamSalesDashboardClient({
     [data.seminars, selectedSeminar],
   );
   const visibleSortButtons =
-    activeTab === "reasons"
+    activeTab === "appointments"
+      ? []
+      : activeTab === "reasons"
       ? sortButtons.filter((button) => button.key === "lost" || button.key === "hold")
       : sortButtons;
 
@@ -924,22 +1024,24 @@ export function TeamSalesDashboardClient({
           ))}
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {visibleSortButtons.map((button) => (
-            <button
-              key={button.key}
-              type="button"
-              onClick={() => changeSort(button.key)}
-              className={`rounded-md border px-3 py-2 text-sm ${
-                sortKey === button.key
-                  ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
-                  : "border-white/10 bg-white/[0.03] text-slate-300"
-              }`}
-            >
-              {button.label}
-            </button>
-          ))}
-        </div>
+        {visibleSortButtons.length ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {visibleSortButtons.map((button) => (
+              <button
+                key={button.key}
+                type="button"
+                onClick={() => changeSort(button.key)}
+                className={`rounded-md border px-3 py-2 text-sm ${
+                  sortKey === button.key
+                    ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
+                    : "border-white/10 bg-white/[0.03] text-slate-300"
+                }`}
+              >
+                {button.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {activeTab === "overview" ? (
           <div className="mt-5 grid gap-5">
@@ -949,6 +1051,10 @@ export function TeamSalesDashboardClient({
               <ReasonList title="失注理由 TOP" icon={CircleDot} reasons={data.lostReasons} tone="rose" />
             </div>
           </div>
+        ) : null}
+
+        {activeTab === "appointments" ? (
+          <WeeklyAppointmentCalendar rows={data.customerRows ?? []} members={filteredMembers} />
         ) : null}
 
         {activeTab === "members" && selected ? (
@@ -1083,6 +1189,231 @@ export function TeamSalesDashboardClient({
         )}
       </section>
     </main>
+  );
+}
+
+function WeeklyAppointmentCalendar({
+  rows,
+  members,
+}: {
+  rows: CustomerManagementRow[];
+  members: TeamMemberKpi[];
+}) {
+  const [selectedBucket, setSelectedBucket] = useState("");
+  const weekStart = useMemo(() => getWeekStart(), []);
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
+  const weekEnd = useMemo(() => addDays(weekStart, 7), [weekStart]);
+  const visibleMemberNames = useMemo(() => new Set(members.map((member) => member.name)), [members]);
+  const firstLetterCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    members.forEach((member) => {
+      const first = Array.from(member.name.replace(/\s+/g, ""))[0] ?? "?";
+      counts.set(first, (counts.get(first) ?? 0) + 1);
+    });
+    return counts;
+  }, [members]);
+  const memberColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    members.forEach((member, index) => {
+      map.set(member.name, memberColorClasses[index % memberColorClasses.length]);
+    });
+    return map;
+  }, [members]);
+
+  const appointments = useMemo<CalendarAppointment[]>(() => {
+    return rows
+      .filter((row) => visibleMemberNames.has(row.member))
+      .map((row, index) => {
+        const startsAt = parseAppointmentDate(row.appointmentDate);
+        if (!startsAt || startsAt < weekStart || startsAt >= weekEnd) return null;
+        if (isExcludedCalendarRow(row, startsAt)) return null;
+        const state = getAppointmentTone(row, startsAt);
+        const dayKey = formatDateKey(startsAt);
+        const hourKey = `${String(startsAt.getHours()).padStart(2, "0")}:00`;
+        return {
+          ...row,
+          id: `${row.member}-${row.appointmentDate}-${index}`,
+          startsAt,
+          dayKey,
+          hourKey,
+          timeLabel: formatTimeLabel(startsAt),
+          statusLabel: state.label,
+          tone: state.tone,
+          memberInitial: getMemberInitial(row.member, firstLetterCounts),
+          memberColor: memberColorMap.get(row.member) ?? memberColorClasses[0],
+        };
+      })
+      .filter((appointment): appointment is CalendarAppointment => Boolean(appointment))
+      .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime() || a.member.localeCompare(b.member, "ja"));
+  }, [firstLetterCounts, memberColorMap, rows, visibleMemberNames, weekEnd, weekStart]);
+
+  const appointmentsByBucket = useMemo(() => {
+    const map = new Map<string, CalendarAppointment[]>();
+    appointments.forEach((appointment) => {
+      const key = `${appointment.dayKey}:${appointment.hourKey}`;
+      const group = map.get(key) ?? [];
+      group.push(appointment);
+      map.set(key, group);
+    });
+    return map;
+  }, [appointments]);
+
+  const hours = useMemo(() => {
+    if (!appointments.length) return Array.from({ length: 13 }, (_, index) => `${String(index + 9).padStart(2, "0")}:00`);
+    const minHour = Math.min(...appointments.map((appointment) => appointment.startsAt.getHours()));
+    const maxHour = Math.max(...appointments.map((appointment) => appointment.startsAt.getHours()));
+    const start = Math.max(7, Math.min(9, minHour));
+    const end = Math.min(23, Math.max(21, maxHour));
+    return Array.from({ length: end - start + 1 }, (_, index) => `${String(start + index).padStart(2, "0")}:00`);
+  }, [appointments]);
+
+  const selectedAppointments =
+    (selectedBucket ? appointmentsByBucket.get(selectedBucket) : undefined) ?? appointments.slice(0, 8);
+  const weekLabel = `${formatDayLabel(weekStart)} - ${formatDayLabel(addDays(weekStart, 6))}`;
+  const now = new Date();
+  const summary = {
+    total: appointments.length,
+    done: appointments.filter((appointment) => appointment.startsAt <= now).length,
+    future: appointments.filter((appointment) => appointment.startsAt > now).length,
+    closed: appointments.filter((appointment) => appointment.tone === "closed").length,
+    pending: appointments.filter((appointment) => appointment.tone === "pending").length,
+    hold: appointments.filter((appointment) => appointment.tone === "hold").length,
+    lost: appointments.filter((appointment) => appointment.tone === "lost").length,
+  };
+
+  return (
+    <section className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white">週間アポカレンダー</h2>
+            <p className="mt-1 text-sm text-slate-400">面談日をもとに、今週月曜から日曜までのアポを表示します。</p>
+          </div>
+          <span className="rounded-md border border-teal-300/25 bg-teal-300/10 px-3 py-1 text-sm font-semibold text-teal-100">
+            {weekLabel}
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <SmallMetric label="今週アポ" value={`${summary.total}件`} />
+          <SmallMetric label="実施済み" value={`${summary.done}件`} />
+          <SmallMetric label="未来アポ" value={`${summary.future}件`} />
+          <SmallMetric label="成約" value={`${summary.closed}件`} />
+          <SmallMetric label="成約予定" value={`${summary.pending}件`} />
+          <SmallMetric label="保留" value={`${summary.hold}件`} />
+          <SmallMetric label="失注" value={`${summary.lost}件`} />
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {members.map((member) => (
+            <span key={member.name} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 px-2.5 py-1 text-xs text-slate-300">
+              <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[11px] font-bold ${memberColorMap.get(member.name) ?? memberColorClasses[0]}`}>
+                {getMemberInitial(member.name, firstLetterCounts)}
+              </span>
+              {member.name}
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-4 overflow-x-auto rounded-lg border border-white/10">
+          <div className="min-w-[980px]">
+            <div className="grid bg-slate-900 text-xs font-medium text-slate-400" style={{ gridTemplateColumns: "72px repeat(7, minmax(0, 1fr))" }}>
+              <div className="border-r border-white/10 px-3 py-3">時間</div>
+              {weekDays.map((day) => (
+                <div key={formatDateKey(day)} className="border-r border-white/10 px-3 py-3 last:border-r-0">
+                  {formatDayLabel(day)}
+                </div>
+              ))}
+            </div>
+            {hours.map((hour) => (
+              <div key={hour} className="grid border-t border-white/10" style={{ gridTemplateColumns: "72px repeat(7, minmax(0, 1fr))" }}>
+                <div className="border-r border-white/10 bg-slate-950/45 px-3 py-3 text-xs font-semibold text-slate-400">{hour}</div>
+                {weekDays.map((day) => {
+                  const dayKey = formatDateKey(day);
+                  const bucketKey = `${dayKey}:${hour}`;
+                  const bucketAppointments = appointmentsByBucket.get(bucketKey) ?? [];
+                  const visibleAppointments = bucketAppointments.slice(0, 3);
+                  return (
+                    <div key={bucketKey} className="min-h-[96px] border-r border-white/10 bg-slate-950/20 p-2 last:border-r-0">
+                      <div className="space-y-1.5">
+                        {visibleAppointments.map((appointment) => (
+                          <button
+                            key={appointment.id}
+                            type="button"
+                            title={`${appointment.member} ${appointment.timeLabel} ${appointment.statusLabel}`}
+                            onClick={() => setSelectedBucket(bucketKey)}
+                            className={`flex w-full items-center gap-1.5 rounded-md border px-2 py-1.5 text-left text-xs leading-tight transition hover:border-white/35 ${appointmentToneClasses[appointment.tone]}`}
+                          >
+                            <span className={`inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-bold ${appointment.memberColor}`}>
+                              {appointment.memberInitial}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block font-semibold">{appointment.timeLabel}</span>
+                              <span className="block truncate opacity-80">{appointment.statusLabel}</span>
+                            </span>
+                          </button>
+                        ))}
+                        {bucketAppointments.length > visibleAppointments.length ? (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedBucket(bucketKey)}
+                            className="w-full rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs font-semibold text-cyan-100 hover:bg-white/10"
+                          >
+                            +{bucketAppointments.length - visibleAppointments.length}件
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <aside className="rounded-lg border border-white/10 bg-white/[0.03] p-4 xl:sticky xl:top-4 xl:self-start">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-white">選択中のアポ</h3>
+            <p className="mt-1 text-xs text-slate-400">
+              {selectedBucket ? "同じ曜日・時間帯のアポを表示中" : "直近のアポを表示中"}
+            </p>
+          </div>
+          <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-slate-300">{selectedAppointments.length}件</span>
+        </div>
+        <div className="mt-4 space-y-3">
+          {selectedAppointments.length ? selectedAppointments.map((appointment) => (
+            <div key={appointment.id} className={`rounded-lg border p-3 ${appointmentToneClasses[appointment.tone]}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className={`inline-flex h-8 min-w-8 items-center justify-center rounded-full px-1 text-xs font-bold ${appointment.memberColor}`}>
+                    {appointment.memberInitial}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-white">{appointment.member}</p>
+                    <p className="text-xs opacity-75">{formatDayLabel(appointment.startsAt)} {appointment.timeLabel}</p>
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-md bg-slate-950/35 px-2 py-1 text-xs font-semibold">{appointment.statusLabel}</span>
+              </div>
+              <div className="mt-3 grid gap-2 text-xs text-slate-200">
+                <AdminInfo label="着座" value={appointment.seat} />
+                <AdminInfo label="ステータス" value={appointment.status} />
+                <AdminInfo label="流入" value={appointment.inflow} />
+                <AdminInfo label="流入経路" value={appointment.trafficRoute} />
+                <AdminInfo label="失注理由" value={appointment.lostReason} />
+                <AdminInfo label="保留理由" value={appointment.holdReason} />
+              </div>
+            </div>
+          )) : (
+            <p className="rounded-md border border-white/10 bg-slate-950/35 px-3 py-4 text-sm text-slate-400">
+              今週表示できるアポはありません。
+            </p>
+          )}
+        </div>
+      </aside>
+    </section>
   );
 }
 

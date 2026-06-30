@@ -446,6 +446,15 @@ function isBlankReservationSlot(row: SourceRow) {
   return !getSeat(row).trim() && !getStatus(row).trim();
 }
 
+function isTodayOrFutureAppointment(row: SourceRow) {
+  const parsedDate = parseSheetDate(getAppointmentDate(row));
+  if (!parsedDate) return false;
+  const appointmentDate = new Date(parsedDate.year, parsedDate.month - 1, parsedDate.day).getTime();
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return appointmentDate >= today;
+}
+
 function isSeated(seat: string) {
   const normalized = seat.trim();
   return normalized === "着座" || normalized === "着席" || normalized.endsWith("→着座");
@@ -661,7 +670,23 @@ function aggregateRows(
     );
   });
 
-  const memberNames = [...new Set(seminarRows.map((row) => getMember(row)))].sort((a, b) => compareMembersByTeamOrder(a, b, teamDefinitions));
+  const displayRows = rows.filter((row) => {
+    const member = getMember(row);
+    const seminar = getEffectiveSeminar(row);
+    const seat = getSeat(row);
+    const status = getStatus(row);
+    const matchesSeminar = selectedSeminars.includes(ALL_SEMINARS) || selectedSeminars.includes(seminar);
+    return (
+      member &&
+      !isExcludedMember(member) &&
+      matchesSeminar &&
+      matchesTrafficFilter(row, selectedTraffic, selectedAdSource) &&
+      !isExcludedFromInterviewBase(seat, status) &&
+      (!isBlankReservationSlot(row) || isTodayOrFutureAppointment(row))
+    );
+  });
+
+  const memberNames = [...new Set([...seminarRows, ...displayRows].map((row) => getMember(row)))].sort((a, b) => compareMembersByTeamOrder(a, b, teamDefinitions));
   const teams = getTeamOptions(teamDefinitions, memberNames);
   const selectedTeam = resolveSelectedTeam(teams, requestedTeam);
   const scopedMemberNames = memberNames.filter((member) => {
@@ -670,6 +695,7 @@ function aggregateRows(
   });
 
   const scopedRows = seminarRows.filter((row) => scopedMemberNames.includes(getMember(row)));
+  const scopedDisplayRows = displayRows.filter((row) => scopedMemberNames.includes(getMember(row)));
   const allLostReasons = new Map<string, number>();
   const allHoldReasons = new Map<string, number>();
   const allHoldReasonDates = new Map<string, Set<string>>();
@@ -765,7 +791,7 @@ function aggregateRows(
     .slice(0, 8);
   const weeklyKpis = buildWeeklyKpis(scopedRows);
   const appointmentWeeklyKpis = buildAppointmentWeeklyKpis(scopedRows);
-  const customerRows = buildCustomerRows(scopedRows, teamDefinitions);
+  const customerRows = buildCustomerRows(scopedDisplayRows, teamDefinitions);
 
   return {
     updatedAt: new Date().toISOString(),

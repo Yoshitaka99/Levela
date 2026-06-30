@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-const validTabs = ["overview", "members", "reasons", "alerts"] as const;
+const validTabs = ["overview", "appointments", "members", "reasons", "alerts"] as const;
 const validSorts = ["projectedRate", "closeRate", "seatRate", "reservationSlots", "seated", "closed", "projected", "lost", "hold"] as const;
 const validTraffic = ["all", "ad", "exclude_ad"] as const;
 const validAdSources = ["all", "x", "meta", "meta_ad", "Meta_ad", "meta_ad_Suea_aw", "meta_ad_in-house_aw", "meta_ad_Suea", "Meta_ad_aw", "meta_ad_in-house"] as const;
