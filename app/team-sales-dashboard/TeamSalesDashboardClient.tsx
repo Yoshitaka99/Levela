@@ -200,12 +200,14 @@ function getAppointmentTone(row: CustomerManagementRow, startsAt: Date): { label
   const seat = row.seat.trim();
   const status = row.status.trim();
   const isSeated = seat === "着座" || seat === "着席" || seat.endsWith("→着座");
+  const scheduleAdjustmentLabel = [seat, status].find((value) => value.includes("日程調整") || value.includes("リスケ"));
 
   if (status.includes("失注") || status.includes("クーリングオフ")) return { label: "失注", tone: "lost" };
   if (status.endsWith("成約") || status.includes("→成約")) return { label: "成約", tone: "closed" };
   if (status.includes("成約予定")) return { label: "成約予定", tone: "pending" };
   if (status === "保留") return { label: "保留", tone: "hold" };
   if (isSeated) return { label: "着座", tone: "seated" };
+  if (scheduleAdjustmentLabel) return { label: scheduleAdjustmentLabel, tone: "future" };
   if (startsAt > new Date() && !status) return { label: "未来アポ", tone: "future" };
   return { label: status || seat || "未反映", tone: "other" };
 }
@@ -1200,6 +1202,7 @@ function WeeklyAppointmentCalendar({
   members: TeamMemberKpi[];
 }) {
   const [selectedBucket, setSelectedBucket] = useState("");
+  const [expandedBuckets, setExpandedBuckets] = useState<Set<string>>(() => new Set());
   const weekStart = useMemo(() => getWeekStart(), []);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
   const weekEnd = useMemo(() => addDays(weekStart, 7), [weekStart]);
@@ -1280,6 +1283,18 @@ function WeeklyAppointmentCalendar({
     hold: appointments.filter((appointment) => appointment.tone === "hold").length,
     lost: appointments.filter((appointment) => appointment.tone === "lost").length,
   };
+  const toggleExpandedBucket = (bucketKey: string) => {
+    setSelectedBucket(bucketKey);
+    setExpandedBuckets((current) => {
+      const next = new Set(current);
+      if (next.has(bucketKey)) {
+        next.delete(bucketKey);
+      } else {
+        next.add(bucketKey);
+      }
+      return next;
+    });
+  };
 
   return (
     <section className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -1332,7 +1347,8 @@ function WeeklyAppointmentCalendar({
                   const dayKey = formatDateKey(day);
                   const bucketKey = `${dayKey}:${hour}`;
                   const bucketAppointments = appointmentsByBucket.get(bucketKey) ?? [];
-                  const visibleAppointments = bucketAppointments.slice(0, 3);
+                  const isExpanded = expandedBuckets.has(bucketKey);
+                  const visibleAppointments = isExpanded ? bucketAppointments : bucketAppointments.slice(0, 3);
                   return (
                     <div key={bucketKey} className="min-h-[96px] border-r border-white/10 bg-slate-950/20 p-2 last:border-r-0">
                       <div className="space-y-1.5">
@@ -1356,10 +1372,18 @@ function WeeklyAppointmentCalendar({
                         {bucketAppointments.length > visibleAppointments.length ? (
                           <button
                             type="button"
-                            onClick={() => setSelectedBucket(bucketKey)}
+                            onClick={() => toggleExpandedBucket(bucketKey)}
                             className="w-full rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs font-semibold text-cyan-100 hover:bg-white/10"
                           >
                             +{bucketAppointments.length - visibleAppointments.length}件
+                          </button>
+                        ) : isExpanded && bucketAppointments.length > 3 ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandedBucket(bucketKey)}
+                            className="w-full rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs font-semibold text-slate-200 hover:bg-white/10"
+                          >
+                            閉じる
                           </button>
                         ) : null}
                       </div>
