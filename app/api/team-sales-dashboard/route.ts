@@ -686,7 +686,20 @@ function aggregateRows(
     );
   });
 
-  const memberNames = [...new Set([...seminarRows, ...displayRows].map((row) => getMember(row)))].sort((a, b) => compareMembersByTeamOrder(a, b, teamDefinitions));
+  const calendarBaseRows = rows.filter((row) => {
+    const member = getMember(row);
+    const seat = getSeat(row);
+    const status = getStatus(row);
+    return (
+      member &&
+      !isExcludedMember(member) &&
+      matchesTrafficFilter(row, selectedTraffic, selectedAdSource) &&
+      !isExcludedFromInterviewBase(seat, status) &&
+      (!isBlankReservationSlot(row) || isTodayOrFutureAppointment(row))
+    );
+  });
+
+  const memberNames = [...new Set([...seminarRows, ...displayRows, ...calendarBaseRows].map((row) => getMember(row)))].sort((a, b) => compareMembersByTeamOrder(a, b, teamDefinitions));
   const teams = getTeamOptions(teamDefinitions, memberNames);
   const selectedTeam = resolveSelectedTeam(teams, requestedTeam);
   const scopedMemberNames = memberNames.filter((member) => {
@@ -696,6 +709,7 @@ function aggregateRows(
 
   const scopedRows = seminarRows.filter((row) => scopedMemberNames.includes(getMember(row)));
   const scopedDisplayRows = displayRows.filter((row) => scopedMemberNames.includes(getMember(row)));
+  const scopedCalendarRows = calendarBaseRows.filter((row) => scopedMemberNames.includes(getMember(row)));
   const allLostReasons = new Map<string, number>();
   const allHoldReasons = new Map<string, number>();
   const allHoldReasonDates = new Map<string, Set<string>>();
@@ -792,6 +806,7 @@ function aggregateRows(
   const weeklyKpis = buildWeeklyKpis(scopedRows);
   const appointmentWeeklyKpis = buildAppointmentWeeklyKpis(scopedRows);
   const customerRows = buildCustomerRows(scopedDisplayRows, teamDefinitions);
+  const calendarRows = buildCustomerRows(scopedCalendarRows, teamDefinitions);
 
   return {
     updatedAt: new Date().toISOString(),
@@ -809,6 +824,7 @@ function aggregateRows(
     weeklyKpis,
     appointmentWeeklyKpis,
     customerRows,
+    calendarRows,
   };
 }
 

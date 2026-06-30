@@ -86,6 +86,7 @@ export type TeamSalesDashboardData = {
   weeklyKpis: WeeklyKpi[];
   appointmentWeeklyKpis: WeeklyKpi[];
   customerRows: CustomerManagementRow[];
+  calendarRows: CustomerManagementRow[];
 };
 
 export const defaultTeamSalesDashboardData: TeamSalesDashboardData = {
@@ -104,4 +105,5 @@ export const defaultTeamSalesDashboardData: TeamSalesDashboardData = {
   weeklyKpis: [],
   appointmentWeeklyKpis: [],
   customerRows: [],
+  calendarRows: [],
 };

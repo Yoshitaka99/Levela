@@ -1054,7 +1054,7 @@ export function TeamSalesDashboardClient({
         ) : null}
 
         {activeTab === "appointments" ? (
-          <WeeklyAppointmentCalendar rows={data.customerRows ?? []} members={filteredMembers} />
+          <WeeklyAppointmentCalendar rows={data.calendarRows ?? data.customerRows ?? []} members={filteredMembers} />
         ) : null}
 
         {activeTab === "members" && selected ? (
