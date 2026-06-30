@@ -218,7 +218,7 @@ function parseSheetDate(value: string) {
     };
   }
 
-  const jpDate = normalized.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日?/);
+  const jpDate = normalized.match(/^(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
   if (jpDate) {
     return {
       year: Number(jpDate[1]),
