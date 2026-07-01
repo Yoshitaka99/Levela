@@ -339,9 +339,9 @@ function isClosedStatus(status: string) {
 }
 
 function normalizeContractPlan(plan: string) {
-  const normalized = plan.trim();
-  if (normalized.includes("コミット")) return "tokushin";
-  if (normalized.includes("プレプラ") || normalized.includes("プレミアムプラス")) return "basic";
+  const normalized = plan.trim().replace(/\s+/g, "");
+  if (normalized.includes("コミット") || normalized.includes("特進")) return "tokushin";
+  if (normalized.includes("プレプラ") || normalized.includes("プレミアムプラス") || normalized.includes("ベーシック")) return "basic";
   return "";
 }
 
