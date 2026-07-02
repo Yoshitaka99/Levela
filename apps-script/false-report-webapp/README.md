@@ -50,14 +50,27 @@ POST は 501 を返す。
 | action | パラメータ | 動作 |
 | --- | --- | --- |
 | `getData` | - | 各シートの件数を返す (疎通確認) |
-| `setConfirmed` | `rowKey`, `value` | 顧客管理_自動反映 A列「確認済み」を更新 |
-| `setDiffConfirmed` | `rowKey`, `value` | 顧客管理_自動反映 B列「差分確認済み」を更新 |
+| `setConfirmed` | `rowKey`, `rowIndex`, `value` | 顧客管理_自動反映 A列「確認済み」を更新。ONで「確認チェック」タブへ確認時点ステータスを記録、OFFで削除 |
+| `setDiffConfirmed` | `rowKey`, `rowIndex`, `value` | 顧客管理_自動反映 B列「差分確認済み」を更新 |
 | `saveFalseReportMemo` | `rowKey` / `managementId` / `rowIndex`+`customerName`, `memo` | 虚偽報告集計 E列「メモ」を更新 (行キーが空の既存行は管理ID等で特定) |
 | `updateReply` | `rowIndex`, `customerName`, `appliedAt`, `slot`, `contacted?`, `status?`, `contractStatus?`, `memo?` | 連絡済みは返信あり顧客リストG列、ステータス/成約状況/メモは「返信チェック」タブへ保存 |
 
 `rowKey` は各シートの「行キー」列 (顧客管理_自動反映: AI列 / 虚偽報告集計: AG列)。
 返信あり顧客リストには行キーがないため、`rowIndex` を顧客名で検証し、
 ズレていた場合は お申し込み日+顧客名 で探し直す。
+
+## 差分/虚偽報告の検知方式
+
+シート側の「変更検知」列 (AH) は記録が不安定なため使わず、Next.js側で
+**大元の顧客管理シートを読み取り専用で照合**して検知する:
+
+1. 確認済みチェック時のステータスをスナップショットとして保持
+   (優先順: チェック管理タブ > 確認済みタブ > 確認チェックタブ)
+2. 大元シートの現在ステータス (`着席 / 2回目ステータス`) を管理IDで取得
+3. スナップショットが現在ステータス一覧に無ければ「差分」として表示
+
+行キーは重複予約などで重複するため (同一管理IDの複数行)、書き込みは
+`rowIndex` を行キーで検証してから行う。
 
 ## 返信チェックタブについて
 

@@ -8,12 +8,25 @@ import type {
 
 export const dynamic = "force-dynamic";
 
-// 軽量版シート。大元の顧客管理シート (1kkL_...) は読み書きとも扱わない。
+// 軽量版シート (チェックやメモの書き込み先)
 const LIGHT_SPREADSHEET_ID = "1npumMCuzudexL9ZE4jr8tTMRh9j23eKXOatAqQ71uiY";
+
+// 大元の顧客管理シート。現在ステータスの照合のための「読み取り専用」。
+// 絶対に書き込まないこと (書き込みは全て軽量版シートのみ)。
+const MASTER_SPREADSHEET_ID = "1kkL_gysoXKq0Kh8ttFeMmG6pljzv1iwum2k2DxvJ96s";
+const MASTER_SHEET_GID = "2051214579";
+// A=お客様名, G=着席, H=2回目/実施後ステータス, X=管理ID
+const MASTER_STATUS_QUERY = "select A,G,H,X where X is not null";
 
 const CUSTOMERS_GID = "988340691"; // 顧客管理_自動反映
 const FALSE_REPORTS_GID = "259179250"; // 虚偽報告集計
 const REPLIES_GID = "1055902312"; // 返信あり顧客リスト
+const CONFIRMED_TAB_GID = "810691914"; // 確認済み (シート側スナップショット)
+
+// シート側自動処理の永続ストア (隠しタブ)。status at confirmation を持つ
+const CHECK_MANAGEMENT_SHEET_NAME = "チェック管理";
+// Web Appが確認済みチェック時に記録するスナップショットタブ
+const CONFIRM_CHECKS_SHEET_NAME = "確認チェック";
 
 // 返信あり顧客のステータス/成約状況/メモの永続ストア (Apps Scriptが作る専用タブ)。
 // 返信あり顧客リストのH/I/J列はシート側リビルドで消えるため使わない。
@@ -30,6 +43,14 @@ const ALLOWED_ACTIONS = new Set([
 
 function csvUrl(gid: string) {
   return `https://docs.google.com/spreadsheets/d/${LIGHT_SPREADSHEET_ID}/export?format=csv&gid=${gid}`;
+}
+
+function lightSheetByNameUrl(sheetName: string) {
+  return `https://docs.google.com/spreadsheets/d/${LIGHT_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}&headers=0`;
+}
+
+function masterStatusUrl() {
+  return `https://docs.google.com/spreadsheets/d/${MASTER_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&gid=${MASTER_SHEET_GID}&tq=${encodeURIComponent(MASTER_STATUS_QUERY)}`;
 }
 
 function parseCsv(text: string) {
@@ -103,52 +124,157 @@ async function fetchCsv(gid: string) {
   return parseCsv(await response.text());
 }
 
-function mapCustomers(rows: string[][]): CustomerRow[] {
-  // 1行目はバナー、2行目がヘッダー
-  return rows
-    .slice(2)
-    .filter((row) => cellAt(row, 2))
-    .map((row) => ({
-      rowKey: cellAt(row, 34),
-      confirmed: toBool(row[0]),
-      diffConfirmed: toBool(row[1]),
-      customerName: cellAt(row, 2),
-      staffName: cellAt(row, 3),
-      seminar: cellAt(row, 4),
-      appliedAt: formatSheetValue(cellAt(row, 5)),
-      interviewAt: formatSheetValue(cellAt(row, 6)),
-      inflow: cellAt(row, 7),
-      seated: cellAt(row, 8),
-      status: cellAt(row, 9),
-      plan: cellAt(row, 16),
-      confirmedStatus: cellAt(row, 31),
-      currentStatus: cellAt(row, 32),
-      changeDetected: toBool(row[33]),
-    }));
+// 補助データ (スナップショット/大元照合) は取得失敗しても本体表示を止めない
+async function fetchCsvOptional(url: string) {
+  try {
+    const response = await fetch(url, { cache: "no-store", redirect: "follow" });
+    if (!response.ok) return [] as string[][];
+    return parseCsv(await response.text());
+  } catch {
+    return [] as string[][];
+  }
 }
 
-function mapFalseReports(rows: string[][]): FalseReportRow[] {
+function combineStatus(seated: string, status: string) {
+  return status ? `${seated} / ${status}` : seated;
+}
+
+/** 大元シートの 管理ID → 現在ステータス一覧 (重複予約は複数ステータスを持つ) */
+function mapMasterStatuses(rows: string[][]) {
+  const statuses = new Map<string, string[]>();
+  for (const row of rows.slice(1)) {
+    const id = cellAt(row, 3);
+    if (!id) continue;
+    const combined = combineStatus(cellAt(row, 1), cellAt(row, 2));
+    const list = statuses.get(id) ?? [];
+    if (!list.includes(combined)) list.push(combined);
+    statuses.set(id, list);
+  }
+  return statuses;
+}
+
+/**
+ * 確認済みチェック時点のステータスを行キー(M:管理ID等)で引けるようにする。
+ * 優先順: チェック管理 (シート側の正) > 確認済みタブ > 確認チェック (Web App記録)
+ */
+function mapSnapshots(
+  checkManagementRows: string[][],
+  confirmedTabRows: string[][],
+  confirmCheckRows: string[][],
+) {
+  const snapshots = new Map<string, string>();
+  const setIfAbsent = (key: string, value: string) => {
+    if (key && value && !snapshots.has(key)) snapshots.set(key, value);
+  };
+
+  // チェック管理: col0=key, col7=status at confirmation (タブ未作成時はヘッダー検証で除外)
+  if (cellAt(checkManagementRows[0] ?? [], 0) === "key") {
+    for (const row of checkManagementRows.slice(1)) {
+      setIfAbsent(cellAt(row, 0), cellAt(row, 7));
+    }
+  }
+  // 確認済みタブ: col23=管理ID, col29=確認済み時点のステータス。
+  // col29はほぼ未記録のため、チェック時点のコピーである col6=着席/col7=ステータス から復元する
+  for (const row of confirmedTabRows.slice(1)) {
+    const id = cellAt(row, 23);
+    if (!id) continue;
+    const snapshot = cellAt(row, 29) || combineStatus(cellAt(row, 6), cellAt(row, 7));
+    setIfAbsent(`M:${id}`, snapshot);
+  }
+  // 確認チェック: col0=行キー, col3=確認時点ステータス
+  if (cellAt(confirmCheckRows[0] ?? [], 0) === "行キー") {
+    for (const row of confirmCheckRows.slice(1)) {
+      setIfAbsent(cellAt(row, 0), cellAt(row, 3));
+    }
+  }
+  return snapshots;
+}
+
+function mapCustomers(
+  rows: string[][],
+  masterStatuses: Map<string, string[]>,
+  snapshots: Map<string, string>,
+): CustomerRow[] {
+  // 1行目はバナー、2行目がヘッダー。シート行番号 = 配列index + 1
+  return rows
+    .map((row, index) => ({ row, sheetRow: index + 1 }))
+    .slice(2)
+    .filter(({ row }) => cellAt(row, 2))
+    .map(({ row, sheetRow }) => {
+      const rowKey = cellAt(row, 34);
+      const managementId = cellAt(row, 25);
+      const confirmed = toBool(row[0]);
+      const lightCurrent = cellAt(row, 32) || combineStatus(cellAt(row, 8), cellAt(row, 9));
+      const masterList = managementId ? masterStatuses.get(managementId) : undefined;
+      const snapshot =
+        snapshots.get(rowKey) ?? (managementId ? snapshots.get(`M:${managementId}`) : undefined) ?? "";
+      const confirmedStatus = snapshot || cellAt(row, 31);
+
+      // 確認済みチェック後に大元シートの現在値がスナップショットと一致しなくなったら差分。
+      // 重複予約 (同一管理IDの複数行) の誤検知を避けるため「一覧に無ければ変更」とする
+      const statusChanged = masterList
+        ? !masterList.includes(confirmedStatus)
+        : Boolean(lightCurrent) && lightCurrent !== confirmedStatus;
+      const changeDetected =
+        (confirmed && Boolean(confirmedStatus) && statusChanged) || toBool(row[33]);
+
+      return {
+        rowIndex: sheetRow,
+        rowKey,
+        managementId,
+        confirmed,
+        diffConfirmed: toBool(row[1]),
+        customerName: cellAt(row, 2),
+        staffName: cellAt(row, 3),
+        seminar: cellAt(row, 4),
+        appliedAt: formatSheetValue(cellAt(row, 5)),
+        interviewAt: formatSheetValue(cellAt(row, 6)),
+        inflow: cellAt(row, 7),
+        seated: cellAt(row, 8),
+        status: cellAt(row, 9),
+        plan: cellAt(row, 16),
+        confirmedStatus,
+        currentStatus: masterList ? masterList.join(" | ") : lightCurrent,
+        changeDetected,
+      };
+    });
+}
+
+function mapFalseReports(
+  rows: string[][],
+  masterStatuses: Map<string, string[]>,
+  snapshots: Map<string, string>,
+): FalseReportRow[] {
   return rows
     .slice(1)
     .map((row, index) => ({ row, sheetRow: index + 2 }))
     .filter(({ row }) => cellAt(row, 5) || cellAt(row, 0))
-    .map(({ row, sheetRow }) => ({
-      rowIndex: sheetRow,
-      rowKey: cellAt(row, 32),
-      managementId: cellAt(row, 28),
-      falseReport: cellAt(row, 0),
-      correctReport: cellAt(row, 1),
-      confirmedAt: formatSheetValue(cellAt(row, 2)),
-      detectedAt: formatSheetValue(cellAt(row, 3)),
-      memo: cellAt(row, 4),
-      customerName: cellAt(row, 5),
-      staffName: cellAt(row, 6),
-      seminar: cellAt(row, 7),
-      appliedAt: formatSheetValue(cellAt(row, 8)),
-      interviewAt: formatSheetValue(cellAt(row, 9)),
-      seated: cellAt(row, 11),
-      status: cellAt(row, 12),
-    }));
+    .map(({ row, sheetRow }) => {
+      const rowKey = cellAt(row, 32);
+      const managementId = cellAt(row, 28);
+      const snapshot =
+        snapshots.get(rowKey) ?? (managementId ? snapshots.get(`M:${managementId}`) : undefined) ?? "";
+      const masterList = managementId ? masterStatuses.get(managementId) : undefined;
+      return {
+        rowIndex: sheetRow,
+        rowKey,
+        managementId,
+        falseReport: cellAt(row, 0),
+        correctReport: cellAt(row, 1),
+        confirmedStatus: snapshot,
+        currentStatus: masterList ? masterList.join(" | ") : combineStatus(cellAt(row, 11), cellAt(row, 12)),
+        confirmedAt: formatSheetValue(cellAt(row, 2)),
+        detectedAt: formatSheetValue(cellAt(row, 3)),
+        memo: cellAt(row, 4),
+        customerName: cellAt(row, 5),
+        staffName: cellAt(row, 6),
+        seminar: cellAt(row, 7),
+        appliedAt: formatSheetValue(cellAt(row, 8)),
+        interviewAt: formatSheetValue(cellAt(row, 9)),
+        seated: cellAt(row, 11),
+        status: cellAt(row, 12),
+      };
+    });
 }
 
 // Apps Script側 (Code.gs) の normalizeAppliedKey と同じロジックにすること
@@ -214,22 +340,35 @@ function isWriteEnabled() {
 
 export async function GET() {
   try {
-    const [customerRows, falseReportRows, replyRows, replyCheckRows] = await Promise.all([
+    const [
+      customerRows,
+      falseReportRows,
+      replyRows,
+      replyCheckRows,
+      confirmedTabRows,
+      checkManagementRows,
+      confirmCheckRows,
+      masterRows,
+    ] = await Promise.all([
       fetchCsv(CUSTOMERS_GID),
       fetchCsv(FALSE_REPORTS_GID),
       fetchCsv(REPLIES_GID),
-      // 返信チェックタブはApps Script初回実行まで存在しないため、失敗しても無視する
-      fetch(REPLY_CHECKS_CSV_URL, { cache: "no-store", redirect: "follow" })
-        .then((response) => (response.ok ? response.text() : ""))
-        .then(parseCsv)
-        .catch(() => [] as string[][]),
+      // 以下の補助タブ/大元照合は取得失敗しても本体表示を止めない
+      fetchCsvOptional(REPLY_CHECKS_CSV_URL),
+      fetchCsvOptional(csvUrl(CONFIRMED_TAB_GID)),
+      fetchCsvOptional(lightSheetByNameUrl(CHECK_MANAGEMENT_SHEET_NAME)),
+      fetchCsvOptional(lightSheetByNameUrl(CONFIRM_CHECKS_SHEET_NAME)),
+      fetchCsvOptional(masterStatusUrl()),
     ]);
+
+    const masterStatuses = mapMasterStatuses(masterRows);
+    const snapshots = mapSnapshots(checkManagementRows, confirmedTabRows, confirmCheckRows);
 
     const data: FalseReportCheckerData = {
       updatedAt: new Date().toISOString(),
       writeEnabled: isWriteEnabled(),
-      customers: mapCustomers(customerRows),
-      falseReports: mapFalseReports(falseReportRows),
+      customers: mapCustomers(customerRows, masterStatuses, snapshots),
+      falseReports: mapFalseReports(falseReportRows, masterStatuses, snapshots),
       replies: mapReplies(replyRows, mapReplyChecks(replyCheckRows)),
     };
 

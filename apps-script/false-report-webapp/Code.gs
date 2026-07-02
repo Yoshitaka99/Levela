@@ -22,7 +22,17 @@ var SHEET_REPLIES = "返信あり顧客リスト";
 var CUSTOMERS_HEADER_ROW = 2;
 var CUSTOMERS_COL_CONFIRMED = 1; // A: 確認済み
 var CUSTOMERS_COL_DIFF_CONFIRMED = 2; // B: 差分確認済み
+var CUSTOMERS_COL_NAME = 3; // C: お客様名
+var CUSTOMERS_COL_SEATED = 9; // I: 着席
+var CUSTOMERS_COL_STATUS = 10; // J: 2回目/実施後ステータス
+var CUSTOMERS_COL_MGMT_ID = 26; // Z: 管理ID
 var CUSTOMERS_COL_ROW_KEY = 35; // AI: 行キー
+
+// 確認済みチェック時のステータススナップショット (このWeb App専用タブ)。
+// 大元シート変更の検知 (虚偽報告拾い上げ) はNext.js側がこのスナップショットと
+// 大元シートの現在値を照合して行う。
+var SHEET_CONFIRM_CHECKS = "確認チェック";
+var CONFIRM_CHECKS_HEADERS = ["行キー", "お客様名", "管理ID", "確認時点ステータス", "確認日時"];
 
 // 虚偽報告集計: 1行目がヘッダー
 var FALSE_REPORTS_HEADER_ROW = 1;
@@ -107,6 +117,7 @@ function handleGetData() {
   var falseReports = ss.getSheetByName(SHEET_FALSE_REPORTS);
   var replies = ss.getSheetByName(SHEET_REPLIES);
   var replyChecks = ensureReplyChecksSheet(ss);
+  var confirmChecks = ensureSheetWithHeaders(ss, SHEET_CONFIRM_CHECKS, CONFIRM_CHECKS_HEADERS);
   return {
     ok: true,
     counts: {
@@ -114,20 +125,68 @@ function handleGetData() {
       falseReports: falseReports ? Math.max(falseReports.getLastRow() - FALSE_REPORTS_HEADER_ROW, 0) : -1,
       replies: replies ? Math.max(replies.getLastRow() - REPLIES_HEADER_ROW, 0) : -1,
       replyChecks: Math.max(replyChecks.getLastRow() - 1, 0),
+      confirmChecks: Math.max(confirmChecks.getLastRow() - 1, 0),
     },
   };
 }
 
+/**
+ * 行キーは重複することがある (重複予約など、同じ管理IDの複数行) ため、
+ * rowIndex(シート行番号) を行キーで検証してから書き込む。
+ * ズレていた場合のみ行キーで探し直す。
+ */
 function handleSetCustomerCheckbox(body, column) {
   if (!body.rowKey) return { ok: false, error: "rowKey は必須です" };
   var value = body.value === true;
 
   var sheet = getSheetOrThrow(SHEET_CUSTOMERS);
-  var row = findRowByKey(sheet, CUSTOMERS_COL_ROW_KEY, CUSTOMERS_HEADER_ROW, body.rowKey);
+  var row = 0;
+  var rowIndex = Number(body.rowIndex);
+  if (rowIndex > CUSTOMERS_HEADER_ROW && rowIndex <= sheet.getLastRow()) {
+    var keyAt = String(sheet.getRange(rowIndex, CUSTOMERS_COL_ROW_KEY).getValue()).trim();
+    if (keyAt === String(body.rowKey).trim()) row = rowIndex;
+  }
+  if (!row) row = findRowByKey(sheet, CUSTOMERS_COL_ROW_KEY, CUSTOMERS_HEADER_ROW, body.rowKey);
   if (!row) return { ok: false, error: "行キーが見つかりません: " + body.rowKey };
 
   sheet.getRange(row, column).setValue(value);
+
+  if (column === CUSTOMERS_COL_CONFIRMED) {
+    if (value) recordConfirmSnapshot(sheet, row, body.rowKey);
+    else removeConfirmSnapshot(body.rowKey);
+  }
   return { ok: true, row: row, value: value };
+}
+
+/**
+ * 確認済みチェック時点のステータスを「確認チェック」タブへ記録する。
+ * 既にスナップショットがある場合は上書きしない (最初の確認時点を保持)。
+ */
+function recordConfirmSnapshot(customersSheet, row, rowKey) {
+  var ss = SpreadsheetApp.openById(LIGHT_SPREADSHEET_ID);
+  var sheet = ensureSheetWithHeaders(ss, SHEET_CONFIRM_CHECKS, CONFIRM_CHECKS_HEADERS);
+  if (findRowByKey(sheet, 1, 1, rowKey)) return;
+
+  var values = customersSheet.getRange(row, 1, 1, CUSTOMERS_COL_ROW_KEY).getValues()[0];
+  var seated = String(values[CUSTOMERS_COL_SEATED - 1] || "").trim();
+  var status = String(values[CUSTOMERS_COL_STATUS - 1] || "").trim();
+  var combined = status ? seated + " / " + status : seated;
+
+  sheet.appendRow([
+    String(rowKey).trim(),
+    String(values[CUSTOMERS_COL_NAME - 1] || "").trim(),
+    String(values[CUSTOMERS_COL_MGMT_ID - 1] || "").trim(),
+    combined,
+    new Date(),
+  ]);
+}
+
+function removeConfirmSnapshot(rowKey) {
+  var ss = SpreadsheetApp.openById(LIGHT_SPREADSHEET_ID);
+  var sheet = ss.getSheetByName(SHEET_CONFIRM_CHECKS);
+  if (!sheet) return;
+  var row = findRowByKey(sheet, 1, 1, rowKey);
+  if (row) sheet.deleteRow(row);
 }
 
 /**
@@ -246,12 +305,16 @@ function normalizeAppliedKey(value) {
 }
 
 function ensureReplyChecksSheet(ss) {
-  var sheet = ss.getSheetByName(SHEET_REPLY_CHECKS);
+  return ensureSheetWithHeaders(ss, SHEET_REPLY_CHECKS, REPLY_CHECKS_HEADERS);
+}
+
+function ensureSheetWithHeaders(ss, name, headers) {
+  var sheet = ss.getSheetByName(name);
   if (!sheet) {
-    sheet = ss.insertSheet(SHEET_REPLY_CHECKS);
+    sheet = ss.insertSheet(name);
   }
   if (sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, REPLY_CHECKS_HEADERS.length).setValues([REPLY_CHECKS_HEADERS]);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   }
   return sheet;
 }
