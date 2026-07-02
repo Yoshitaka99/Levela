@@ -15,6 +15,11 @@ const CUSTOMERS_GID = "988340691"; // 顧客管理_自動反映
 const FALSE_REPORTS_GID = "259179250"; // 虚偽報告集計
 const REPLIES_GID = "1055902312"; // 返信あり顧客リスト
 
+// 返信あり顧客のステータス/成約状況/メモの永続ストア (Apps Scriptが作る専用タブ)。
+// 返信あり顧客リストのH/I/J列はシート側リビルドで消えるため使わない。
+const REPLY_CHECKS_SHEET_NAME = "返信チェック";
+const REPLY_CHECKS_CSV_URL = `https://docs.google.com/spreadsheets/d/${LIGHT_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(REPLY_CHECKS_SHEET_NAME)}&headers=0`;
+
 const ALLOWED_ACTIONS = new Set([
   "getData",
   "setConfirmed",
@@ -146,25 +151,61 @@ function mapFalseReports(rows: string[][]): FalseReportRow[] {
     }));
 }
 
-function mapReplies(rows: string[][]): ReplyRow[] {
+// Apps Script側 (Code.gs) の normalizeAppliedKey と同じロジックにすること
+function normalizeAppliedKey(value: string) {
+  const text = value.trim();
+  const num = Number(text);
+  if (text && !Number.isNaN(num)) return String(Math.round(num * 100000) / 100000);
+  return text;
+}
+
+function buildReplyKey(appliedAtRaw: string, customerName: string, slot: string) {
+  return `${normalizeAppliedKey(appliedAtRaw)}|${customerName.trim()}|${slot.trim()}`;
+}
+
+type ReplyCheck = { status: string; contractStatus: string; memo: string };
+
+function mapReplyChecks(rows: string[][]) {
+  const checks = new Map<string, ReplyCheck>();
+  // タブ未作成時、gvizは先頭シートへフォールバックするためヘッダーで検証する
+  if (cellAt(rows[0] ?? [], 0) !== "キー") return checks;
+  for (const row of rows.slice(1)) {
+    const key = cellAt(row, 0);
+    if (!key) continue;
+    checks.set(key, {
+      status: cellAt(row, 4),
+      contractStatus: cellAt(row, 5),
+      memo: cellAt(row, 6),
+    });
+  }
+  return checks;
+}
+
+function mapReplies(rows: string[][], checks: Map<string, ReplyCheck>): ReplyRow[] {
   return rows
     .slice(1)
     .map((row, index) => ({ row, sheetRow: index + 2 }))
     .filter(({ row }) => cellAt(row, 3))
-    .map(({ row, sheetRow }) => ({
-      rowIndex: sheetRow,
-      appliedAt: formatSheetValue(cellAt(row, 0)),
-      appliedAtRaw: cellAt(row, 0),
-      interviewDate: formatSheetValue(cellAt(row, 1)),
-      slot: cellAt(row, 2),
-      customerName: cellAt(row, 3),
-      salesman: cellAt(row, 4),
-      hasMessage: toBool(row[5]),
-      contacted: toBool(row[6]),
-      status: cellAt(row, 7),
-      contractStatus: cellAt(row, 8),
-      memo: cellAt(row, 9),
-    }));
+    .map(({ row, sheetRow }) => {
+      const appliedAtRaw = cellAt(row, 0);
+      const customerName = cellAt(row, 3);
+      const slot = cellAt(row, 2);
+      const check = checks.get(buildReplyKey(appliedAtRaw, customerName, slot));
+      return {
+        rowIndex: sheetRow,
+        appliedAt: formatSheetValue(appliedAtRaw),
+        appliedAtRaw,
+        interviewDate: formatSheetValue(cellAt(row, 1)),
+        slot,
+        customerName,
+        salesman: cellAt(row, 4),
+        hasMessage: toBool(row[5]),
+        contacted: toBool(row[6]),
+        status: check?.status ?? "",
+        contractStatus: check?.contractStatus ?? "",
+        memo: check?.memo ?? "",
+      };
+    });
 }
 
 function isWriteEnabled() {
@@ -173,10 +214,15 @@ function isWriteEnabled() {
 
 export async function GET() {
   try {
-    const [customerRows, falseReportRows, replyRows] = await Promise.all([
+    const [customerRows, falseReportRows, replyRows, replyCheckRows] = await Promise.all([
       fetchCsv(CUSTOMERS_GID),
       fetchCsv(FALSE_REPORTS_GID),
       fetchCsv(REPLIES_GID),
+      // 返信チェックタブはApps Script初回実行まで存在しないため、失敗しても無視する
+      fetch(REPLY_CHECKS_CSV_URL, { cache: "no-store", redirect: "follow" })
+        .then((response) => (response.ok ? response.text() : ""))
+        .then(parseCsv)
+        .catch(() => [] as string[][]),
     ]);
 
     const data: FalseReportCheckerData = {
@@ -184,7 +230,7 @@ export async function GET() {
       writeEnabled: isWriteEnabled(),
       customers: mapCustomers(customerRows),
       falseReports: mapFalseReports(falseReportRows),
-      replies: mapReplies(replyRows),
+      replies: mapReplies(replyRows, mapReplyChecks(replyCheckRows)),
     };
 
     return NextResponse.json(data);

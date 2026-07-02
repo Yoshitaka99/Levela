@@ -53,8 +53,16 @@ POST は 501 を返す。
 | `setConfirmed` | `rowKey`, `value` | 顧客管理_自動反映 A列「確認済み」を更新 |
 | `setDiffConfirmed` | `rowKey`, `value` | 顧客管理_自動反映 B列「差分確認済み」を更新 |
 | `saveFalseReportMemo` | `rowKey` / `managementId` / `rowIndex`+`customerName`, `memo` | 虚偽報告集計 E列「メモ」を更新 (行キーが空の既存行は管理ID等で特定) |
-| `updateReply` | `rowIndex`, `customerName`, `appliedAt`, `contacted?`, `status?`, `contractStatus?`, `memo?` | 返信あり顧客リスト G/H/I/J列を更新 |
+| `updateReply` | `rowIndex`, `customerName`, `appliedAt`, `slot`, `contacted?`, `status?`, `contractStatus?`, `memo?` | 連絡済みは返信あり顧客リストG列、ステータス/成約状況/メモは「返信チェック」タブへ保存 |
 
 `rowKey` は各シートの「行キー」列 (顧客管理_自動反映: AI列 / 虚偽報告集計: AG列)。
 返信あり顧客リストには行キーがないため、`rowIndex` を顧客名で検証し、
 ズレていた場合は お申し込み日+顧客名 で探し直す。
+
+## 返信チェックタブについて
+
+返信あり顧客リストのA~E列はFILTER数式による自動生成で、H/I/J列に直接書いた値は
+シート側の定期リビルドで消える (検証済み)。そのためステータス/成約状況/メモは
+Web App が自動作成する「返信チェック」タブに
+`キー = お申し込み日(小数5桁丸め)|顧客名|予約時間` でupsertし、
+Next.js側が表示時にマージする。G列(連絡済みチェックボックス)は実セルのため直接更新する。

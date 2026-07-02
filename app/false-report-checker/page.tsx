@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 export default function FalseReportCheckerPage() {
   return (
-    <main className="min-h-screen bg-slate-100">
+    <main className="min-h-screen bg-[#f8f3ea] text-[#231815]">
       <FalseReportCheckerClient />
     </main>
   );

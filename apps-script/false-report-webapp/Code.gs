@@ -32,13 +32,25 @@ var FALSE_REPORTS_COL_MGMT_ID = 29; // AC: 管理ID
 var FALSE_REPORTS_COL_ROW_KEY = 33; // AG: 行キー
 
 // 返信あり顧客リスト: 1行目がヘッダー
+// A~E列はFILTER数式による自動生成、F/G列のみ実セル(チェックボックス)。
+// H/I/J列に書いた値はシート側の定期リビルドで消えるため使わない。
 var REPLIES_HEADER_ROW = 1;
 var REPLIES_COL_APPLIED_AT = 1; // A: お申し込み日
 var REPLIES_COL_CUSTOMER_NAME = 4; // D: 顧客名
 var REPLIES_COL_CONTACTED = 7; // G: 連絡済み
-var REPLIES_COL_STATUS = 8; // H: 着座/ステータス
-var REPLIES_COL_CONTRACT = 9; // I: 成約状況
-var REPLIES_COL_MEMO = 10; // J: メモ
+
+// 返信あり顧客のステータス/成約状況/メモの永続ストア (このWeb App専用タブ)
+var SHEET_REPLY_CHECKS = "返信チェック";
+var REPLY_CHECKS_HEADERS = [
+  "キー",
+  "お申し込み日",
+  "顧客名",
+  "予約時間",
+  "着座/ステータス",
+  "成約状況",
+  "メモ",
+  "更新日時",
+];
 
 function doGet() {
   var hasSecret = Boolean(getSecret());
@@ -94,12 +106,14 @@ function handleGetData() {
   var customers = ss.getSheetByName(SHEET_CUSTOMERS);
   var falseReports = ss.getSheetByName(SHEET_FALSE_REPORTS);
   var replies = ss.getSheetByName(SHEET_REPLIES);
+  var replyChecks = ensureReplyChecksSheet(ss);
   return {
     ok: true,
     counts: {
       customers: customers ? Math.max(customers.getLastRow() - CUSTOMERS_HEADER_ROW, 0) : -1,
       falseReports: falseReports ? Math.max(falseReports.getLastRow() - FALSE_REPORTS_HEADER_ROW, 0) : -1,
       replies: replies ? Math.max(replies.getLastRow() - REPLIES_HEADER_ROW, 0) : -1,
+      replyChecks: Math.max(replyChecks.getLastRow() - 1, 0),
     },
   };
 }
@@ -150,30 +164,96 @@ function handleSaveFalseReportMemo(body) {
 }
 
 function handleUpdateReply(body) {
-  var sheet = getSheetOrThrow(SHEET_REPLIES);
-  var row = findReplyRow(sheet, body);
-  if (!row) {
-    return { ok: false, error: "返信あり顧客の行が見つかりません: " + (body.customerName || "?") };
-  }
-
   var updated = {};
+  var row = 0;
+
   if (typeof body.contacted === "boolean") {
+    var sheet = getSheetOrThrow(SHEET_REPLIES);
+    row = findReplyRow(sheet, body);
+    if (!row) {
+      return { ok: false, error: "返信あり顧客の行が見つかりません: " + (body.customerName || "?") };
+    }
     sheet.getRange(row, REPLIES_COL_CONTACTED).setValue(body.contacted);
     updated.contacted = body.contacted;
   }
+
+  var hasCheckFields =
+    typeof body.status === "string" ||
+    typeof body.contractStatus === "string" ||
+    typeof body.memo === "string";
+  var checkRow = 0;
+  if (hasCheckFields) {
+    checkRow = upsertReplyCheck(body, updated);
+  }
+
+  return { ok: true, row: row, checkRow: checkRow, updated: updated };
+}
+
+/**
+ * ステータス/成約状況/メモを「返信チェック」タブへキー単位でupsertする。
+ * 返信あり顧客リストのH/I/J列はシート側リビルドで消えるため使えない。
+ */
+function upsertReplyCheck(body, updated) {
+  var name = String(body.customerName || "").trim();
+  if (!name) throw new Error("customerName は必須です");
+  var key = buildReplyKey(body.appliedAt, name, body.slot);
+
+  var ss = SpreadsheetApp.openById(LIGHT_SPREADSHEET_ID);
+  var sheet = ensureReplyChecksSheet(ss);
+  var row = findRowByKey(sheet, 1, 1, key);
+  if (!row) {
+    row = sheet.getLastRow() + 1;
+    sheet.getRange(row, 1, 1, 4).setValues([
+      [key, normalizeAppliedKey(body.appliedAt), name, String(body.slot || "").trim()],
+    ]);
+  }
+
   if (typeof body.status === "string") {
-    sheet.getRange(row, REPLIES_COL_STATUS).setValue(body.status);
+    sheet.getRange(row, 5).setValue(body.status);
     updated.status = body.status;
   }
   if (typeof body.contractStatus === "string") {
-    sheet.getRange(row, REPLIES_COL_CONTRACT).setValue(body.contractStatus);
+    sheet.getRange(row, 6).setValue(body.contractStatus);
     updated.contractStatus = body.contractStatus;
   }
   if (typeof body.memo === "string") {
-    sheet.getRange(row, REPLIES_COL_MEMO).setValue(body.memo);
+    sheet.getRange(row, 7).setValue(body.memo);
     updated.memo = body.memo;
   }
-  return { ok: true, row: row, updated: updated };
+  sheet.getRange(row, 8).setValue(new Date());
+  return row;
+}
+
+function buildReplyKey(appliedAt, customerName, slot) {
+  return (
+    normalizeAppliedKey(appliedAt) +
+    "|" +
+    String(customerName || "").trim() +
+    "|" +
+    String(slot || "").trim()
+  );
+}
+
+/**
+ * お申し込み日はシリアル値のため、CSV出力の丸め(小数5桁)に合わせて正規化する。
+ * Next.js側 (route.ts) と同じロジックにすること。
+ */
+function normalizeAppliedKey(value) {
+  var text = String(value == null ? "" : value).trim();
+  var num = Number(text);
+  if (text && !isNaN(num)) return String(Math.round(num * 100000) / 100000);
+  return text;
+}
+
+function ensureReplyChecksSheet(ss) {
+  var sheet = ss.getSheetByName(SHEET_REPLY_CHECKS);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_REPLY_CHECKS);
+  }
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, REPLY_CHECKS_HEADERS.length).setValues([REPLY_CHECKS_HEADERS]);
+  }
+  return sheet;
 }
 
 /**
@@ -192,7 +272,7 @@ function findReplyRow(sheet, body) {
   }
   if (!name) return 0;
 
-  var appliedAt = String(body.appliedAt || "").trim();
+  var appliedAt = normalizeAppliedKey(body.appliedAt);
   var values = sheet
     .getRange(REPLIES_HEADER_ROW + 1, 1, Math.max(lastRow - REPLIES_HEADER_ROW, 0), REPLIES_COL_CUSTOMER_NAME)
     .getValues();
@@ -200,7 +280,7 @@ function findReplyRow(sheet, body) {
   for (var i = 0; i < values.length; i += 1) {
     var rowName = String(values[i][REPLIES_COL_CUSTOMER_NAME - 1]).trim();
     if (rowName !== name) continue;
-    var rowApplied = String(values[i][REPLIES_COL_APPLIED_AT - 1]).trim();
+    var rowApplied = normalizeAppliedKey(values[i][REPLIES_COL_APPLIED_AT - 1]);
     if (appliedAt && rowApplied === appliedAt) return REPLIES_HEADER_ROW + 1 + i;
     if (!fallback) fallback = REPLIES_HEADER_ROW + 1 + i;
   }
