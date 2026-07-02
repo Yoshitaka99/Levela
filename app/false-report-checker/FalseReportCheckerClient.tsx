@@ -420,6 +420,18 @@ function ShowMoreButton({
   );
 }
 
+function DiffKindBadge({ row }: { row: CustomerRow }) {
+  return row.changeDetected ? (
+    <span className="inline-block rounded-full bg-[#e60012]/10 px-2 py-0.5 text-[10px] font-medium text-[#c90010]">
+      自動検知
+    </span>
+  ) : (
+    <span className="inline-block rounded-full bg-[#f3ead9] px-2 py-0.5 text-[10px] font-medium text-[#8a7355]">
+      手動チェック
+    </span>
+  );
+}
+
 function CheckField({
   label,
   checked,
@@ -525,7 +537,14 @@ function CustomerList({
                         className="size-[18px] accent-[#e60012] disabled:opacity-40"
                       />
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 font-medium">{row.customerName}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 font-medium">
+                      {row.customerName}
+                      {showDiffColumns && (
+                        <span className="ml-2">
+                          <DiffKindBadge row={row} />
+                        </span>
+                      )}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.staffName}</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.appliedAt}</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.interviewAt}</td>
@@ -597,7 +616,8 @@ function CustomerList({
                 申込 {row.appliedAt || "-"} / 面談 {row.interviewAt || "-"}
               </p>
               {showDiffColumns && (
-                <p className="mt-1 text-xs text-[#a3272d]">
+                <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[#a3272d]">
+                  <DiffKindBadge row={row} />
                   変更前【{row.confirmedStatus || "-"}】▶︎ 変更後【{row.currentStatus || "-"}】
                 </p>
               )}
@@ -656,9 +676,16 @@ function FalseReportList({
                 <div className="min-w-0">
                   <span className="font-semibold">{report.customerName}</span>
                   <span className="ml-2 text-sm text-[#8a7a63]">担当: {report.staffName || "-"}</span>
+                  {report.legacy && (
+                    <span className="ml-2 inline-block rounded-full bg-[#f3ead9] px-2 py-0.5 align-middle text-[10px] font-medium text-[#8a7355]">
+                      旧シート移行分
+                    </span>
+                  )}
                 </div>
                 <span className="text-[11px] text-[#a08b6f]">
-                  確認 {report.confirmedAt || "-"} / 差分検知 {report.detectedAt || "-"}
+                  {report.legacy
+                    ? `移行日 ${report.detectedAt || "-"}`
+                    : `確認 ${report.confirmedAt || "-"} / 差分検知 ${report.detectedAt || "-"}`}
                 </span>
               </div>
               <p className="mt-3 text-[15px] leading-relaxed">
@@ -672,6 +699,12 @@ function FalseReportList({
                 </span>
                 】
               </p>
+              {report.legacy && (
+                <p className="mt-1 text-[11px] text-[#a08b6f]">
+                  旧まとめシートでチェック済みのデータのため、虚偽報告時点のステータスは残っていません
+                  {report.correctReport ? ` (移行時の正しい報告: ${report.correctReport})` : ""}
+                </p>
+              )}
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
                 <textarea
                   value={draft}

@@ -253,14 +253,20 @@ function mapFalseReports(
     .map(({ row, sheetRow }) => {
       const rowKey = cellAt(row, 32);
       const managementId = cellAt(row, 28);
-      const snapshot =
-        snapshots.get(rowKey) ?? (managementId ? snapshots.get(`M:${managementId}`) : undefined) ?? "";
+      const falseReport = cellAt(row, 0);
+      // 旧まとめシートからの移行分は、虚偽報告時点のステータスが残っていない。
+      // スナップショット(移行時のコピー=変更後の値)を「変更前」として出すと誤解を生むため空にする
+      const legacy = falseReport.includes("旧まとめシート");
+      const snapshot = legacy
+        ? ""
+        : snapshots.get(rowKey) ?? (managementId ? snapshots.get(`M:${managementId}`) : undefined) ?? "";
       const masterList = managementId ? masterStatuses.get(managementId) : undefined;
       return {
         rowIndex: sheetRow,
         rowKey,
         managementId,
-        falseReport: cellAt(row, 0),
+        legacy,
+        falseReport,
         correctReport: cellAt(row, 1),
         confirmedStatus: snapshot,
         currentStatus: masterList ? masterList.join(" | ") : combineStatus(cellAt(row, 11), cellAt(row, 12)),
