@@ -9,6 +9,8 @@ export type CustomerRow = {
   seminar: string;
   appliedAt: string;
   interviewAt: string;
+  /** 面談日 (YYYY-MM-DD)。日付で絞り込むためのパース済み値。解析不能時は空 */
+  interviewDate: string;
   inflow: string;
   seated: string;
   status: string;
@@ -43,25 +45,9 @@ export type FalseReportRow = {
   status: string;
 };
 
-export type ReplyRow = {
-  rowIndex: number;
-  appliedAt: string;
-  appliedAtRaw: string;
-  interviewDate: string;
-  slot: string;
-  customerName: string;
-  salesman: string;
-  hasMessage: boolean;
-  contacted: boolean;
-  status: string;
-  contractStatus: string;
-  memo: string;
-};
-
 export type FalseReportCheckerData = {
   updatedAt: string;
   writeEnabled: boolean;
   customers: CustomerRow[];
   falseReports: FalseReportRow[];
-  replies: ReplyRow[];
 };

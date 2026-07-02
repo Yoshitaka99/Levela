@@ -2,23 +2,23 @@
 
 import {
   AlertTriangle,
+  CalendarDays,
   CheckCircle2,
   Loader2,
-  MessageCircle,
   RefreshCw,
   Search,
   ShieldAlert,
   Users,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   CustomerRow,
   FalseReportCheckerData,
   FalseReportRow,
-  ReplyRow,
 } from "./types";
 
-type TabKey = "customers" | "diffs" | "falseReports" | "replies";
+type TabKey = "customers" | "diffs" | "falseReports";
 
 const PAGE_SIZE = 100;
 
@@ -26,7 +26,6 @@ const tabs: { key: TabKey; label: string; icon: typeof Users }[] = [
   { key: "customers", label: "顧客管理", icon: Users },
   { key: "diffs", label: "差分", icon: RefreshCw },
   { key: "falseReports", label: "虚偽報告", icon: ShieldAlert },
-  { key: "replies", label: "返信あり顧客", icon: MessageCircle },
 ];
 
 function falseReportId(report: FalseReportRow) {
@@ -67,6 +66,7 @@ export function FalseReportCheckerClient() {
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<TabKey>("customers");
   const [query, setQuery] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
   const [unconfirmedOnly, setUnconfirmedOnly] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
@@ -96,7 +96,7 @@ export function FalseReportCheckerClient() {
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [tab, query, unconfirmedOnly]);
+  }, [tab, query, dateFrom, unconfirmedOnly]);
 
   useEffect(() => {
     if (!notice) return;
@@ -113,65 +113,60 @@ export function FalseReportCheckerClient() {
     });
   }, []);
 
-  const runAction = useCallback(
-    async (savingKey: string, payload: Record<string, unknown>, apply: () => void) => {
+  // チェックは押した瞬間に画面へ反映し、保存失敗時だけ巻き戻す
+  const setCustomerFlag = useCallback(
+    (row: CustomerRow, field: "confirmed" | "diffConfirmed", value: boolean) => {
       if (!data?.writeEnabled) {
         setErrorMessage("書き込みは未接続です (Apps Script の設定が必要)。");
         return;
       }
-      markSaving(savingKey, true);
+      const action = field === "confirmed" ? "setConfirmed" : "setDiffConfirmed";
+      const id = customerId(row);
+      const applyValue = (flag: boolean) => {
+        setData((previous) =>
+          previous
+            ? {
+                ...previous,
+                customers: previous.customers.map((customer) =>
+                  customerId(customer) === id ? { ...customer, [field]: flag } : customer,
+                ),
+              }
+            : previous,
+        );
+      };
+
+      applyValue(value);
+      markSaving(`${action}:${id}`, true);
       setErrorMessage("");
-      try {
-        await postAction(payload);
-        apply();
-        setNotice("保存しました");
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "保存に失敗しました");
-      } finally {
-        markSaving(savingKey, false);
-      }
+      postAction({ action, rowKey: row.rowKey, rowIndex: row.rowIndex, value })
+        .then(() => setNotice("保存しました"))
+        .catch((error) => {
+          applyValue(!value);
+          setErrorMessage(error instanceof Error ? error.message : "保存に失敗しました");
+        })
+        .finally(() => markSaving(`${action}:${id}`, false));
     },
     [data?.writeEnabled, markSaving],
   );
 
-  const setCustomerFlag = useCallback(
-    (row: CustomerRow, field: "confirmed" | "diffConfirmed", value: boolean) => {
-      const action = field === "confirmed" ? "setConfirmed" : "setDiffConfirmed";
-      const id = customerId(row);
-      void runAction(
-        `${action}:${id}`,
-        { action, rowKey: row.rowKey, rowIndex: row.rowIndex, value },
-        () => {
-          setData((previous) =>
-            previous
-              ? {
-                  ...previous,
-                  customers: previous.customers.map((customer) =>
-                    customerId(customer) === id ? { ...customer, [field]: value } : customer,
-                  ),
-                }
-              : previous,
-          );
-        },
-      );
-    },
-    [runAction],
-  );
-
   const saveFalseReportMemo = useCallback(
     (target: FalseReportRow, memo: string) => {
+      if (!data?.writeEnabled) {
+        setErrorMessage("書き込みは未接続です (Apps Script の設定が必要)。");
+        return;
+      }
       const id = falseReportId(target);
-      void runAction(
-        `memo:${id}`,
-        {
-          action: "saveFalseReportMemo",
-          rowKey: target.rowKey,
-          managementId: target.managementId,
-          rowIndex: target.rowIndex,
-          customerName: target.customerName,
-          memo,
-        },
-        () => {
+      markSaving(`memo:${id}`, true);
+      setErrorMessage("");
+      postAction({
+        action: "saveFalseReportMemo",
+        rowKey: target.rowKey,
+        managementId: target.managementId,
+        rowIndex: target.rowIndex,
+        customerName: target.customerName,
+        memo,
+      })
+        .then(() => {
           setData((previous) =>
             previous
               ? {
@@ -182,43 +177,20 @@ export function FalseReportCheckerClient() {
                 }
               : previous,
           );
-        },
-      );
+          setNotice("保存しました");
+        })
+        .catch((error) =>
+          setErrorMessage(error instanceof Error ? error.message : "保存に失敗しました"),
+        )
+        .finally(() => markSaving(`memo:${id}`, false));
     },
-    [runAction],
+    [data?.writeEnabled, markSaving],
   );
 
-  const updateReply = useCallback(
-    (row: ReplyRow, fields: Partial<Pick<ReplyRow, "contacted" | "status" | "contractStatus" | "memo">>) => {
-      void runAction(
-        `reply:${row.rowIndex}`,
-        {
-          action: "updateReply",
-          rowIndex: row.rowIndex,
-          customerName: row.customerName,
-          appliedAt: row.appliedAtRaw,
-          slot: row.slot,
-          ...fields,
-        },
-        () => {
-          setData((previous) =>
-            previous
-              ? {
-                  ...previous,
-                  replies: previous.replies.map((reply) =>
-                    reply.rowIndex === row.rowIndex ? { ...reply, ...fields } : reply,
-                  ),
-                }
-              : previous,
-        );
-        },
-      );
-    },
-    [runAction],
-  );
-
+  // 差分タブ: 大元シートとの照合で検知した行 + 手動で差分確認チェックを入れた行
   const diffs = useMemo(
-    () => data?.customers.filter((customer) => customer.changeDetected) ?? [],
+    () =>
+      data?.customers.filter((customer) => customer.changeDetected || customer.diffConfirmed) ?? [],
     [data?.customers],
   );
 
@@ -232,27 +204,16 @@ export function FalseReportCheckerClient() {
   const filteredCustomers = useMemo(() => {
     const source = tab === "diffs" ? diffs : data?.customers ?? [];
     return source.filter((customer) => {
-      if (unconfirmedOnly) {
-        if (tab === "diffs" && customer.diffConfirmed) return false;
-        if (tab === "customers" && customer.confirmed) return false;
-      }
+      if (tab === "customers" && unconfirmedOnly && customer.confirmed) return false;
+      if (dateFrom && (!customer.interviewDate || customer.interviewDate < dateFrom)) return false;
       return matchesQuery(customer.customerName, customer.staffName, customer.status, customer.seminar);
     });
-  }, [data?.customers, diffs, matchesQuery, tab, unconfirmedOnly]);
-
-  const filteredReplies = useMemo(
-    () =>
-      (data?.replies ?? []).filter((reply) => {
-        if (unconfirmedOnly && reply.contacted) return false;
-        return matchesQuery(reply.customerName, reply.salesman, reply.status, reply.memo);
-      }),
-    [data?.replies, matchesQuery, unconfirmedOnly],
-  );
+  }, [data?.customers, dateFrom, diffs, matchesQuery, tab, unconfirmedOnly]);
 
   const filteredFalseReports = useMemo(
     () =>
       (data?.falseReports ?? []).filter((report) =>
-        matchesQuery(report.customerName, report.staffName, report.falseReport, report.correctReport),
+        matchesQuery(report.customerName, report.staffName, report.confirmedStatus, report.currentStatus),
       ),
     [data?.falseReports, matchesQuery],
   );
@@ -261,7 +222,6 @@ export function FalseReportCheckerClient() {
     customers: data?.customers.length ?? 0,
     diffs: diffs.length,
     falseReports: data?.falseReports.length ?? 0,
-    replies: data?.replies.length ?? 0,
   };
 
   return (
@@ -325,8 +285,8 @@ export function FalseReportCheckerClient() {
           </div>
         </nav>
 
-        <div className="mt-3 flex flex-wrap items-center gap-3 md:mt-4">
-          <div className="relative min-w-0 flex-1 sm:max-w-xs">
+        <div className="mt-3 flex flex-wrap items-center gap-2 md:mt-4 md:gap-3">
+          <div className="relative min-w-0 flex-1 basis-56 sm:max-w-xs">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[#a08b6f]" />
             <input
               type="search"
@@ -337,14 +297,37 @@ export function FalseReportCheckerClient() {
             />
           </div>
           {tab !== "falseReports" && (
-            <label className="flex cursor-pointer items-center gap-2 rounded-full border border-[#dfd1bc] bg-white/80 px-3.5 py-2 text-sm text-[#6f6259]">
+            <label className="flex items-center gap-1.5 rounded-full border border-[#dfd1bc] bg-white/90 py-1.5 pl-3.5 pr-2 text-sm text-[#6f6259]">
+              <CalendarDays className="size-4 shrink-0 text-[#a08b6f]" />
+              <span className="shrink-0 text-xs">面談日</span>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(event) => setDateFrom(event.target.value)}
+                className="bg-transparent text-sm text-[#231815] focus:outline-none"
+              />
+              <span className="shrink-0 text-xs">〜</span>
+              {dateFrom && (
+                <button
+                  type="button"
+                  onClick={() => setDateFrom("")}
+                  aria-label="面談日フィルタを解除"
+                  className="rounded-full p-1 text-[#a08b6f] hover:bg-[#f3ead9] hover:text-[#231815]"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </label>
+          )}
+          {tab === "customers" && (
+            <label className="flex cursor-pointer items-center gap-1.5 rounded-full border border-[#dfd1bc] bg-white/80 px-3.5 py-2 text-sm text-[#6f6259]">
               <input
                 type="checkbox"
                 checked={unconfirmedOnly}
                 onChange={(event) => setUnconfirmedOnly(event.target.checked)}
                 className="size-4 accent-[#e60012]"
               />
-              {tab === "replies" ? "未連絡のみ" : "未確認のみ"}
+              未確認のみ
             </label>
           )}
         </div>
@@ -387,16 +370,6 @@ export function FalseReportCheckerClient() {
                   savingKeys={savingKeys}
                   writeEnabled={data?.writeEnabled ?? false}
                   onSaveMemo={saveFalseReportMemo}
-                />
-              )}
-              {tab === "replies" && (
-                <ReplyList
-                  rows={filteredReplies.slice(0, visibleCount)}
-                  totalCount={filteredReplies.length}
-                  savingKeys={savingKeys}
-                  writeEnabled={data?.writeEnabled ?? false}
-                  onUpdate={updateReply}
-                  onShowMore={() => setVisibleCount((count) => count + PAGE_SIZE)}
                 />
               )}
             </>
@@ -510,8 +483,8 @@ function CustomerList({
                 <th className="px-4 py-3 font-medium">面談日</th>
                 {showDiffColumns ? (
                   <>
-                    <th className="px-4 py-3 font-medium">確認時点</th>
-                    <th className="px-4 py-3 font-medium">現在</th>
+                    <th className="px-4 py-3 font-medium">変更前 (確認時)</th>
+                    <th className="px-4 py-3 font-medium">変更後 (現在)</th>
                   </>
                 ) : (
                   <>
@@ -625,7 +598,7 @@ function CustomerList({
               </p>
               {showDiffColumns && (
                 <p className="mt-1 text-xs text-[#a3272d]">
-                  確認時点: {row.confirmedStatus || "-"} → 現在: {row.currentStatus || "-"}
+                  変更前【{row.confirmedStatus || "-"}】▶︎ 変更後【{row.currentStatus || "-"}】
                 </p>
               )}
               <div className="mt-3 flex items-center gap-4 border-t border-[#eee3d0] pt-3">
@@ -688,26 +661,17 @@ function FalseReportList({
                   確認 {report.confirmedAt || "-"} / 差分検知 {report.detectedAt || "-"}
                 </span>
               </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <div className="rounded-[16px] bg-[#fdeeee] px-3.5 py-2.5 text-sm">
-                  <p className="text-[11px] font-medium text-[#c9313a]">確認済み時のステータス</p>
-                  <p className="mt-0.5 text-[#7c2226]">
-                    {report.confirmedStatus || "記録なし (旧シートからの移行分)"}
-                  </p>
-                </div>
-                <div className="rounded-[16px] bg-[#ecf5ec] px-3.5 py-2.5 text-sm">
-                  <p className="text-[11px] font-medium text-[#3a7d44]">変更後のステータス (現在)</p>
-                  <p className="mt-0.5 text-[#2c5e34]">
-                    {report.currentStatus || report.correctReport || "-"}
-                  </p>
-                </div>
-              </div>
-              {(report.falseReport || report.correctReport) && (
-                <p className="mt-2 text-[11px] text-[#a08b6f]">
-                  シート記載: {report.falseReport || "-"}
-                  {report.correctReport ? ` / 正しい報告: ${report.correctReport}` : ""}
-                </p>
-              )}
+              <p className="mt-3 text-[15px] leading-relaxed">
+                変更前【
+                <span className="font-semibold text-[#c90010]">
+                  {report.confirmedStatus || "記録なし"}
+                </span>
+                】▶︎ 変更後【
+                <span className="font-semibold text-[#2c5e34]">
+                  {report.currentStatus || report.correctReport || "-"}
+                </span>
+                】
+              </p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
                 <textarea
                   value={draft}
@@ -732,151 +696,6 @@ function FalseReportList({
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function ReplyList({
-  rows,
-  totalCount,
-  savingKeys,
-  writeEnabled,
-  onUpdate,
-  onShowMore,
-}: {
-  rows: ReplyRow[];
-  totalCount: number;
-  savingKeys: Set<string>;
-  writeEnabled: boolean;
-  onUpdate: (
-    row: ReplyRow,
-    fields: Partial<Pick<ReplyRow, "contacted" | "status" | "contractStatus" | "memo">>,
-  ) => void;
-  onShowMore: () => void;
-}) {
-  const [drafts, setDrafts] = useState<
-    Record<number, { status?: string; contractStatus?: string; memo?: string }>
-  >({});
-
-  if (!totalCount) return <EmptyState />;
-
-  const draftFor = (row: ReplyRow) => {
-    const draft = drafts[row.rowIndex] ?? {};
-    return {
-      status: draft.status ?? row.status,
-      contractStatus: draft.contractStatus ?? row.contractStatus,
-      memo: draft.memo ?? row.memo,
-    };
-  };
-
-  const setDraft = (rowIndex: number, patch: Record<string, string>) => {
-    setDrafts((previous) => ({ ...previous, [rowIndex]: { ...previous[rowIndex], ...patch } }));
-  };
-
-  const clearDraft = (rowIndex: number) => {
-    setDrafts((previous) => {
-      const next = { ...previous };
-      delete next[rowIndex];
-      return next;
-    });
-  };
-
-  const inputClass =
-    "w-full rounded-[14px] border border-[#d8cbb8] bg-white/95 px-3 py-2 text-sm shadow-inner placeholder:text-[#b3a48c] focus:border-[#231815]/50 focus:outline-none disabled:bg-[#f8f3ea] disabled:text-[#a08b6f]";
-
-  return (
-    <div>
-      <div className="space-y-3">
-        {rows.map((row) => {
-          const saving = savingKeys.has(`reply:${row.rowIndex}`);
-          const draft = draftFor(row);
-          const dirty =
-            draft.status !== row.status ||
-            draft.contractStatus !== row.contractStatus ||
-            draft.memo !== row.memo;
-          return (
-            <div
-              key={row.rowIndex}
-              className="rounded-[20px] border border-[#dfd1bc] bg-[#fffaf2] p-4 shadow-lg shadow-[#231815]/5 md:p-5"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                <div className="flex min-w-0 items-center gap-3">
-                  <label
-                    className={`flex shrink-0 items-center gap-1.5 text-xs text-[#6f6259] ${
-                      !writeEnabled || saving ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={row.contacted}
-                      disabled={!writeEnabled || saving}
-                      onChange={(event) => onUpdate(row, { contacted: event.target.checked })}
-                      className="size-[18px] accent-[#e60012]"
-                    />
-                    連絡済み
-                  </label>
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold">{row.customerName}</p>
-                    <p className="text-xs text-[#8a7a63]">営業: {row.salesman || "-"}</p>
-                  </div>
-                </div>
-                <p className="text-xs text-[#a08b6f]">
-                  面談 {row.interviewDate || "-"} {row.slot}
-                </p>
-              </div>
-              <div className="mt-3 grid gap-2 border-t border-[#eee3d0] pt-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
-                <div>
-                  <label className="mb-1 block text-[11px] text-[#a08b6f]">着座/ステータス</label>
-                  <input
-                    type="text"
-                    value={draft.status}
-                    disabled={!writeEnabled}
-                    onChange={(event) => setDraft(row.rowIndex, { status: event.target.value })}
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-[11px] text-[#a08b6f]">成約状況</label>
-                  <input
-                    type="text"
-                    value={draft.contractStatus}
-                    disabled={!writeEnabled}
-                    onChange={(event) =>
-                      setDraft(row.rowIndex, { contractStatus: event.target.value })
-                    }
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-[11px] text-[#a08b6f]">メモ</label>
-                  <input
-                    type="text"
-                    value={draft.memo}
-                    disabled={!writeEnabled}
-                    onChange={(event) => setDraft(row.rowIndex, { memo: event.target.value })}
-                    className={inputClass}
-                  />
-                </div>
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    disabled={!writeEnabled || saving || !dirty}
-                    onClick={() => {
-                      onUpdate(row, draft);
-                      clearDraft(row.rowIndex);
-                    }}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-full bg-[#231815] px-5 py-2 text-sm font-medium text-[#fffaf2] shadow-lg shadow-[#231815]/20 transition hover:bg-[#3a2b24] disabled:opacity-40 disabled:shadow-none sm:w-auto"
-                  >
-                    {saving && <Loader2 className="size-3.5 animate-spin" />}
-                    保存
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <ShowMoreButton shown={rows.length} total={totalCount} onShowMore={onShowMore} />
     </div>
   );
 }
