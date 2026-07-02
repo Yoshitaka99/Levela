@@ -33,6 +33,11 @@ function falseReportId(report: FalseReportRow) {
   return report.rowKey || report.managementId || String(report.rowIndex);
 }
 
+// 行キーは重複予約などで重複するため、シート行番号と組み合わせて一意にする
+function customerId(row: CustomerRow) {
+  return `${row.rowKey}#${row.rowIndex}`;
+}
+
 async function postAction(payload: Record<string, unknown>) {
   const response = await fetch("/api/false-report-checker", {
     method: "POST",
@@ -132,18 +137,23 @@ export function FalseReportCheckerClient() {
   const setCustomerFlag = useCallback(
     (row: CustomerRow, field: "confirmed" | "diffConfirmed", value: boolean) => {
       const action = field === "confirmed" ? "setConfirmed" : "setDiffConfirmed";
-      void runAction(`${action}:${row.rowKey}`, { action, rowKey: row.rowKey, value }, () => {
-        setData((previous) =>
-          previous
-            ? {
-                ...previous,
-                customers: previous.customers.map((customer) =>
-                  customer.rowKey === row.rowKey ? { ...customer, [field]: value } : customer,
-                ),
-              }
-            : previous,
-        );
-      });
+      const id = customerId(row);
+      void runAction(
+        `${action}:${id}`,
+        { action, rowKey: row.rowKey, rowIndex: row.rowIndex, value },
+        () => {
+          setData((previous) =>
+            previous
+              ? {
+                  ...previous,
+                  customers: previous.customers.map((customer) =>
+                    customerId(customer) === id ? { ...customer, [field]: value } : customer,
+                  ),
+                }
+              : previous,
+          );
+        },
+      );
     },
     [runAction],
   );
@@ -514,11 +524,12 @@ function CustomerList({
             </thead>
             <tbody className="divide-y divide-[#eee3d0]">
               {rows.map((row) => {
-                const confirmSaving = savingKeys.has(`setConfirmed:${row.rowKey}`);
-                const diffSaving = savingKeys.has(`setDiffConfirmed:${row.rowKey}`);
+                const id = customerId(row);
+                const confirmSaving = savingKeys.has(`setConfirmed:${id}`);
+                const diffSaving = savingKeys.has(`setDiffConfirmed:${id}`);
                 return (
                   <tr
-                    key={row.rowKey}
+                    key={id}
                     className={`transition hover:bg-[#f8f3ea] ${
                       row.changeDetected ? "bg-[#fdeeee]/60" : ""
                     }`}
@@ -582,11 +593,12 @@ function CustomerList({
       {/* スマホ: カード表示 */}
       <div className="space-y-3 md:hidden">
         {rows.map((row) => {
-          const confirmSaving = savingKeys.has(`setConfirmed:${row.rowKey}`);
-          const diffSaving = savingKeys.has(`setDiffConfirmed:${row.rowKey}`);
+          const id = customerId(row);
+          const confirmSaving = savingKeys.has(`setConfirmed:${id}`);
+          const diffSaving = savingKeys.has(`setDiffConfirmed:${id}`);
           return (
             <div
-              key={row.rowKey}
+              key={id}
               className={`rounded-[20px] border bg-[#fffaf2] p-4 shadow-lg shadow-[#231815]/5 ${
                 row.changeDetected ? "border-[#f0c9c9]" : "border-[#dfd1bc]"
               }`}
@@ -678,14 +690,24 @@ function FalseReportList({
               </div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <div className="rounded-[16px] bg-[#fdeeee] px-3.5 py-2.5 text-sm">
-                  <p className="text-[11px] font-medium text-[#c9313a]">虚偽報告</p>
-                  <p className="mt-0.5 text-[#7c2226]">{report.falseReport || "-"}</p>
+                  <p className="text-[11px] font-medium text-[#c9313a]">確認済み時のステータス</p>
+                  <p className="mt-0.5 text-[#7c2226]">
+                    {report.confirmedStatus || "記録なし (旧シートからの移行分)"}
+                  </p>
                 </div>
                 <div className="rounded-[16px] bg-[#ecf5ec] px-3.5 py-2.5 text-sm">
-                  <p className="text-[11px] font-medium text-[#3a7d44]">正しい報告</p>
-                  <p className="mt-0.5 text-[#2c5e34]">{report.correctReport || "-"}</p>
+                  <p className="text-[11px] font-medium text-[#3a7d44]">変更後のステータス (現在)</p>
+                  <p className="mt-0.5 text-[#2c5e34]">
+                    {report.currentStatus || report.correctReport || "-"}
+                  </p>
                 </div>
               </div>
+              {(report.falseReport || report.correctReport) && (
+                <p className="mt-2 text-[11px] text-[#a08b6f]">
+                  シート記載: {report.falseReport || "-"}
+                  {report.correctReport ? ` / 正しい報告: ${report.correctReport}` : ""}
+                </p>
+              )}
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
                 <textarea
                   value={draft}
