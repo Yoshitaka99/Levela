@@ -27,6 +27,8 @@ export type FalseReportRow = {
   rowIndex: number;
   rowKey: string;
   managementId: string;
+  /** 旧まとめシートからの移行データ (虚偽報告時点のステータス記録なし) */
+  legacy: boolean;
   falseReport: string;
   correctReport: string;
   /** 確認済みチェック時点のステータス (スナップショット結合) */
