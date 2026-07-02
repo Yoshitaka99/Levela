@@ -3,7 +3,6 @@ import type {
   CustomerRow,
   FalseReportCheckerData,
   FalseReportRow,
-  ReplyRow,
 } from "../../false-report-checker/types";
 
 export const dynamic = "force-dynamic";
@@ -20,18 +19,12 @@ const MASTER_STATUS_QUERY = "select A,G,H,X where X is not null";
 
 const CUSTOMERS_GID = "988340691"; // 顧客管理_自動反映
 const FALSE_REPORTS_GID = "259179250"; // 虚偽報告集計
-const REPLIES_GID = "1055902312"; // 返信あり顧客リスト
 const CONFIRMED_TAB_GID = "810691914"; // 確認済み (シート側スナップショット)
 
 // シート側自動処理の永続ストア (隠しタブ)。status at confirmation を持つ
 const CHECK_MANAGEMENT_SHEET_NAME = "チェック管理";
 // Web Appが確認済みチェック時に記録するスナップショットタブ
 const CONFIRM_CHECKS_SHEET_NAME = "確認チェック";
-
-// 返信あり顧客のステータス/成約状況/メモの永続ストア (Apps Scriptが作る専用タブ)。
-// 返信あり顧客リストのH/I/J列はシート側リビルドで消えるため使わない。
-const REPLY_CHECKS_SHEET_NAME = "返信チェック";
-const REPLY_CHECKS_CSV_URL = `https://docs.google.com/spreadsheets/d/${LIGHT_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(REPLY_CHECKS_SHEET_NAME)}&headers=0`;
 
 const ALLOWED_ACTIONS = new Set([
   "getData",
@@ -139,6 +132,13 @@ function combineStatus(seated: string, status: string) {
   return status ? `${seated} / ${status}` : seated;
 }
 
+// 「2026年5月11日(月) 11:30～13:00」「2026/06/14」等から YYYY-MM-DD を取り出す
+function parseDateKey(text: string) {
+  const match = text.match(/(\d{4})[年/](\d{1,2})[月/](\d{1,2})/);
+  if (!match) return "";
+  return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+}
+
 /** 大元シートの 管理ID → 現在ステータス一覧 (重複予約は複数ステータスを持つ) */
 function mapMasterStatuses(rows: string[][]) {
   const statuses = new Map<string, string[]>();
@@ -229,6 +229,7 @@ function mapCustomers(
         seminar: cellAt(row, 4),
         appliedAt: formatSheetValue(cellAt(row, 5)),
         interviewAt: formatSheetValue(cellAt(row, 6)),
+        interviewDate: parseDateKey(formatSheetValue(cellAt(row, 6))),
         inflow: cellAt(row, 7),
         seated: cellAt(row, 8),
         status: cellAt(row, 9),
@@ -277,63 +278,6 @@ function mapFalseReports(
     });
 }
 
-// Apps Script側 (Code.gs) の normalizeAppliedKey と同じロジックにすること
-function normalizeAppliedKey(value: string) {
-  const text = value.trim();
-  const num = Number(text);
-  if (text && !Number.isNaN(num)) return String(Math.round(num * 100000) / 100000);
-  return text;
-}
-
-function buildReplyKey(appliedAtRaw: string, customerName: string, slot: string) {
-  return `${normalizeAppliedKey(appliedAtRaw)}|${customerName.trim()}|${slot.trim()}`;
-}
-
-type ReplyCheck = { status: string; contractStatus: string; memo: string };
-
-function mapReplyChecks(rows: string[][]) {
-  const checks = new Map<string, ReplyCheck>();
-  // タブ未作成時、gvizは先頭シートへフォールバックするためヘッダーで検証する
-  if (cellAt(rows[0] ?? [], 0) !== "キー") return checks;
-  for (const row of rows.slice(1)) {
-    const key = cellAt(row, 0);
-    if (!key) continue;
-    checks.set(key, {
-      status: cellAt(row, 4),
-      contractStatus: cellAt(row, 5),
-      memo: cellAt(row, 6),
-    });
-  }
-  return checks;
-}
-
-function mapReplies(rows: string[][], checks: Map<string, ReplyCheck>): ReplyRow[] {
-  return rows
-    .slice(1)
-    .map((row, index) => ({ row, sheetRow: index + 2 }))
-    .filter(({ row }) => cellAt(row, 3))
-    .map(({ row, sheetRow }) => {
-      const appliedAtRaw = cellAt(row, 0);
-      const customerName = cellAt(row, 3);
-      const slot = cellAt(row, 2);
-      const check = checks.get(buildReplyKey(appliedAtRaw, customerName, slot));
-      return {
-        rowIndex: sheetRow,
-        appliedAt: formatSheetValue(appliedAtRaw),
-        appliedAtRaw,
-        interviewDate: formatSheetValue(cellAt(row, 1)),
-        slot,
-        customerName,
-        salesman: cellAt(row, 4),
-        hasMessage: toBool(row[5]),
-        contacted: toBool(row[6]),
-        status: check?.status ?? "",
-        contractStatus: check?.contractStatus ?? "",
-        memo: check?.memo ?? "",
-      };
-    });
-}
-
 function isWriteEnabled() {
   return Boolean(process.env.FALSE_REPORT_WEBHOOK_URL && process.env.FALSE_REPORT_WEBHOOK_SECRET);
 }
@@ -343,8 +287,6 @@ export async function GET() {
     const [
       customerRows,
       falseReportRows,
-      replyRows,
-      replyCheckRows,
       confirmedTabRows,
       checkManagementRows,
       confirmCheckRows,
@@ -352,9 +294,7 @@ export async function GET() {
     ] = await Promise.all([
       fetchCsv(CUSTOMERS_GID),
       fetchCsv(FALSE_REPORTS_GID),
-      fetchCsv(REPLIES_GID),
       // 以下の補助タブ/大元照合は取得失敗しても本体表示を止めない
-      fetchCsvOptional(REPLY_CHECKS_CSV_URL),
       fetchCsvOptional(csvUrl(CONFIRMED_TAB_GID)),
       fetchCsvOptional(lightSheetByNameUrl(CHECK_MANAGEMENT_SHEET_NAME)),
       fetchCsvOptional(lightSheetByNameUrl(CONFIRM_CHECKS_SHEET_NAME)),
@@ -369,7 +309,6 @@ export async function GET() {
       writeEnabled: isWriteEnabled(),
       customers: mapCustomers(customerRows, masterStatuses, snapshots),
       falseReports: mapFalseReports(falseReportRows, masterStatuses, snapshots),
-      replies: mapReplies(replyRows, mapReplyChecks(replyCheckRows)),
     };
 
     return NextResponse.json(data);
