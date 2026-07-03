@@ -1,7 +1,6 @@
 export type CustomerRow = {
   rowIndex: number;
   rowKey: string;
-  managementId: string;
   confirmed: boolean;
   diffConfirmed: boolean;
   customerName: string;
@@ -11,7 +10,6 @@ export type CustomerRow = {
   interviewAt: string;
   /** 面談日 (YYYY-MM-DD)。日付で絞り込むためのパース済み値。解析不能時は空 */
   interviewDate: string;
-  inflow: string;
   seated: string;
   status: string;
   plan: string;

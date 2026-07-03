@@ -11,7 +11,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import type {
   CustomerRow,
   FalseReportCheckerData,
@@ -21,6 +21,8 @@ import type {
 type TabKey = "customers" | "diffs" | "falseReports";
 
 const PAGE_SIZE = 100;
+// 前回取得したデータで即描画し、裏で最新に更新する
+const DATA_CACHE_KEY = "false-report-checker-data-v1";
 
 const tabs: { key: TabKey; label: string; icon: typeof Users }[] = [
   { key: "customers", label: "顧客管理", icon: Users },
@@ -82,7 +84,13 @@ export function FalseReportCheckerClient() {
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.error || `データ取得に失敗しました (status=${response.status})`);
       }
-      setData((await response.json()) as FalseReportCheckerData);
+      const payload = (await response.json()) as FalseReportCheckerData;
+      setData(payload);
+      try {
+        sessionStorage.setItem(DATA_CACHE_KEY, JSON.stringify(payload));
+      } catch {
+        // 容量超過などは無視 (キャッシュなしで動作する)
+      }
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "データ取得に失敗しました");
     } finally {
@@ -91,6 +99,15 @@ export function FalseReportCheckerClient() {
   }, []);
 
   useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem(DATA_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached) as FalseReportCheckerData;
+        setData((previous) => previous ?? parsed);
+      }
+    } catch {
+      // 壊れたキャッシュは無視
+    }
     void loadData();
   }, [loadData]);
 
@@ -194,7 +211,9 @@ export function FalseReportCheckerClient() {
     [data?.customers],
   );
 
-  const normalizedQuery = query.trim().toLowerCase();
+  // 入力のたびに2500行のフィルタで固まらないよう、絞り込みは一拍遅らせる
+  const deferredQuery = useDeferredValue(query);
+  const normalizedQuery = deferredQuery.trim().toLowerCase();
   const matchesQuery = useCallback(
     (...values: string[]) =>
       !normalizedQuery || values.some((value) => value.toLowerCase().includes(normalizedQuery)),
@@ -420,6 +439,145 @@ function ShowMoreButton({
   );
 }
 
+type CustomerRowItemProps = {
+  row: CustomerRow;
+  showDiffColumns: boolean;
+  writeEnabled: boolean;
+  confirmSaving: boolean;
+  diffSaving: boolean;
+  onToggle: (row: CustomerRow, field: "confirmed" | "diffConfirmed", value: boolean) => void;
+};
+
+// チェック1つで一覧全体を再描画しないよう、行単位でメモ化する
+const CustomerTableRow = memo(function CustomerTableRow({
+  row,
+  showDiffColumns,
+  writeEnabled,
+  confirmSaving,
+  diffSaving,
+  onToggle,
+}: CustomerRowItemProps) {
+  return (
+    <tr
+      className={`transition hover:bg-[#f8f3ea] ${row.changeDetected ? "bg-[#fdeeee]/60" : ""}`}
+    >
+      <td className="px-4 py-2.5">
+        <input
+          type="checkbox"
+          checked={row.confirmed}
+          disabled={!writeEnabled || confirmSaving || !row.rowKey}
+          onChange={(event) => onToggle(row, "confirmed", event.target.checked)}
+          className="size-[18px] accent-[#e60012] disabled:opacity-40"
+        />
+      </td>
+      <td className="px-4 py-2.5">
+        <input
+          type="checkbox"
+          checked={row.diffConfirmed}
+          disabled={!writeEnabled || diffSaving || !row.rowKey}
+          onChange={(event) => onToggle(row, "diffConfirmed", event.target.checked)}
+          className="size-[18px] accent-[#e60012] disabled:opacity-40"
+        />
+      </td>
+      <td className="whitespace-nowrap px-4 py-2.5 font-medium">
+        {row.customerName}
+        {showDiffColumns && (
+          <span className="ml-2">
+            <DiffKindBadge row={row} />
+          </span>
+        )}
+      </td>
+      <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.staffName}</td>
+      <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.appliedAt}</td>
+      <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.interviewAt}</td>
+      {showDiffColumns ? (
+        <>
+          <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">
+            {row.confirmedStatus || "-"}
+          </td>
+          <td className="whitespace-nowrap px-4 py-2.5 font-medium text-[#c90010]">
+            {row.currentStatus || "-"}
+          </td>
+        </>
+      ) : (
+        <>
+          <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.seated}</td>
+          <td className="whitespace-nowrap px-4 py-2.5">
+            {row.status ? (
+              <span
+                className={`inline-block rounded-full px-2.5 py-1 text-xs ${statusChipClass(row.status)}`}
+              >
+                {row.status}
+              </span>
+            ) : (
+              <span className="text-[#b3a48c]">-</span>
+            )}
+          </td>
+          <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.plan}</td>
+        </>
+      )}
+    </tr>
+  );
+});
+
+const CustomerCard = memo(function CustomerCard({
+  row,
+  showDiffColumns,
+  writeEnabled,
+  confirmSaving,
+  diffSaving,
+  onToggle,
+}: CustomerRowItemProps) {
+  return (
+    <div
+      className={`rounded-[20px] border bg-[#fffaf2] p-4 shadow-lg shadow-[#231815]/5 ${
+        row.changeDetected ? "border-[#f0c9c9]" : "border-[#dfd1bc]"
+      }`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold">{row.customerName}</p>
+          <p className="mt-0.5 text-xs text-[#8a7a63]">
+            担当: {row.staffName || "-"} / {row.seminar}
+          </p>
+        </div>
+        {(showDiffColumns ? row.currentStatus : row.status) && (
+          <span
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${statusChipClass(
+              showDiffColumns ? row.currentStatus : row.status,
+            )}`}
+          >
+            {showDiffColumns ? row.currentStatus : row.status}
+          </span>
+        )}
+      </div>
+      <p className="mt-2 text-xs text-[#8a7a63]">
+        申込 {row.appliedAt || "-"} / 面談 {row.interviewAt || "-"}
+      </p>
+      {showDiffColumns && (
+        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[#a3272d]">
+          <DiffKindBadge row={row} />
+          変更前【{row.confirmedStatus || "-"}】▶︎ 変更後【{row.currentStatus || "-"}】
+        </p>
+      )}
+      <div className="mt-3 flex items-center gap-4 border-t border-[#eee3d0] pt-3">
+        <CheckField
+          label="確認済み"
+          checked={row.confirmed}
+          disabled={!writeEnabled || confirmSaving || !row.rowKey}
+          onChange={(value) => onToggle(row, "confirmed", value)}
+        />
+        <CheckField
+          label="差分確認"
+          checked={row.diffConfirmed}
+          disabled={!writeEnabled || diffSaving || !row.rowKey}
+          onChange={(value) => onToggle(row, "diffConfirmed", value)}
+        />
+      </div>
+    </div>
+  );
+});
+
 function DiffKindBadge({ row }: { row: CustomerRow }) {
   return row.changeDetected ? (
     <span className="inline-block rounded-full bg-[#e60012]/10 px-2 py-0.5 text-[10px] font-medium text-[#c90010]">
@@ -510,71 +668,16 @@ function CustomerList({
             <tbody className="divide-y divide-[#eee3d0]">
               {rows.map((row) => {
                 const id = customerId(row);
-                const confirmSaving = savingKeys.has(`setConfirmed:${id}`);
-                const diffSaving = savingKeys.has(`setDiffConfirmed:${id}`);
                 return (
-                  <tr
+                  <CustomerTableRow
                     key={id}
-                    className={`transition hover:bg-[#f8f3ea] ${
-                      row.changeDetected ? "bg-[#fdeeee]/60" : ""
-                    }`}
-                  >
-                    <td className="px-4 py-2.5">
-                      <input
-                        type="checkbox"
-                        checked={row.confirmed}
-                        disabled={!writeEnabled || confirmSaving || !row.rowKey}
-                        onChange={(event) => onToggle(row, "confirmed", event.target.checked)}
-                        className="size-[18px] accent-[#e60012] disabled:opacity-40"
-                      />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <input
-                        type="checkbox"
-                        checked={row.diffConfirmed}
-                        disabled={!writeEnabled || diffSaving || !row.rowKey}
-                        onChange={(event) => onToggle(row, "diffConfirmed", event.target.checked)}
-                        className="size-[18px] accent-[#e60012] disabled:opacity-40"
-                      />
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 font-medium">
-                      {row.customerName}
-                      {showDiffColumns && (
-                        <span className="ml-2">
-                          <DiffKindBadge row={row} />
-                        </span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.staffName}</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.appliedAt}</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.interviewAt}</td>
-                    {showDiffColumns ? (
-                      <>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">
-                          {row.confirmedStatus || "-"}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 font-medium text-[#c90010]">
-                          {row.currentStatus || "-"}
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.seated}</td>
-                        <td className="whitespace-nowrap px-4 py-2.5">
-                          {row.status ? (
-                            <span
-                              className={`inline-block rounded-full px-2.5 py-1 text-xs ${statusChipClass(row.status)}`}
-                            >
-                              {row.status}
-                            </span>
-                          ) : (
-                            <span className="text-[#b3a48c]">-</span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.plan}</td>
-                      </>
-                    )}
-                  </tr>
+                    row={row}
+                    showDiffColumns={showDiffColumns}
+                    writeEnabled={writeEnabled}
+                    confirmSaving={savingKeys.has(`setConfirmed:${id}`)}
+                    diffSaving={savingKeys.has(`setDiffConfirmed:${id}`)}
+                    onToggle={onToggle}
+                  />
                 );
               })}
             </tbody>
@@ -586,56 +689,16 @@ function CustomerList({
       <div className="space-y-3 md:hidden">
         {rows.map((row) => {
           const id = customerId(row);
-          const confirmSaving = savingKeys.has(`setConfirmed:${id}`);
-          const diffSaving = savingKeys.has(`setDiffConfirmed:${id}`);
           return (
-            <div
+            <CustomerCard
               key={id}
-              className={`rounded-[20px] border bg-[#fffaf2] p-4 shadow-lg shadow-[#231815]/5 ${
-                row.changeDetected ? "border-[#f0c9c9]" : "border-[#dfd1bc]"
-              }`}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">{row.customerName}</p>
-                  <p className="mt-0.5 text-xs text-[#8a7a63]">
-                    担当: {row.staffName || "-"} / {row.seminar}
-                  </p>
-                </div>
-                {(showDiffColumns ? row.currentStatus : row.status) && (
-                  <span
-                    className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${statusChipClass(
-                      showDiffColumns ? row.currentStatus : row.status,
-                    )}`}
-                  >
-                    {showDiffColumns ? row.currentStatus : row.status}
-                  </span>
-                )}
-              </div>
-              <p className="mt-2 text-xs text-[#8a7a63]">
-                申込 {row.appliedAt || "-"} / 面談 {row.interviewAt || "-"}
-              </p>
-              {showDiffColumns && (
-                <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[#a3272d]">
-                  <DiffKindBadge row={row} />
-                  変更前【{row.confirmedStatus || "-"}】▶︎ 変更後【{row.currentStatus || "-"}】
-                </p>
-              )}
-              <div className="mt-3 flex items-center gap-4 border-t border-[#eee3d0] pt-3">
-                <CheckField
-                  label="確認済み"
-                  checked={row.confirmed}
-                  disabled={!writeEnabled || confirmSaving || !row.rowKey}
-                  onChange={(value) => onToggle(row, "confirmed", value)}
-                />
-                <CheckField
-                  label="差分確認"
-                  checked={row.diffConfirmed}
-                  disabled={!writeEnabled || diffSaving || !row.rowKey}
-                  onChange={(value) => onToggle(row, "diffConfirmed", value)}
-                />
-              </div>
-            </div>
+              row={row}
+              showDiffColumns={showDiffColumns}
+              writeEnabled={writeEnabled}
+              confirmSaving={savingKeys.has(`setConfirmed:${id}`)}
+              diffSaving={savingKeys.has(`setDiffConfirmed:${id}`)}
+              onToggle={onToggle}
+            />
           );
         })}
       </div>
