@@ -218,24 +218,25 @@ function mapCustomers(
       const changeDetected =
         (confirmed && Boolean(confirmedStatus) && statusChanged) || toBool(row[33]);
 
+      const diffConfirmed = toBool(row[1]);
+      // 変更前/変更後の表示は差分行でしか使わないため、他の行では省いて転送量を抑える
+      const includeDiffFields = changeDetected || diffConfirmed;
       return {
         rowIndex: sheetRow,
         rowKey,
-        managementId,
         confirmed,
-        diffConfirmed: toBool(row[1]),
+        diffConfirmed,
         customerName: cellAt(row, 2),
         staffName: cellAt(row, 3),
         seminar: cellAt(row, 4),
         appliedAt: formatSheetValue(cellAt(row, 5)),
         interviewAt: formatSheetValue(cellAt(row, 6)),
         interviewDate: parseDateKey(formatSheetValue(cellAt(row, 6))),
-        inflow: cellAt(row, 7),
         seated: cellAt(row, 8),
         status: cellAt(row, 9),
         plan: cellAt(row, 16),
-        confirmedStatus,
-        currentStatus: masterList ? masterList.join(" | ") : lightCurrent,
+        confirmedStatus: includeDiffFields ? confirmedStatus : "",
+        currentStatus: includeDiffFields ? (masterList ? masterList.join(" | ") : lightCurrent) : "",
         changeDetected,
       };
     });
@@ -288,7 +289,14 @@ function isWriteEnabled() {
   return Boolean(process.env.FALSE_REPORT_WEBHOOK_URL && process.env.FALSE_REPORT_WEBHOOK_SECRET);
 }
 
+// シート群の取得に~2秒かかるため短時間キャッシュする。書き込み成功時に破棄
+const DATA_CACHE_TTL_MS = 30_000;
+let dataCache: { data: FalseReportCheckerData; expiresAt: number } | null = null;
+
 export async function GET() {
+  if (dataCache && Date.now() < dataCache.expiresAt) {
+    return NextResponse.json(dataCache.data);
+  }
   try {
     const [
       customerRows,
@@ -317,6 +325,7 @@ export async function GET() {
       falseReports: mapFalseReports(falseReportRows, masterStatuses, snapshots),
     };
 
+    dataCache = { data, expiresAt: Date.now() + DATA_CACHE_TTL_MS };
     return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json(
@@ -365,6 +374,7 @@ export async function POST(request: Request) {
     const text = await response.text();
     try {
       const payload = JSON.parse(text);
+      if (payload.ok !== false) dataCache = null; // 書き込み成功後は最新を取り直す
       return NextResponse.json(payload, { status: payload.ok === false ? 400 : 200 });
     } catch {
       return NextResponse.json(
