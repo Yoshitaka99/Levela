@@ -19,8 +19,12 @@ import {
   FileText,
   HelpCircle,
   Images,
+  LockKeyhole,
+  LogOut,
+  MessageSquareText,
   RefreshCcw,
   Settings2,
+  Smartphone,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -29,6 +33,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type FormEvent,
   type ReactNode,
 } from "react";
 import {
@@ -55,6 +60,10 @@ import type {
   ChatbotQuestionLogRecord,
   ChatbotQuestionLogSummary,
 } from "@/app/lib/chatbotQuestionLog";
+import type {
+  ChatbotConversationLogSummary,
+  ChatbotConversationRecord,
+} from "@/app/lib/chatbotConversationLog";
 import type { ChatbotQuestionAnswerStatus } from "@/app/lib/chatbotQuestionTaxonomy";
 import {
   listBrowserQuestionLogs,
@@ -94,6 +103,12 @@ type QuestionLogResponse = {
   updatedAt: string;
 };
 
+type ConversationLogResponse = {
+  records: ChatbotConversationRecord[];
+  summary: ChatbotConversationLogSummary;
+  updatedAt: string;
+};
+
 type QuestionLogFilter = "all" | ChatbotQuestionAnswerStatus;
 
 type QuestionLogMonthOption = {
@@ -125,6 +140,8 @@ const answerStatusStyle: Record<
     className: "border-rose-300/40 bg-rose-300/10 text-rose-100",
   },
 };
+const ADMIN_PASSWORD = "Levela2026";
+const ADMIN_PASSWORD_STORAGE_KEY = "levela.sales.bot.admin.password";
 
 export function ChatbotAdminClient({
   sourceCount,
@@ -144,6 +161,13 @@ export function ChatbotAdminClient({
   const [questionLogFilter, setQuestionLogFilter] =
     useState<QuestionLogFilter>("all");
   const [questionLogMonth, setQuestionLogMonth] = useState("all");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
+  const [adminAuthError, setAdminAuthError] = useState("");
+  const [conversationLogData, setConversationLogData] =
+    useState<ConversationLogResponse | null>(null);
+  const [conversationLogLoading, setConversationLogLoading] = useState(false);
+  const [conversationLogError, setConversationLogError] = useState("");
   const transport = useMemo(
     () => new DefaultChatTransport({ api: "/api/chatbot" }),
     []
@@ -200,6 +224,14 @@ export function ChatbotAdminClient({
 
   const busy = status === "submitted" || status === "streaming";
 
+  useEffect(() => {
+    const storedPassword = window.localStorage.getItem(ADMIN_PASSWORD_STORAGE_KEY);
+    if (storedPassword === ADMIN_PASSWORD) {
+      setAdminPassword(storedPassword);
+      setAdminAuthenticated(true);
+    }
+  }, []);
+
   function submit(message: PromptInputMessage) {
     const text = message.text.trim();
     if (!text) return;
@@ -219,12 +251,17 @@ export function ChatbotAdminClient({
   }
 
   const loadQuestionLogs = useCallback(async () => {
+    if (!adminAuthenticated) return;
+
     setQuestionLogLoading(true);
     setQuestionLogError("");
 
     try {
       const response = await fetch("/api/chatbot/question-logs", {
         cache: "no-store",
+        headers: {
+          "x-levela-admin-password": adminPassword,
+        },
       });
 
       if (!response.ok) {
@@ -251,11 +288,43 @@ export function ChatbotAdminClient({
     } finally {
       setQuestionLogLoading(false);
     }
-  }, []);
+  }, [adminAuthenticated, adminPassword]);
+
+  const loadConversationLogs = useCallback(async () => {
+    if (!adminAuthenticated) return;
+
+    setConversationLogLoading(true);
+    setConversationLogError("");
+
+    try {
+      const response = await fetch("/api/chatbot/conversations", {
+        cache: "no-store",
+        headers: {
+          "x-levela-admin-password": adminPassword,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("チャット履歴を取得できませんでした。");
+      }
+
+      setConversationLogData((await response.json()) as ConversationLogResponse);
+    } catch (currentError) {
+      setConversationLogError(
+        currentError instanceof Error
+          ? currentError.message
+          : "チャット履歴を取得できませんでした。"
+      );
+    } finally {
+      setConversationLogLoading(false);
+    }
+  }, [adminAuthenticated, adminPassword]);
 
   useEffect(() => {
+    if (!adminAuthenticated) return;
     void loadQuestionLogs();
-  }, [loadQuestionLogs]);
+    void loadConversationLogs();
+  }, [adminAuthenticated, loadConversationLogs, loadQuestionLogs]);
 
   useEffect(() => {
     if (
@@ -265,6 +334,38 @@ export function ChatbotAdminClient({
       setQuestionLogMonth("all");
     }
   }, [questionLogMonth, questionLogMonthOptions]);
+
+  function handleAdminLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAdminAuthError("");
+
+    if (adminPassword !== ADMIN_PASSWORD) {
+      setAdminAuthError("パスワードが違います。");
+      return;
+    }
+
+    window.localStorage.setItem(ADMIN_PASSWORD_STORAGE_KEY, adminPassword);
+    setAdminAuthenticated(true);
+  }
+
+  function handleAdminLogout() {
+    window.localStorage.removeItem(ADMIN_PASSWORD_STORAGE_KEY);
+    setAdminPassword("");
+    setAdminAuthenticated(false);
+    setQuestionLogData(null);
+    setConversationLogData(null);
+  }
+
+  if (!adminAuthenticated) {
+    return (
+      <AdminPasswordGate
+        error={adminAuthError}
+        password={adminPassword}
+        onPasswordChange={setAdminPassword}
+        onSubmit={handleAdminLogin}
+      />
+    );
+  }
 
   return (
     <main className="dark min-h-screen bg-slate-950 text-slate-50">
@@ -282,6 +383,15 @@ export function ChatbotAdminClient({
               質問ログの確認と出力を中心に、必要な管理項目だけ展開して使います。
             </p>
           </div>
+          <Button
+            variant="outline"
+            className="w-full border-slate-700 bg-slate-900 text-slate-50 hover:bg-slate-800 hover:text-white sm:w-fit"
+            onClick={handleAdminLogout}
+            type="button"
+          >
+            <LogOut className="size-3.5" />
+            ログアウト
+          </Button>
           <Button
             asChild
             variant="outline"
@@ -452,6 +562,13 @@ export function ChatbotAdminClient({
               onRefresh={loadQuestionLogs}
             />
 
+            <ConversationLogPanel
+              data={conversationLogData}
+              error={conversationLogError}
+              isLoading={conversationLogLoading}
+              onRefresh={loadConversationLogs}
+            />
+
             <details className="group rounded-lg border border-slate-800 bg-slate-950/70">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm font-medium text-slate-200 marker:text-slate-500 md:px-4">
                 <span className="flex min-w-0 items-center gap-2">
@@ -582,6 +699,64 @@ export function ChatbotAdminClient({
           </div>
         </section>
       </div>
+    </main>
+  );
+}
+
+function AdminPasswordGate({
+  error,
+  password,
+  onPasswordChange,
+  onSubmit,
+}: {
+  error: string;
+  password: string;
+  onPasswordChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <main className="dark flex min-h-screen items-center justify-center bg-slate-950 px-4 text-slate-50">
+      <form
+        className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl shadow-black/30"
+        onSubmit={onSubmit}
+      >
+        <div className="mb-5 flex items-center gap-3">
+          <span className="flex size-11 items-center justify-center rounded-lg border border-slate-700 bg-slate-950 text-slate-300">
+            <LockKeyhole className="size-5" />
+          </span>
+          <div>
+            <h1 className="text-xl font-semibold">Levela Bot 管理画面</h1>
+            <p className="mt-1 text-sm text-slate-400">
+              管理パスワードを入力してください。
+            </p>
+          </div>
+        </div>
+
+        <label className="grid gap-2 text-sm text-slate-300">
+          パスワード
+          <input
+            autoFocus
+            className="h-11 rounded-lg border border-slate-700 bg-slate-950 px-3 text-slate-50 outline-none transition focus:border-cyan-300"
+            onChange={(event) => onPasswordChange(event.currentTarget.value)}
+            placeholder="Levela2026"
+            type="password"
+            value={password}
+          />
+        </label>
+
+        {error ? (
+          <div className="mt-3 rounded-md border border-rose-300/40 bg-rose-300/10 px-3 py-2 text-sm text-rose-100">
+            {error}
+          </div>
+        ) : null}
+
+        <Button
+          className="mt-5 w-full bg-white text-slate-950 hover:bg-slate-200"
+          type="submit"
+        >
+          管理画面を開く
+        </Button>
+      </form>
     </main>
   );
 }
@@ -818,6 +993,137 @@ function QuestionLogPanel({
       ) : null}
     </section>
   );
+}
+
+function ConversationLogPanel({
+  data,
+  error,
+  isLoading,
+  onRefresh,
+}: {
+  data: ConversationLogResponse | null;
+  error: string;
+  isLoading: boolean;
+  onRefresh: () => void;
+}) {
+  const records = data?.records ?? [];
+  const summary = data?.summary;
+
+  return (
+    <section className="rounded-lg border border-slate-800 bg-slate-950/80 p-3 shadow-xl shadow-black/20 md:p-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 inline-flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs text-slate-400">
+            <MessageSquareText className="size-3.5" />
+            conversation history
+          </div>
+          <h2 className="text-xl font-semibold">ユーザー別チャット履歴</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">
+            同一デバイスに発行したID単位で、チャット内容を確認できます。
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full border-slate-700 bg-slate-900 text-slate-50 hover:bg-slate-800 hover:text-white sm:w-fit"
+          onClick={onRefresh}
+          disabled={isLoading}
+        >
+          <RefreshCcw className={isLoading ? "size-3.5 animate-spin" : "size-3.5"} />
+          更新
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 py-3">
+        <MetricCard
+          icon={MessageSquareText}
+          label="会話数"
+          value={`${summary?.total ?? 0}件`}
+        />
+        <MetricCard
+          icon={Smartphone}
+          label="デバイス数"
+          value={`${summary?.deviceCount ?? 0}件`}
+        />
+      </div>
+
+      {error ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      {!error && records.length === 0 ? (
+        <div className="rounded-md border border-border bg-background px-4 py-6 text-center text-sm text-muted-foreground">
+          {isLoading
+            ? "チャット履歴を読み込み中です。"
+            : "まだ表示できるチャット履歴はありません。一般ユーザー画面で会話が完了するとここに表示されます。"}
+        </div>
+      ) : null}
+
+      {records.length > 0 ? (
+        <div className="space-y-2 md:max-h-[520px] md:overflow-auto">
+          {records.map((record) => (
+            <details
+              className="group rounded-md border border-slate-800 bg-slate-900/70"
+              key={record.id}
+            >
+              <summary className="flex cursor-pointer list-none flex-col gap-2 px-3 py-3 marker:text-slate-500 md:flex-row md:items-start md:justify-between">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-slate-100">
+                    {record.title}
+                  </span>
+                  <span className="mt-1 block truncate text-xs text-slate-400">
+                    {record.preview}
+                  </span>
+                  <span className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full border border-slate-700 px-2 py-1 text-[11px] text-slate-400">
+                    <Smartphone className="size-3" />
+                    {formatDeviceLabel(record.deviceId)}
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs leading-5 text-slate-500">
+                  {formatAskedAt(record.updatedAt)}
+                  <br />
+                  {record.messageCount} messages
+                </span>
+              </summary>
+              <div className="space-y-2 border-t border-slate-800 px-3 py-3">
+                {record.messages.map((message, index) => (
+                  <div
+                    className={
+                      message.role === "assistant"
+                        ? "rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-sm leading-6 text-slate-200"
+                        : "rounded-md border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-sm leading-6 text-cyan-50"
+                    }
+                    key={`${record.id}-${index}`}
+                  >
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      {message.role === "assistant" ? "bot" : "user"}
+                    </div>
+                    <div className="whitespace-pre-wrap break-words">
+                      {message.text}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          ))}
+        </div>
+      ) : null}
+
+      {summary?.storageNotice ? (
+        <p className="mt-3 text-xs leading-5 text-muted-foreground">
+          {summary.storageNotice}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function formatDeviceLabel(deviceId: string) {
+  if (deviceId.length <= 18) return deviceId;
+  return `${deviceId.slice(0, 8)}...${deviceId.slice(-6)}`;
 }
 
 function MetricCard({

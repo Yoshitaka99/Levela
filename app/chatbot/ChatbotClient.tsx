@@ -37,6 +37,7 @@ import { appendBrowserQuestionLogFromMessages } from "@/app/lib/chatbotQuestionL
 
 type StoredChat = {
   id: string;
+  deviceId?: string;
   title: string;
   preview: string;
   updatedAt: number;
@@ -44,6 +45,7 @@ type StoredChat = {
 };
 
 const STORAGE_KEY = "levela.sales.bot.user.history";
+const DEVICE_ID_KEY = "levela.sales.bot.device.id";
 const BOT_NAME = "\u4f55\u3067\u3082\u4ffa\u306b\u805e\u3051\u541b";
 const HOME_LABEL = "\u30db\u30fc\u30e0";
 const BACK_LABEL = "\u623b\u308b";
@@ -72,6 +74,25 @@ const starterPrompts = [
 
 function createChatId() {
   return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createDeviceId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `device-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getOrCreateDeviceId() {
+  if (typeof window === "undefined") return "";
+
+  const existing = window.localStorage.getItem(DEVICE_ID_KEY);
+  if (existing) return existing;
+
+  const next = createDeviceId();
+  window.localStorage.setItem(DEVICE_ID_KEY, next);
+  return next;
 }
 
 function getMessageText(message: UIMessage) {
@@ -103,10 +124,39 @@ function saveHistory(history: StoredChat[]) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(0, 12)));
 }
 
+function createConversationMessages(messages: UIMessage[]) {
+  return messages
+    .map((message) => ({
+      role: message.role === "assistant" ? "assistant" : "user",
+      text: getMessageText(message),
+    }))
+    .filter((message) => message.text);
+}
+
+async function syncConversationHistory(record: StoredChat) {
+  if (!record.deviceId) return;
+
+  await fetch("/api/chatbot/conversations", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      deviceId: record.deviceId,
+      chatId: record.id,
+      title: record.title,
+      preview: record.preview,
+      updatedAt: new Date(record.updatedAt).toISOString(),
+      messages: createConversationMessages(record.messages),
+    }),
+  }).catch(() => null);
+}
+
 export function ChatbotClient() {
   const [input, setInput] = useState("");
   const [clientError, setClientError] = useState("");
   const [history, setHistory] = useState<StoredChat[]>([]);
+  const [deviceId, setDeviceId] = useState("");
   const [showSplash, setShowSplash] = useState(true);
   const [splashReady, setSplashReady] = useState(false);
   const [splashLeaving, setSplashLeaving] = useState(false);
@@ -135,7 +185,11 @@ export function ChatbotClient() {
   const busy = status === "submitted" || status === "streaming";
 
   useEffect(() => {
-    const id = window.setTimeout(() => setHistory(loadHistory()), 0);
+    const id = window.setTimeout(() => {
+      const currentDeviceId = getOrCreateDeviceId();
+      setDeviceId(currentDeviceId);
+      setHistory(loadHistory());
+    }, 0);
     return () => window.clearTimeout(id);
   }, []);
 
@@ -147,10 +201,12 @@ export function ChatbotClient() {
 
   function persistChat(nextMessages: UIMessage[]) {
     if (nextMessages.length === 0) return;
+    const currentDeviceId = deviceId || getOrCreateDeviceId();
     const firstUser = nextMessages.find((message) => message.role === "user");
     const lastMessage = nextMessages.at(-1);
     const record: StoredChat = {
       id: activeChatId,
+      deviceId: currentDeviceId,
       title: compactTitle(firstUser ? getMessageText(firstUser) : ""),
       preview: compactTitle(lastMessage ? getMessageText(lastMessage) : ""),
       updatedAt: Date.now(),
@@ -165,6 +221,7 @@ export function ChatbotClient() {
       saveHistory(next);
       return next;
     });
+    void syncConversationHistory(record);
   }
 
   function startNewChat() {

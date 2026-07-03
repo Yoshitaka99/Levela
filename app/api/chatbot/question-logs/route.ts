@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isChatbotAdminAuthorized } from "@/app/lib/chatbotAdminAuth";
 import {
   listChatbotQuestionLogs,
   summarizeChatbotQuestionLogs,
@@ -6,7 +7,11 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export function GET() {
+export function GET(req: Request) {
+  if (!isChatbotAdminAuthorized(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const records = listChatbotQuestionLogs();
 
   return NextResponse.json({
