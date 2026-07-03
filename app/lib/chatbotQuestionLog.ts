@@ -19,6 +19,11 @@ export type ChatbotQuestionLogSummary = {
     category: string;
     count: number;
   }>;
+  byMinorCategory: Array<{
+    majorCategory: string;
+    minorCategory: string;
+    count: number;
+  }>;
   byAnswerStatus: Array<{
     status: ChatbotQuestionAnswerStatus;
     label: string;
@@ -81,6 +86,10 @@ export function summarizeChatbotQuestionLogs(
   records = listChatbotQuestionLogs()
 ): ChatbotQuestionLogSummary {
   const majorCounts = new Map<string, number>();
+  const minorCounts = new Map<
+    string,
+    { majorCategory: string; minorCategory: string; count: number }
+  >();
   const statusCounts = new Map<ChatbotQuestionAnswerStatus, number>();
 
   for (const record of records) {
@@ -88,6 +97,13 @@ export function summarizeChatbotQuestionLogs(
       record.majorCategory,
       (majorCounts.get(record.majorCategory) ?? 0) + 1
     );
+    const minorKey = `${record.majorCategory}\u0000${record.minorCategory}`;
+    const minorItem = minorCounts.get(minorKey);
+    minorCounts.set(minorKey, {
+      majorCategory: record.majorCategory,
+      minorCategory: record.minorCategory,
+      count: (minorItem?.count ?? 0) + 1,
+    });
     statusCounts.set(
       record.answerStatus,
       (statusCounts.get(record.answerStatus) ?? 0) + 1
@@ -99,6 +115,12 @@ export function summarizeChatbotQuestionLogs(
     byMajorCategory: [...majorCounts.entries()]
       .map(([category, count]) => ({ category, count }))
       .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category)),
+    byMinorCategory: [...minorCounts.values()].sort(
+      (a, b) =>
+        b.count - a.count ||
+        a.majorCategory.localeCompare(b.majorCategory) ||
+        a.minorCategory.localeCompare(b.minorCategory)
+    ),
     byAnswerStatus: ([
       "answered",
       "needs_review",

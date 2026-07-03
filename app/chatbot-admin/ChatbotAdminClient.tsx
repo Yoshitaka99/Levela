@@ -110,8 +110,14 @@ type ConversationLogResponse = {
 };
 
 type QuestionLogFilter = "all" | ChatbotQuestionAnswerStatus;
+type QuestionLogCategoryFilter = string;
 
 type QuestionLogMonthOption = {
+  value: string;
+  label: string;
+};
+
+type QuestionLogCategoryOption = {
   value: string;
   label: string;
 };
@@ -161,6 +167,10 @@ export function ChatbotAdminClient({
   const [questionLogFilter, setQuestionLogFilter] =
     useState<QuestionLogFilter>("all");
   const [questionLogMonth, setQuestionLogMonth] = useState("all");
+  const [questionLogMajorCategory, setQuestionLogMajorCategory] =
+    useState<QuestionLogCategoryFilter>("all");
+  const [questionLogMinorCategory, setQuestionLogMinorCategory] =
+    useState<QuestionLogCategoryFilter>("all");
   const [adminPassword, setAdminPassword] = useState("");
   const [adminAuthenticated, setAdminAuthenticated] = useState(false);
   const [adminAuthError, setAdminAuthError] = useState("");
@@ -183,6 +193,10 @@ export function ChatbotAdminClient({
     () => createQuestionLogMonthOptions(questionLogData?.records ?? []),
     [questionLogData?.records]
   );
+  const questionLogMajorCategoryOptions = useMemo(
+    () => createQuestionLogMajorCategoryOptions(questionLogData?.records ?? []),
+    [questionLogData?.records]
+  );
   const periodQuestionLogs = useMemo(() => {
     const records = questionLogData?.records ?? [];
     if (questionLogMonth === "all") return records;
@@ -191,17 +205,32 @@ export function ChatbotAdminClient({
       (record) => getQuestionLogMonthKey(record.askedAt) === questionLogMonth
     );
   }, [questionLogData?.records, questionLogMonth]);
+  const questionLogMinorCategoryOptions = useMemo(
+    () =>
+      createQuestionLogMinorCategoryOptions(
+        periodQuestionLogs,
+        questionLogMajorCategory
+      ),
+    [periodQuestionLogs, questionLogMajorCategory]
+  );
   const periodQuestionLogSummary = useMemo(
     () => summarizeQuestionLogsForBrowser(periodQuestionLogs),
     [periodQuestionLogs]
   );
   const filteredQuestionLogs = useMemo(() => {
-    const visibleRecords =
-      questionLogFilter === "all"
-        ? periodQuestionLogs
-        : periodQuestionLogs.filter(
-            (record) => record.answerStatus === questionLogFilter
-          );
+    const visibleRecords = periodQuestionLogs.filter((record) => {
+      const matchesStatus =
+        questionLogFilter === "all" ||
+        record.answerStatus === questionLogFilter;
+      const matchesMajor =
+        questionLogMajorCategory === "all" ||
+        record.majorCategory === questionLogMajorCategory;
+      const matchesMinor =
+        questionLogMinorCategory === "all" ||
+        record.minorCategory === questionLogMinorCategory;
+
+      return matchesStatus && matchesMajor && matchesMinor;
+    });
 
     return [...visibleRecords].sort((a, b) => {
       const statusRank: Record<ChatbotQuestionAnswerStatus, number> = {
@@ -215,7 +244,16 @@ export function ChatbotAdminClient({
         new Date(b.askedAt).getTime() - new Date(a.askedAt).getTime()
       );
     });
-  }, [periodQuestionLogs, questionLogFilter]);
+  }, [
+    periodQuestionLogs,
+    questionLogFilter,
+    questionLogMajorCategory,
+    questionLogMinorCategory,
+  ]);
+  const filteredQuestionLogSummary = useMemo(
+    () => summarizeQuestionLogsForBrowser(filteredQuestionLogs),
+    [filteredQuestionLogs]
+  );
 
   const { messages, sendMessage, status, stop, regenerate, error } = useChat({
     transport,
@@ -335,6 +373,29 @@ export function ChatbotAdminClient({
     }
   }, [questionLogMonth, questionLogMonthOptions]);
 
+  useEffect(() => {
+    if (
+      questionLogMajorCategory !== "all" &&
+      !questionLogMajorCategoryOptions.some(
+        (option) => option.value === questionLogMajorCategory
+      )
+    ) {
+      setQuestionLogMajorCategory("all");
+      setQuestionLogMinorCategory("all");
+    }
+  }, [questionLogMajorCategory, questionLogMajorCategoryOptions]);
+
+  useEffect(() => {
+    if (
+      questionLogMinorCategory !== "all" &&
+      !questionLogMinorCategoryOptions.some(
+        (option) => option.value === questionLogMinorCategory
+      )
+    ) {
+      setQuestionLogMinorCategory("all");
+    }
+  }, [questionLogMinorCategory, questionLogMinorCategoryOptions]);
+
   function handleAdminLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAdminAuthError("");
@@ -354,6 +415,10 @@ export function ChatbotAdminClient({
     setAdminAuthenticated(false);
     setQuestionLogData(null);
     setConversationLogData(null);
+    setQuestionLogMonth("all");
+    setQuestionLogFilter("all");
+    setQuestionLogMajorCategory("all");
+    setQuestionLogMinorCategory("all");
   }
 
   if (!adminAuthenticated) {
@@ -544,17 +609,29 @@ export function ChatbotAdminClient({
             <QuestionLogPanel
               error={questionLogError}
               filter={questionLogFilter}
+              majorCategoryFilter={questionLogMajorCategory}
+              majorCategoryOptions={questionLogMajorCategoryOptions}
+              minorCategoryFilter={questionLogMinorCategory}
+              minorCategoryOptions={questionLogMinorCategoryOptions}
               filteredRecords={filteredQuestionLogs}
+              filteredSummary={filteredQuestionLogSummary}
               isLoading={questionLogLoading}
               monthFilter={questionLogMonth}
               monthOptions={questionLogMonthOptions}
               periodSummary={periodQuestionLogSummary}
               onFilterChange={setQuestionLogFilter}
+              onMajorCategoryChange={(value) => {
+                setQuestionLogMajorCategory(value);
+                setQuestionLogMinorCategory("all");
+              }}
+              onMinorCategoryChange={setQuestionLogMinorCategory}
               onMonthChange={setQuestionLogMonth}
               onDownloadCsv={() =>
                 downloadQuestionLogCsv({
                   records: filteredQuestionLogs,
                   statusFilter: questionLogFilter,
+                  majorCategoryFilter: questionLogMajorCategory,
+                  minorCategoryFilter: questionLogMinorCategory,
                   monthFilter: questionLogMonth,
                   monthOptions: questionLogMonthOptions,
                 })
@@ -805,30 +882,45 @@ function AdminFolder({
 function QuestionLogPanel({
   error,
   filter,
+  majorCategoryFilter,
+  majorCategoryOptions,
+  minorCategoryFilter,
+  minorCategoryOptions,
   filteredRecords,
+  filteredSummary,
   isLoading,
   monthFilter,
   monthOptions,
   periodSummary,
   onFilterChange,
+  onMajorCategoryChange,
+  onMinorCategoryChange,
   onMonthChange,
   onDownloadCsv,
   onRefresh,
 }: {
   error: string;
   filter: QuestionLogFilter;
+  majorCategoryFilter: string;
+  majorCategoryOptions: QuestionLogCategoryOption[];
+  minorCategoryFilter: string;
+  minorCategoryOptions: QuestionLogCategoryOption[];
   filteredRecords: ChatbotQuestionLogRecord[];
+  filteredSummary: ChatbotQuestionLogSummary;
   isLoading: boolean;
   monthFilter: string;
   monthOptions: QuestionLogMonthOption[];
   periodSummary: ChatbotQuestionLogSummary;
   onFilterChange: (filter: QuestionLogFilter) => void;
+  onMajorCategoryChange: (value: string) => void;
+  onMinorCategoryChange: (value: string) => void;
   onMonthChange: (value: string) => void;
   onDownloadCsv: () => void;
   onRefresh: () => void;
 }) {
-  const summary = periodSummary;
-  const total = summary.total;
+  const summary = filteredSummary;
+  const total = filteredSummary.total;
+  const periodTotal = periodSummary.total;
   const statusFilters: QuestionLogFilter[] = [
     "all",
     "answered",
@@ -862,7 +954,7 @@ function QuestionLogPanel({
         </Button>
       </div>
 
-      <div className="mt-4 grid gap-2 rounded-md border border-slate-800 bg-slate-900/50 p-2.5 md:grid-cols-[minmax(200px,260px)_1fr_auto] md:items-end md:gap-3 md:p-3">
+      <div className="mt-4 grid gap-2 rounded-md border border-slate-800 bg-slate-900/50 p-2.5 md:grid-cols-[minmax(170px,220px)_minmax(170px,220px)_minmax(170px,220px)_auto] md:items-end md:gap-3 md:p-3">
         <label className="grid gap-1 text-xs text-slate-400">
           対象月
           <select
@@ -878,9 +970,40 @@ function QuestionLogPanel({
             ))}
           </select>
         </label>
-        <div className="hidden text-xs leading-5 text-slate-500 md:block">
-          表示中の対象月と回答状態フィルタが、そのままCSVに反映されます。
-        </div>
+        <label className="grid gap-1 text-xs text-slate-400">
+          大ジャンル
+          <select
+            value={majorCategoryFilter}
+            onChange={(event) =>
+              onMajorCategoryChange(event.currentTarget.value)
+            }
+            className="h-10 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-slate-50 outline-none transition focus:border-cyan-300"
+          >
+            <option value="all">すべての大ジャンル</option>
+            {majorCategoryOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1 text-xs text-slate-400">
+          中ジャンル
+          <select
+            value={minorCategoryFilter}
+            onChange={(event) =>
+              onMinorCategoryChange(event.currentTarget.value)
+            }
+            className="h-10 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-slate-50 outline-none transition focus:border-cyan-300"
+          >
+            <option value="all">すべての中ジャンル</option>
+            {minorCategoryOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <Button
           type="button"
           variant="outline"
@@ -897,14 +1020,16 @@ function QuestionLogPanel({
         <MetricCard
           icon={BarChart3}
           label="質問数"
-          value={`${total}件`}
+          value={
+            total === periodTotal ? `${total}件` : `${total}/${periodTotal}件`
+          }
         />
         {(["answered", "needs_review", "unanswered"] as ChatbotQuestionAnswerStatus[]).map(
           (status) => {
             const style = answerStatusStyle[status];
             const Icon = style.icon;
             const count =
-              summary.byAnswerStatus.find((item) => item.status === status)
+              filteredSummary.byAnswerStatus.find((item) => item.status === status)
                 ?.count ?? 0;
 
             return (
@@ -945,7 +1070,7 @@ function QuestionLogPanel({
       {summary.byMajorCategory.length ? (
         <details className="group mb-3 rounded-md border border-slate-800 bg-slate-900/50">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-medium text-slate-300 marker:text-slate-500">
-            <span>ジャンル内訳</span>
+            <span>大ジャンル別集計</span>
             <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
           </summary>
           <div className="flex flex-wrap gap-2 border-t border-slate-800 px-3 py-3">
@@ -959,6 +1084,35 @@ function QuestionLogPanel({
                   {item.count}
                 </span>
               </span>
+            ))}
+          </div>
+        </details>
+      ) : null}
+
+      {filteredSummary.byMinorCategory.length ? (
+        <details className="group mb-3 rounded-md border border-slate-800 bg-slate-900/50">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-medium text-slate-300 marker:text-slate-500">
+            <span>中ジャンル別集計</span>
+            <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="grid gap-2 border-t border-slate-800 px-3 py-3 md:grid-cols-2">
+            {filteredSummary.byMinorCategory.slice(0, 20).map((item) => (
+              <div
+                key={`${item.majorCategory}-${item.minorCategory}`}
+                className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-400"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-slate-200">
+                    {item.minorCategory}
+                  </span>
+                  <span className="shrink-0 font-semibold text-slate-100">
+                    {item.count}
+                  </span>
+                </div>
+                <div className="mt-1 truncate text-[11px] text-slate-500">
+                  {item.majorCategory}
+                </div>
+              </div>
             ))}
           </div>
         </details>
@@ -1239,6 +1393,41 @@ function createQuestionLogMonthOptions(records: ChatbotQuestionLogRecord[]) {
     }));
 }
 
+function createQuestionLogMajorCategoryOptions(
+  records: ChatbotQuestionLogRecord[]
+): QuestionLogCategoryOption[] {
+  const categories = new Set<string>();
+
+  for (const record of records) {
+    if (record.majorCategory) categories.add(record.majorCategory);
+  }
+
+  return [...categories].sort((a, b) => a.localeCompare(b)).map((value) => ({
+    value,
+    label: value,
+  }));
+}
+
+function createQuestionLogMinorCategoryOptions(
+  records: ChatbotQuestionLogRecord[],
+  majorCategory: string
+): QuestionLogCategoryOption[] {
+  const categories = new Set<string>();
+
+  for (const record of records) {
+    if (majorCategory !== "all" && record.majorCategory !== majorCategory) {
+      continue;
+    }
+
+    if (record.minorCategory) categories.add(record.minorCategory);
+  }
+
+  return [...categories].sort((a, b) => a.localeCompare(b)).map((value) => ({
+    value,
+    label: value,
+  }));
+}
+
 function escapeCsvCell(value: string | number) {
   const text = String(value).replace(/\r?\n/g, "\n");
 
@@ -1248,11 +1437,15 @@ function escapeCsvCell(value: string | number) {
 function downloadQuestionLogCsv({
   records,
   statusFilter,
+  majorCategoryFilter,
+  minorCategoryFilter,
   monthFilter,
   monthOptions,
 }: {
   records: ChatbotQuestionLogRecord[];
   statusFilter: QuestionLogFilter;
+  majorCategoryFilter: string;
+  minorCategoryFilter: string;
   monthFilter: string;
   monthOptions: QuestionLogMonthOption[];
 }) {
@@ -1288,9 +1481,13 @@ function downloadQuestionLogCsv({
       : monthOptions.find((option) => option.value === monthFilter)?.value ??
         monthFilter;
   const statusLabel = statusFilter === "all" ? "all-statuses" : statusFilter;
+  const majorLabel =
+    majorCategoryFilter === "all" ? "all-major" : majorCategoryFilter;
+  const minorLabel =
+    minorCategoryFilter === "all" ? "all-minor" : minorCategoryFilter;
 
   link.href = url;
-  link.download = `levela-question-logs_${monthLabel}_${statusLabel}.csv`;
+  link.download = `levela-question-logs_${monthLabel}_${statusLabel}_${majorLabel}_${minorLabel}.csv`;
   document.body.appendChild(link);
   link.click();
   link.remove();
