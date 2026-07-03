@@ -24,6 +24,15 @@ type FormState = {
 };
 
 type InputMode = "detailed" | "simple";
+type IdealSplitKey = "left" | "center" | "right";
+type GeneratedImageKind = "crisis" | "ideal";
+
+type IdealSplitPrompt = {
+  key: IdealSplitKey;
+  label: string;
+  fileName: string;
+  prompt: string;
+};
 type MaritalStatus = "married" | "single" | "";
 type MarriageIntent = "wants_marriage" | "no_marriage" | "";
 type ChildPlan = "has_children" | "wants_children" | "no_children" | "";
@@ -565,6 +574,85 @@ ${buildLifeStageBlock(lifeStageSelection)}
 追加質問や文章での説明はせず、上記条件を満たす画像をそのまま生成してください。`;
 }
 
+function buildIdealSplitImagePrompts(form: FormState, lifeStageSelection: LifeStageSelection): IdealSplitPrompt[] {
+  const customerInfo = buildCustomerInfo(form, { includeStrengths: true });
+  const strengths = form.strengths.trim() || "未入力。未入力の場合は、お客様情報全体から自然に補完する。";
+  const lifeStageBlock = buildLifeStageBlock(lifeStageSelection);
+  const common = `これは「あなたの強み」画像を左・中央・右の3枚に分けて生成するための分割プロンプトです。
+3枚を横に並べた時に一体感が出るよう、白背景、淡いピンク、クリーム、薄いグレー線、やさしい手書き風で統一してください。
+人物イラスト、家族イラスト、理想の未来シーンを優先し、文字は短いラベルだけにしてください。
+実在アカウント名、実在人物名、実在動画名は出さないでください。
+
+【お客様情報】
+${customerInfo}
+
+【⭐素材】
+${strengths}
+
+${lifeStageBlock}`;
+
+  return [
+    {
+      key: "left",
+      label: "左：強み・行動",
+      fileName: "life-plan-strength-left",
+      prompt: `${common}
+
+【この1枚で作る範囲】
+左パートだけを1枚画像として生成する。他の中央・右パートは描かない。
+
+【入れる内容】
+・見出し：行動を変える！
+・Instagramで発信をスタートする本人のやさしい人物イラスト
+・強み、経験、感情が動いた瞬間、発信素材
+・文字起こしから拾った感情、願望、不安、やれていない事、やりたい事を短いタグで表示
+・スマホ、ハート、メモ、チェックなどの小さなアイコン
+
+追加説明は不要です。左パートの画像だけ生成してください。`,
+    },
+    {
+      key: "center",
+      label: "中央：刺さる人",
+      fileName: "life-plan-strength-center",
+      prompt: `${common}
+
+【この1枚で作る範囲】
+中央パートだけを1枚画像として生成する。他の左・右パートは描かない。
+
+【入れる内容】
+・見出し：こんな人に刺さる！
+・A/B/Cの3つの人物カード
+・各カードに人物イラスト、表情、生活シーンを入れる。文字だけのカードにしない
+・A：同じ状況の人に刺さる
+・B：同じ悩みの構造を持つ人に刺さる
+・C：同じ人生テーマの人に刺さる
+・各カードに「こんな感情を受けた人：〇〇」を短く表示
+
+追加説明は不要です。中央パートの画像だけ生成してください。`,
+    },
+    {
+      key: "right",
+      label: "右：未来・投稿",
+      fileName: "life-plan-strength-right",
+      prompt: `${common}
+
+【この1枚で作る範囲】
+右パートだけを1枚画像として生成する。他の左・中央パートは描かない。
+
+【入れる内容】
+・理想の未来が叶っている本人と家族の大きめイラスト
+・旅行、家族時間、働き方、教育、老後など、お客様情報に合う未来シーン
+・参考アカウントの型、代表動画の構成、投稿ネタを短いカードで整理
+・最下部に淡いピンクの帯で以下の固定メッセージを3行で入れる
+SnsClubで正しい環境でチャレンジする事で
+あなたの強みが見つかって
+その強みを活かした運用方法をプロの講師から学び、この未来を未来を叶えましょう✨
+
+追加説明は不要です。右パートの画像だけ生成してください。`,
+    },
+  ];
+}
+
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -812,7 +900,9 @@ export function LifePlanRiskMapClient() {
   const [generationError, setGenerationError] = useState("");
   const [generatedImage, setGeneratedImage] = useState<{
     dataUrl: string;
-    kind: "crisis" | "ideal";
+    kind: GeneratedImageKind;
+    label: string;
+    fileName: string;
     model?: string;
     size?: string;
   } | null>(null);
@@ -824,6 +914,10 @@ export function LifePlanRiskMapClient() {
   );
   const idealPrompt = useMemo(
     () => buildIdealImagePrompt(form, lifeStageSelection),
+    [form, lifeStageSelection],
+  );
+  const idealSplitPrompts = useMemo(
+    () => buildIdealSplitImagePrompts(form, lifeStageSelection),
     [form, lifeStageSelection],
   );
 
@@ -907,8 +1001,13 @@ export function LifePlanRiskMapClient() {
     }
   };
 
-  const generateImage = async (kind: "crisis" | "ideal") => {
-    const prompt = kind === "crisis" ? crisisPrompt : idealPrompt;
+  const generateImage = async (
+    kind: GeneratedImageKind,
+    options?: { prompt?: string; label?: string; fileName?: string },
+  ) => {
+    const prompt = options?.prompt || (kind === "crisis" ? crisisPrompt : idealPrompt);
+    const label = options?.label || (kind === "crisis" ? "将来設計年棒プロンプト" : "あなたの強み");
+    const fileName = options?.fileName || `life-plan-${kind}`;
     setIsGenerating(true);
     setGenerationError("");
 
@@ -928,6 +1027,8 @@ export function LifePlanRiskMapClient() {
       setGeneratedImage({
         dataUrl: data.imageDataUrl,
         kind,
+        label,
+        fileName,
         model: data.model,
         size: data.size,
       });
@@ -1103,6 +1204,21 @@ export function LifePlanRiskMapClient() {
               <CopyButton text={idealPrompt} label="あなたの強み" />
             </div>
             <div className="mt-4 rounded-md border border-stone-200 bg-white p-4">
+              <p className="text-sm font-black text-stone-950">あなたの強み 三分割プロンプト</p>
+              <p className="mt-1 text-sm leading-6 text-stone-600">
+                左・中央・右を別々の画像として作る時に使います。一発生成用のボタンは上に残しています。
+              </p>
+              <div className="mt-3 grid gap-2">
+                {idealSplitPrompts.map((splitPrompt) => (
+                  <CopyButton
+                    key={splitPrompt.key}
+                    text={splitPrompt.prompt}
+                    label={`${splitPrompt.label} コピー`}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="mt-4 rounded-md border border-stone-200 bg-white p-4">
               <div className="flex items-start gap-3">
                 <ImageIcon className="mt-0.5 h-5 w-5 shrink-0 text-stone-800" />
                 <div>
@@ -1133,6 +1249,30 @@ export function LifePlanRiskMapClient() {
                   あなたの強み
                 </button>
               </div>
+              <div className="mt-4 border-t border-stone-200 pt-4">
+                <p className="text-sm font-black text-stone-950">あなたの強み 三分割生成</p>
+                <p className="mt-1 text-sm leading-6 text-stone-600">
+                  左・中央・右を1枚ずつ生成します。ChatGPTで3枚同時に作る場合は、上の三分割プロンプトをそれぞれ貼り付けてください。
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  {idealSplitPrompts.map((splitPrompt) => (
+                    <button
+                      key={splitPrompt.key}
+                      type="button"
+                      onClick={() => generateImage("ideal", {
+                        prompt: splitPrompt.prompt,
+                        label: splitPrompt.label,
+                        fileName: splitPrompt.fileName,
+                      })}
+                      disabled={isGenerating}
+                      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-pink-700 px-3 py-3 text-sm font-black text-white hover:bg-pink-800 disabled:cursor-not-allowed disabled:bg-stone-400"
+                    >
+                      {isGenerating ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
+                      {splitPrompt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {generationError && (
                 <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold leading-6 text-red-800">
@@ -1144,18 +1284,18 @@ export function LifePlanRiskMapClient() {
                 <div className="mt-4 overflow-hidden rounded-md border border-stone-200 bg-stone-50">
                   <img
                     src={generatedImage.dataUrl}
-                    alt={generatedImage.kind === "crisis" ? "生成された将来設計年棒プロンプト" : "生成された理想画像"}
+                    alt={`生成された${generatedImage.label}`}
                     className="aspect-video w-full bg-stone-200 object-contain"
                   />
                   <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                     <p className="text-xs font-bold text-stone-500">
-                      {generatedImage.kind === "crisis" ? "将来設計年棒プロンプト" : "理想画像"}
+                      {generatedImage.label}
                       {generatedImage.model ? ` / ${generatedImage.model}` : ""}
                       {generatedImage.size ? ` / ${generatedImage.size}` : ""}
                     </p>
                     <a
                       href={generatedImage.dataUrl}
-                      download={`life-plan-${generatedImage.kind}.png`}
+                      download={`${generatedImage.fileName}.png`}
                       className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-stone-950 px-4 py-2 text-sm font-black text-white hover:bg-stone-800"
                     >
                       <Download className="h-4 w-4" />

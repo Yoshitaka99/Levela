@@ -78,6 +78,8 @@ function friendlyOpenAiError(error: unknown) {
 }
 
 function buildIdealProductionPrompt(sourcePrompt: string) {
+  const shouldForceBottomBand = !/(左パートだけ|中央パートだけ)/.test(sourcePrompt);
+
   return [
     "Create one polished 16:9 horizontal infographic image for a Japanese life-planning consultation.",
     "Main concept: Strength and lifestyle vision map.",
@@ -90,7 +92,9 @@ function buildIdealProductionPrompt(sourcePrompt: string) {
     "- Prioritize visuals over text. Use short, large Japanese labels only.",
     "- Show the client's emotion/wish/anxiety tags briefly inside the A/B/C target person cards.",
     "- Do not use fake logos, watermarks, distorted UI, or paragraphs of tiny text.",
-    "- Add a full-width soft pink bottom band with this exact 3-line Japanese message: SnsClubで正しい環境でチャレンジする事で / あなたの強みが見つかって / その強みを活かした運用方法をプロの講師から学び、この未来を未来を叶えましょう✨",
+    shouldForceBottomBand
+      ? "- Add a full-width soft pink bottom band with this exact 3-line Japanese message: SnsClubで正しい環境でチャレンジする事で / あなたの強みが見つかって / その強みを活かした運用方法をプロの講師から学び、この未来を未来を叶えましょう✨"
+      : "- Do not add the bottom message band unless the source material explicitly asks for it.",
     "",
     "Use the client details below as source material. Do not copy the entire text into the image.",
     "",
