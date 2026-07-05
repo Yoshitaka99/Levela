@@ -1,10 +1,23 @@
 "use client";
 
 import { nanoid } from "nanoid";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GalaxyCanvas, type FocusRequest } from "./GalaxyCanvas";
+import { mergeObsidianNotes, parseObsidianMarkdown } from "./obsidianImport";
 import { loadGalaxyData, parseGalaxyData, saveGalaxyData } from "./storage";
+import { loadSyncKey, pullFromCloud, pushToCloud, saveSyncKey } from "./sync";
 import { FALLBACK_COLOR, pickCategoryColor, type GalaxyData, type Skill } from "./types";
+
+type SyncStatus = "off" | "saving" | "saved" | "pulling" | "error" | "not-configured";
+
+const SYNC_STATUS_LABEL: Record<SyncStatus, string> = {
+  off: "未接続",
+  saving: "クラウドへ保存中…",
+  saved: "クラウドと同期済み ✓",
+  pulling: "クラウドから取得中…",
+  error: "同期エラー(通信を確認してください)",
+  "not-configured": "サーバー側が未設定です(Upstash Redis の環境変数が必要)",
+};
 
 type FormState = {
   id: string | null; // null = 新規作成
@@ -36,13 +49,73 @@ export function SkillsGalaxyClient() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [focusRequest, setFocusRequest] = useState<FocusRequest>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [syncKey, setSyncKey] = useState("");
+  const [syncKeyInput, setSyncKeyInput] = useState("");
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("off");
+  const [showSyncPanel, setShowSyncPanel] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const obsidianInputRef = useRef<HTMLInputElement | null>(null);
+  const skipNextPushRef = useRef(false);
 
   useEffect(() => {
     // ハイドレーション完了後に localStorage から読み込む
-    const id = requestAnimationFrame(() => setData(loadGalaxyData()));
+    const id = requestAnimationFrame(() => {
+      setData(loadGalaxyData());
+      const key = loadSyncKey();
+      setSyncKey(key);
+      setSyncKeyInput(key);
+    });
     return () => cancelAnimationFrame(id);
   }, []);
+
+  // クラウドから受け取ったデータを反映する(直後の自動プッシュは抑止)
+  const applyCloudData = useCallback((cloud: GalaxyData) => {
+    skipNextPushRef.current = true;
+    setData(cloud);
+  }, []);
+
+  // 起動時: 同期コードが設定されていればクラウドの新しいデータを取り込む
+  const initialPullDoneRef = useRef(false);
+  useEffect(() => {
+    if (!data || !syncKey || initialPullDoneRef.current) return;
+    initialPullDoneRef.current = true;
+    let cancelled = false;
+    (async () => {
+      setSyncStatus("pulling");
+      const result = await pullFromCloud(syncKey);
+      if (cancelled) return;
+      if (result.status !== "ok") {
+        setSyncStatus(result.status);
+        return;
+      }
+      const cloud = result.data;
+      const localSavedAt = data.savedAt ?? "";
+      if (cloud && (cloud.savedAt ?? "") > localSavedAt) {
+        applyCloudData(cloud);
+        setNotice("クラウドの最新データを読み込みました");
+      }
+      setSyncStatus("saved");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [data, syncKey, applyCloudData]);
+
+  // データ変更後に自動でクラウドへ保存(1.5秒デバウンス)
+  useEffect(() => {
+    if (!data || !syncKey) return;
+    if (skipNextPushRef.current) {
+      skipNextPushRef.current = false;
+      return;
+    }
+    if (!data.savedAt) return; // まだローカル変更が入っていない初期状態
+    const timer = setTimeout(async () => {
+      setSyncStatus("saving");
+      const result = await pushToCloud(syncKey, data);
+      setSyncStatus(result.status === "ok" ? "saved" : result.status);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [data, syncKey]);
 
   useEffect(() => {
     if (data) saveGalaxyData(data);
@@ -56,6 +129,11 @@ export function SkillsGalaxyClient() {
 
   const skills = useMemo(() => data?.skills ?? [], [data]);
   const categoryColors = data?.categoryColors ?? {};
+
+  // すべてのローカル変更はここを通して savedAt を更新する(クラウド同期の新旧判定用)
+  const commitData = (next: GalaxyData) => {
+    setData({ ...next, savedAt: new Date().toISOString() });
+  };
 
   const links = useMemo<Array<[string, string]>>(() => {
     const ids = new Set(skills.map((s) => s.id));
@@ -166,12 +244,12 @@ export function SkillsGalaxyClient() {
         createdAt: now,
         updatedAt: now,
       };
-      setData({ ...data, categoryColors, skills: [...data.skills, skill] });
+      commitData({ ...data, categoryColors, skills: [...data.skills, skill] });
       setSelectedId(skill.id);
       setFocusRequest({ id: skill.id, nonce: Date.now() });
       setNotice(`「${name}」を銀河に追加しました`);
     } else {
-      setData({
+      commitData({
         ...data,
         categoryColors,
         skills: data.skills.map((s) =>
@@ -189,7 +267,7 @@ export function SkillsGalaxyClient() {
   const deleteSkill = (id: string) => {
     if (!data) return;
     const target = skillById.get(id);
-    setData({
+    commitData({
       ...data,
       skills: data.skills
         .filter((s) => s.id !== id)
@@ -202,7 +280,7 @@ export function SkillsGalaxyClient() {
 
   const toggleLink = (skillId: string, targetId: string) => {
     if (!data || skillId === targetId) return;
-    setData({
+    commitData({
       ...data,
       skills: data.skills.map((s) => {
         if (s.id !== skillId) return s;
@@ -238,7 +316,7 @@ export function SkillsGalaxyClient() {
           setNotice("読み込めない形式のJSONです");
           return;
         }
-        setData(parsed);
+        commitData(parsed);
         setSelectedId(null);
         setForm(null);
         setNotice(`${parsed.skills.length} 件のスキルを読み込みました`);
@@ -247,6 +325,59 @@ export function SkillsGalaxyClient() {
       }
     };
     reader.readAsText(file);
+  };
+
+  const importObsidian = async (files: FileList) => {
+    if (!data) return;
+    const mdFiles = Array.from(files).filter((f) => /\.(md|markdown)$/i.test(f.name));
+    if (mdFiles.length === 0) {
+      setNotice("Markdownファイル(.md)を選択してください");
+      return;
+    }
+    const notes = await Promise.all(
+      mdFiles.map(async (file) => parseObsidianMarkdown(file.name, await file.text())),
+    );
+    const result = mergeObsidianNotes(data, notes);
+    commitData(result.data);
+    setSelectedId(null);
+    setForm(null);
+    setNotice(`Obsidianから ${result.added} 件追加・${result.updated} 件更新しました`);
+  };
+
+  const connectSync = async () => {
+    const key = syncKeyInput.trim();
+    if (key.length < 4) {
+      setNotice("同期コードは4文字以上にしてください");
+      return;
+    }
+    setSyncStatus("pulling");
+    const result = await pullFromCloud(key);
+    if (result.status !== "ok") {
+      setSyncStatus(result.status);
+      return;
+    }
+    setSyncKey(key);
+    saveSyncKey(key);
+    initialPullDoneRef.current = true;
+    if (result.data && result.data.skills.length > 0) {
+      applyCloudData(result.data);
+      setNotice(`クラウドから ${result.data.skills.length} 件のスキルを読み込みました`);
+      setSyncStatus("saved");
+    } else if (data) {
+      // クラウドが空なら今のデータを最初の内容として保存する
+      const stamped = { ...data, savedAt: new Date().toISOString() };
+      applyCloudData(stamped);
+      const pushed = await pushToCloud(key, stamped);
+      setSyncStatus(pushed.status === "ok" ? "saved" : pushed.status);
+      if (pushed.status === "ok") setNotice("この銀河をクラウドに保存しました");
+    }
+  };
+
+  const disconnectSync = () => {
+    setSyncKey("");
+    saveSyncKey("");
+    setSyncStatus("off");
+    setNotice("クラウド同期を解除しました(データはこの端末に残ります)");
   };
 
   if (!data) {
@@ -352,6 +483,65 @@ export function SkillsGalaxyClient() {
             }}
           />
         </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => obsidianInputRef.current?.click()}
+            title="Obsidianのmdファイルを取り込み"
+            className={`${panelClass} flex-1 px-3 py-2 text-xs text-slate-300 transition hover:bg-white/10`}
+          >
+            📥 Obsidian取込
+          </button>
+          <button
+            onClick={() => setShowSyncPanel((v) => !v)}
+            className={`${panelClass} flex-1 px-3 py-2 text-xs transition hover:bg-white/10 ${
+              syncKey ? "text-emerald-300" : "text-slate-300"
+            }`}
+          >
+            ☁ 同期{syncKey ? "中" : ""}
+          </button>
+          <input
+            ref={obsidianInputRef}
+            type="file"
+            accept=".md,.markdown,text/markdown"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.length) importObsidian(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </div>
+        {showSyncPanel && (
+          <div className={`${panelClass} flex flex-col gap-2 p-3`}>
+            <p className="text-xs font-medium text-slate-300">クラウド同期</p>
+            <p className="text-[11px] leading-relaxed text-slate-500">
+              同じ同期コードを入れた端末同士で銀河を共有できます。コードは合い言葉なので推測されにくいものに。
+            </p>
+            <input
+              value={syncKeyInput}
+              onChange={(e) => setSyncKeyInput(e.target.value)}
+              placeholder="同期コード(4文字以上)"
+              className="rounded-lg border border-white/10 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/50"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={connectSync}
+                className="flex-1 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 py-1.5 text-xs text-emerald-200 transition hover:bg-emerald-500/30"
+              >
+                {syncKey ? "再接続" : "接続する"}
+              </button>
+              {syncKey && (
+                <button
+                  onClick={disconnectSync}
+                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/10"
+                >
+                  解除
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500">状態: {SYNC_STATUS_LABEL[syncStatus]}</p>
+          </div>
+        )}
       </div>
 
       {/* カテゴリ(星系)フィルタ */}

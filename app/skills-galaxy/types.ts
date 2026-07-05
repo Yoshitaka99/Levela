@@ -13,6 +13,7 @@ export type GalaxyData = {
   version: 1;
   skills: Skill[];
   categoryColors: Record<string, string>;
+  savedAt?: string; // クラウド同期の新旧比較に使う
 };
 
 export const CATEGORY_PALETTE = [

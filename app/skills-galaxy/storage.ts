@@ -86,7 +86,12 @@ export function parseGalaxyData(raw: unknown): GalaxyData | null {
           ),
         )
       : {};
-  return { version: 1, skills, categoryColors };
+  return {
+    version: 1,
+    skills,
+    categoryColors,
+    savedAt: typeof v.savedAt === "string" ? v.savedAt : undefined,
+  };
 }
 
 export function loadGalaxyData(): GalaxyData {
