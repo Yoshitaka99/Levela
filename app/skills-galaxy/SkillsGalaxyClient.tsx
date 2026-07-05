@@ -5,18 +5,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GalaxyCanvas, type FocusRequest } from "./GalaxyCanvas";
 import { mergeObsidianNotes, parseObsidianMarkdown } from "./obsidianImport";
 import { loadGalaxyData, parseGalaxyData, saveGalaxyData } from "./storage";
-import { loadSyncKey, pullFromCloud, pushToCloud, saveSyncKey } from "./sync";
+import { checkAdmin, loginAdmin, logoutAdmin, pullFromCloud, pushToCloud } from "./sync";
 import { FALLBACK_COLOR, pickCategoryColor, type GalaxyData, type Skill } from "./types";
 
-type SyncStatus = "off" | "saving" | "saved" | "pulling" | "error" | "not-configured";
+type SyncStatus =
+  | "off"
+  | "saving"
+  | "saved"
+  | "pulling"
+  | "error"
+  | "not-configured"
+  | "unauthorized";
 
 const SYNC_STATUS_LABEL: Record<SyncStatus, string> = {
-  off: "未接続",
-  saving: "クラウドへ保存中…",
-  saved: "クラウドと同期済み ✓",
-  pulling: "クラウドから取得中…",
+  off: "",
+  saving: "保存中…",
+  saved: "サーバー保存済み ✓",
+  pulling: "読み込み中…",
   error: "同期エラー(通信を確認してください)",
-  "not-configured": "サーバー側が未設定です(Upstash Redis の環境変数が必要)",
+  "not-configured": "サーバー保存が未設定のため、この端末にのみ保存されます",
+  unauthorized: "ログインが切れました。再ログインしてください",
 };
 
 type FormState = {
@@ -49,21 +57,22 @@ export function SkillsGalaxyClient() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [focusRequest, setFocusRequest] = useState<FocusRequest>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [syncKey, setSyncKey] = useState("");
-  const [syncKeyInput, setSyncKeyInput] = useState("");
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("off");
-  const [showSyncPanel, setShowSyncPanel] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginId, setLoginId] = useState("");
+  const [loginPw, setLoginPw] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginBusy, setLoginBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const obsidianInputRef = useRef<HTMLInputElement | null>(null);
   const skipNextPushRef = useRef(false);
 
   useEffect(() => {
-    // ハイドレーション完了後に localStorage から読み込む
+    // ハイドレーション完了後に localStorage から読み込み、ログイン状態を確認する
     const id = requestAnimationFrame(() => {
       setData(loadGalaxyData());
-      const key = loadSyncKey();
-      setSyncKey(key);
-      setSyncKeyInput(key);
+      checkAdmin().then(setAuthorized);
     });
     return () => cancelAnimationFrame(id);
   }, []);
@@ -74,36 +83,35 @@ export function SkillsGalaxyClient() {
     setData(cloud);
   }, []);
 
-  // 起動時: 同期コードが設定されていればクラウドの新しいデータを取り込む
+  // 起動時: 全員が共有銀河(サーバー)の最新データを取り込む
   const initialPullDoneRef = useRef(false);
   useEffect(() => {
-    if (!data || !syncKey || initialPullDoneRef.current) return;
+    if (!data || initialPullDoneRef.current) return;
     initialPullDoneRef.current = true;
     let cancelled = false;
     (async () => {
       setSyncStatus("pulling");
-      const result = await pullFromCloud(syncKey);
+      const result = await pullFromCloud();
       if (cancelled) return;
       if (result.status !== "ok") {
-        setSyncStatus(result.status);
+        setSyncStatus(result.status === "not-configured" ? "not-configured" : "error");
         return;
       }
       const cloud = result.data;
       const localSavedAt = data.savedAt ?? "";
       if (cloud && (cloud.savedAt ?? "") > localSavedAt) {
         applyCloudData(cloud);
-        setNotice("クラウドの最新データを読み込みました");
       }
       setSyncStatus("saved");
     })();
     return () => {
       cancelled = true;
     };
-  }, [data, syncKey, applyCloudData]);
+  }, [data, applyCloudData]);
 
-  // データ変更後に自動でクラウドへ保存(1.5秒デバウンス)
+  // 編集モード時のみ: データ変更後に自動でサーバーへ保存(1.5秒デバウンス)
   useEffect(() => {
-    if (!data || !syncKey) return;
+    if (!data || !authorized) return;
     if (skipNextPushRef.current) {
       skipNextPushRef.current = false;
       return;
@@ -111,11 +119,16 @@ export function SkillsGalaxyClient() {
     if (!data.savedAt) return; // まだローカル変更が入っていない初期状態
     const timer = setTimeout(async () => {
       setSyncStatus("saving");
-      const result = await pushToCloud(syncKey, data);
-      setSyncStatus(result.status === "ok" ? "saved" : result.status);
+      const result = await pushToCloud(data);
+      if (result.status === "ok") setSyncStatus("saved");
+      else if (result.status === "unauthorized") {
+        setSyncStatus("unauthorized");
+        setAuthorized(false);
+      } else if (result.status === "not-configured") setSyncStatus("not-configured");
+      else setSyncStatus("error");
     }, 1500);
     return () => clearTimeout(timer);
-  }, [data, syncKey]);
+  }, [data, authorized]);
 
   useEffect(() => {
     if (data) saveGalaxyData(data);
@@ -344,40 +357,39 @@ export function SkillsGalaxyClient() {
     setNotice(`Obsidianから ${result.added} 件追加・${result.updated} 件更新しました`);
   };
 
-  const connectSync = async () => {
-    const key = syncKeyInput.trim();
-    if (key.length < 4) {
-      setNotice("同期コードは4文字以上にしてください");
+  const submitLogin = async () => {
+    if (loginBusy) return;
+    setLoginBusy(true);
+    setLoginError(null);
+    const result = await loginAdmin(loginId, loginPw);
+    setLoginBusy(false);
+    if (!result.ok) {
+      setLoginError(result.error ?? "ログインに失敗しました");
       return;
     }
-    setSyncStatus("pulling");
-    const result = await pullFromCloud(key);
-    if (result.status !== "ok") {
-      setSyncStatus(result.status);
-      return;
-    }
-    setSyncKey(key);
-    saveSyncKey(key);
-    initialPullDoneRef.current = true;
-    if (result.data && result.data.skills.length > 0) {
-      applyCloudData(result.data);
-      setNotice(`クラウドから ${result.data.skills.length} 件のスキルを読み込みました`);
-      setSyncStatus("saved");
-    } else if (data) {
-      // クラウドが空なら今のデータを最初の内容として保存する
-      const stamped = { ...data, savedAt: new Date().toISOString() };
-      applyCloudData(stamped);
-      const pushed = await pushToCloud(key, stamped);
-      setSyncStatus(pushed.status === "ok" ? "saved" : pushed.status);
-      if (pushed.status === "ok") setNotice("この銀河をクラウドに保存しました");
+    setAuthorized(true);
+    setShowLogin(false);
+    setLoginId("");
+    setLoginPw("");
+    setNotice("編集モードにログインしました");
+    // サーバーがまだ空なら、今表示中の銀河を初期データとして保存する
+    if (data) {
+      const pulled = await pullFromCloud();
+      if (pulled.status === "ok" && !pulled.data) {
+        const stamped = { ...data, savedAt: new Date().toISOString() };
+        applyCloudData(stamped);
+        const pushed = await pushToCloud(stamped);
+        if (pushed.status === "ok") setSyncStatus("saved");
+      }
     }
   };
 
-  const disconnectSync = () => {
-    setSyncKey("");
-    saveSyncKey("");
-    setSyncStatus("off");
-    setNotice("クラウド同期を解除しました(データはこの端末に残ります)");
+  const handleLogout = async () => {
+    await logoutAdmin();
+    setAuthorized(false);
+    setForm(null);
+    setConfirmDelete(false);
+    setNotice("ログアウトしました(閲覧モード)");
   };
 
   if (!data) {
@@ -411,10 +423,20 @@ export function SkillsGalaxyClient() {
         <p className="mt-1 text-xs text-slate-400">
           スキルの銀河 — {skills.length} planets ・ {links.length} orbits ・ {categories.length} systems
         </p>
+        <p className="mt-1 text-[11px]">
+          {authorized ? (
+            <span className="text-emerald-300/90">✎ 編集モード</span>
+          ) : (
+            <span className="text-slate-500">👁 閲覧モード</span>
+          )}
+          {syncStatus !== "off" && syncStatus !== "saved" && (
+            <span className="ml-2 text-slate-500">{SYNC_STATUS_LABEL[syncStatus]}</span>
+          )}
+        </p>
       </div>
 
       {/* 検索・操作 */}
-      <div className="absolute right-4 top-4 flex w-[min(320px,calc(100vw-2rem))] flex-col gap-2 sm:right-6 sm:top-6">
+      <div className="absolute right-4 top-4 z-20 flex w-[min(320px,calc(100vw-2rem))] flex-col gap-2 sm:right-6 sm:top-6">
         <div className={`${panelClass} flex items-center gap-2 px-3 py-2`}>
           <span className="text-slate-500">🔭</span>
           <input
@@ -450,97 +472,121 @@ export function SkillsGalaxyClient() {
             ))}
           </div>
         )}
-        <div className="flex gap-2">
-          <button
-            onClick={openCreate}
-            className="flex-1 rounded-xl border border-sky-400/40 bg-sky-500/20 px-3 py-2 text-sm font-medium text-sky-200 backdrop-blur-xl transition hover:bg-sky-500/30"
-          >
-            ＋ スキルを追加
-          </button>
-          <button
-            onClick={exportJson}
-            title="JSONエクスポート"
-            className={`${panelClass} px-3 py-2 text-sm text-slate-300 transition hover:bg-white/10`}
-          >
-            ⬇
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            title="JSONインポート"
-            className={`${panelClass} px-3 py-2 text-sm text-slate-300 transition hover:bg-white/10`}
-          >
-            ⬆
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/json"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) importJson(file);
-              e.target.value = "";
-            }}
-          />
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => obsidianInputRef.current?.click()}
-            title="Obsidianのmdファイルを取り込み"
-            className={`${panelClass} flex-1 px-3 py-2 text-xs text-slate-300 transition hover:bg-white/10`}
-          >
-            📥 Obsidian取込
-          </button>
-          <button
-            onClick={() => setShowSyncPanel((v) => !v)}
-            className={`${panelClass} flex-1 px-3 py-2 text-xs transition hover:bg-white/10 ${
-              syncKey ? "text-emerald-300" : "text-slate-300"
-            }`}
-          >
-            ☁ 同期{syncKey ? "中" : ""}
-          </button>
-          <input
-            ref={obsidianInputRef}
-            type="file"
-            accept=".md,.markdown,text/markdown"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files?.length) importObsidian(e.target.files);
-              e.target.value = "";
-            }}
-          />
-        </div>
-        {showSyncPanel && (
-          <div className={`${panelClass} flex flex-col gap-2 p-3`}>
-            <p className="text-xs font-medium text-slate-300">クラウド同期</p>
-            <p className="text-[11px] leading-relaxed text-slate-500">
-              同じ同期コードを入れた端末同士で銀河を共有できます。コードは合い言葉なので推測されにくいものに。
-            </p>
-            <input
-              value={syncKeyInput}
-              onChange={(e) => setSyncKeyInput(e.target.value)}
-              placeholder="同期コード(4文字以上)"
-              className="rounded-lg border border-white/10 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/50"
-            />
+        {authorized ? (
+          <>
             <div className="flex gap-2">
               <button
-                onClick={connectSync}
-                className="flex-1 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 py-1.5 text-xs text-emerald-200 transition hover:bg-emerald-500/30"
+                onClick={openCreate}
+                className="flex-1 rounded-xl border border-sky-400/40 bg-sky-500/20 px-3 py-2 text-sm font-medium text-sky-200 backdrop-blur-xl transition hover:bg-sky-500/30"
               >
-                {syncKey ? "再接続" : "接続する"}
+                ＋ スキルを追加
               </button>
-              {syncKey && (
-                <button
-                  onClick={disconnectSync}
-                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/10"
-                >
-                  解除
-                </button>
-              )}
+              <button
+                onClick={exportJson}
+                title="JSONエクスポート"
+                className={`${panelClass} px-3 py-2 text-sm text-slate-300 transition hover:bg-white/10`}
+              >
+                ⬇
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                title="JSONインポート"
+                className={`${panelClass} px-3 py-2 text-sm text-slate-300 transition hover:bg-white/10`}
+              >
+                ⬆
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) importJson(file);
+                  e.target.value = "";
+                }}
+              />
             </div>
-            <p className="text-[11px] text-slate-500">状態: {SYNC_STATUS_LABEL[syncStatus]}</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => obsidianInputRef.current?.click()}
+                title="Obsidianのmdファイルを取り込み"
+                className={`${panelClass} flex-1 px-3 py-2 text-xs text-slate-300 transition hover:bg-white/10`}
+              >
+                📥 Obsidian取込
+              </button>
+              <button
+                onClick={handleLogout}
+                className={`${panelClass} px-3 py-2 text-xs text-slate-400 transition hover:bg-white/10`}
+              >
+                ログアウト
+              </button>
+              <input
+                ref={obsidianInputRef}
+                type="file"
+                accept=".md,.markdown,text/markdown"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.length) importObsidian(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+          </>
+        ) : (
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setShowLogin((v) => !v);
+                setLoginError(null);
+              }}
+              className={`${panelClass} flex-1 px-3 py-2 text-sm text-slate-300 transition hover:bg-white/10`}
+            >
+              🔑 編集モードにログイン
+            </button>
+            <button
+              onClick={exportJson}
+              title="JSONエクスポート"
+              className={`${panelClass} px-3 py-2 text-sm text-slate-300 transition hover:bg-white/10`}
+            >
+              ⬇
+            </button>
           </div>
+        )}
+        {showLogin && !authorized && (
+          <form
+            className={`${panelClass} flex flex-col gap-2 p-3`}
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitLogin();
+            }}
+          >
+            <p className="text-xs font-medium text-slate-300">編集モードにログイン</p>
+            <input
+              value={loginId}
+              onChange={(e) => setLoginId(e.target.value)}
+              placeholder="ID"
+              autoComplete="username"
+              className="rounded-lg border border-white/10 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/50"
+            />
+            <input
+              value={loginPw}
+              onChange={(e) => setLoginPw(e.target.value)}
+              placeholder="パスワード"
+              type="password"
+              autoComplete="current-password"
+              className="rounded-lg border border-white/10 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/50"
+            />
+            {loginError && <p className="text-[11px] text-rose-300">{loginError}</p>}
+            <button
+              type="submit"
+              disabled={loginBusy}
+              className="rounded-lg border border-sky-400/40 bg-sky-500/25 px-3 py-2 text-sm font-medium text-sky-100 transition hover:bg-sky-500/35 disabled:opacity-50"
+            >
+              {loginBusy ? "確認中…" : "ログイン"}
+            </button>
+          </form>
         )}
       </div>
 
@@ -590,7 +636,7 @@ export function SkillsGalaxyClient() {
       {/* 詳細 / 編集パネル */}
       {(selected || form) && (
         <div
-          className={`${panelClass} absolute bottom-16 right-4 top-32 w-[min(340px,calc(100vw-2rem))] overflow-y-auto p-5 sm:right-6 sm:top-36`}
+          className={`${panelClass} absolute bottom-16 right-4 top-32 z-10 w-[min(340px,calc(100vw-2rem))] overflow-y-auto p-5 sm:right-6 sm:top-36`}
         >
           {form ? (
             <FormPanel
@@ -668,28 +714,31 @@ export function SkillsGalaxyClient() {
                     <p className="text-xs text-slate-600">まだ軌道がありません</p>
                   )}
                 </div>
-                <select
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value) toggleLink(selected.id, e.target.value);
-                  }}
-                  className="mt-2 w-full rounded-lg border border-white/10 bg-slate-900/80 px-2 py-1.5 text-xs text-slate-300 outline-none"
-                >
-                  <option value="">＋ 軌道をつなぐ…</option>
-                  {linkableSkills(selected)
-                    .filter((s) => !relatedOf(selected).some((r) => r.id === s.id))
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}({s.category})
-                      </option>
-                    ))}
-                </select>
+                {authorized && (
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) toggleLink(selected.id, e.target.value);
+                    }}
+                    className="mt-2 w-full rounded-lg border border-white/10 bg-slate-900/80 px-2 py-1.5 text-xs text-slate-300 outline-none"
+                  >
+                    <option value="">＋ 軌道をつなぐ…</option>
+                    {linkableSkills(selected)
+                      .filter((s) => !relatedOf(selected).some((r) => r.id === s.id))
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}({s.category})
+                        </option>
+                      ))}
+                  </select>
+                )}
               </div>
 
               <p className="text-[11px] text-slate-600">
                 更新: {new Date(selected.updatedAt).toLocaleDateString("ja-JP")}
               </p>
 
+              {authorized && (
               <div className="mt-auto flex gap-2 pt-2">
                 <button
                   onClick={() => openEdit(selected)}
@@ -721,6 +770,7 @@ export function SkillsGalaxyClient() {
                   </button>
                 )}
               </div>
+              )}
             </div>
           ) : null}
         </div>
