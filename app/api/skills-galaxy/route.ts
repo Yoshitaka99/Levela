@@ -1,10 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { parseGalaxyData } from "@/app/skills-galaxy/storage";
+import { isSkillsGalaxyAdmin } from "./adminAuth";
 
 export const dynamic = "force-dynamic";
 
 const MAX_PAYLOAD_BYTES = 400_000;
-const MIN_KEY_LENGTH = 4;
+// 全員が同じ銀河を見る(閲覧は公開・保存はログイン必須)
+const STORAGE_KEY = "skills-galaxy:main";
 
 // Vercel Marketplace (Upstash) は KV_REST_API_*、Upstash 直接連携は UPSTASH_REDIS_REST_* を設定する
 function getRedisConfig(): { url: string; token: string } | null {
@@ -35,25 +37,13 @@ async function redisCommand(
   return json.result;
 }
 
-async function storageKeyFor(syncKey: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(syncKey));
-  const hex = Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return `skills-galaxy:${hex}`;
-}
-
-export async function GET(request: Request) {
+export async function GET() {
   const config = getRedisConfig();
   if (!config) {
     return NextResponse.json({ error: "not-configured" }, { status: 503 });
   }
-  const syncKey = new URL(request.url).searchParams.get("key")?.trim() ?? "";
-  if (syncKey.length < MIN_KEY_LENGTH) {
-    return NextResponse.json({ error: "invalid-key" }, { status: 400 });
-  }
   try {
-    const stored = await redisCommand(config, ["GET", await storageKeyFor(syncKey)]);
+    const stored = await redisCommand(config, ["GET", STORAGE_KEY]);
     if (typeof stored !== "string" || !stored) {
       return NextResponse.json({ data: null });
     }
@@ -64,18 +54,15 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  if (!isSkillsGalaxyAdmin(request)) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
   const config = getRedisConfig();
   if (!config) {
     return NextResponse.json({ error: "not-configured" }, { status: 503 });
   }
-  const body = (await request.json().catch(() => null)) as
-    | { key?: string; data?: unknown }
-    | null;
-  const syncKey = body?.key?.trim() ?? "";
-  if (syncKey.length < MIN_KEY_LENGTH) {
-    return NextResponse.json({ error: "invalid-key" }, { status: 400 });
-  }
+  const body = (await request.json().catch(() => null)) as { data?: unknown } | null;
   const data = parseGalaxyData(body?.data);
   if (!data) {
     return NextResponse.json({ error: "invalid-data" }, { status: 400 });
@@ -85,7 +72,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "too-large" }, { status: 413 });
   }
   try {
-    await redisCommand(config, ["SET", await storageKeyFor(syncKey), serialized]);
+    await redisCommand(config, ["SET", STORAGE_KEY, serialized]);
     return NextResponse.json({ ok: true, savedAt: data.savedAt ?? null });
   } catch {
     return NextResponse.json({ error: "storage-error" }, { status: 502 });
