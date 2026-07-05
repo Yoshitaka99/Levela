@@ -3,6 +3,7 @@
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GalaxyCanvas, type FocusRequest } from "./GalaxyCanvas";
+import { OpeningScreen } from "./OpeningScreen";
 import { mergeObsidianNotes, parseObsidianMarkdown } from "./obsidianImport";
 import { loadGalaxyData, parseGalaxyData, saveGalaxyData } from "./storage";
 import { checkAdmin, loginAdmin, logoutAdmin, pullFromCloud, pushToCloud } from "./sync";
@@ -64,6 +65,8 @@ export function SkillsGalaxyClient() {
   const [loginPw, setLoginPw] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginBusy, setLoginBusy] = useState(false);
+  const [showOpening, setShowOpening] = useState(false);
+  const [justEntered, setJustEntered] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const obsidianInputRef = useRef<HTMLInputElement | null>(null);
   const skipNextPushRef = useRef(false);
@@ -73,9 +76,27 @@ export function SkillsGalaxyClient() {
     const id = requestAnimationFrame(() => {
       setData(loadGalaxyData());
       checkAdmin().then(setAuthorized);
+      // オープニングはブラウザセッションごとに1回だけ
+      try {
+        if (!window.sessionStorage.getItem("skills-galaxy-opening-seen")) {
+          setShowOpening(true);
+        }
+      } catch {
+        setShowOpening(true);
+      }
     });
     return () => cancelAnimationFrame(id);
   }, []);
+
+  const dismissOpening = () => {
+    setShowOpening(false);
+    setJustEntered(true);
+    try {
+      window.sessionStorage.setItem("skills-galaxy-opening-seen", "1");
+    } catch {
+      // ignore
+    }
+  };
 
   // クラウドから受け取ったデータを反映する(直後の自動プッシュは抑止)
   const applyCloudData = useCallback((cloud: GalaxyData) => {
@@ -395,6 +416,7 @@ export function SkillsGalaxyClient() {
   if (!data) {
     return (
       <div className="flex h-dvh items-center justify-center bg-[#04040f] text-sm text-slate-400">
+        {showOpening && <OpeningScreen onEnter={dismissOpening} />}
         銀河を読み込み中…
       </div>
     );
@@ -404,7 +426,21 @@ export function SkillsGalaxyClient() {
     skills.filter((s) => s.id !== ("id" in current ? current.id : null));
 
   return (
-    <div className="relative h-dvh w-full overflow-hidden bg-[#04040f] text-slate-100">
+    <div
+      className="relative h-dvh w-full overflow-hidden bg-[#04040f] text-slate-100"
+      style={
+        justEntered
+          ? { animation: "sg-galaxy-reveal 1.4s cubic-bezier(0.16, 1, 0.3, 1) both" }
+          : undefined
+      }
+    >
+      <style>{`
+        @keyframes sg-galaxy-reveal {
+          0% { opacity: 0; transform: scale(1.18); filter: blur(10px); }
+          100% { opacity: 1; transform: scale(1); filter: blur(0); }
+        }
+      `}</style>
+      {showOpening && <OpeningScreen onEnter={dismissOpening} />}
       <GalaxyCanvas
         skills={skills}
         links={links}
