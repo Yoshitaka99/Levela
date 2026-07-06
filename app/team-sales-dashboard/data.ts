@@ -15,6 +15,7 @@ export type StatusCount = {
 };
 
 export type TeamMemberKpi = {
+  memberKey: string;
   name: string;
   team: string;
   leads: number;

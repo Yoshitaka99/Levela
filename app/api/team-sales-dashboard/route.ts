@@ -78,7 +78,9 @@ type TeamSalesDataCacheEntry = {
 
 const dataCache = new Map<string, TeamSalesDataCacheEntry>();
 
-const IMAGE_TEAM_DEFINITIONS: Record<string, string[]> = {
+const JULY_LAUNCH_CUTOFF = { year: 2026, month: 7 };
+
+const LEGACY_TEAM_DEFINITIONS: Record<string, string[]> = {
   [ALL_TEAMS]: [],
   "おろチーム": ["苙隼人", "田仲由敬", "早川大貴", "河上まちこ", "折原加純"],
   "こなつチーム": ["長谷川小夏", "関口愛里", "山本美結", "中島絵美", "鈴木里果"],
@@ -89,11 +91,26 @@ const IMAGE_TEAM_DEFINITIONS: Record<string, string[]> = {
   "れいなチーム": ["高橋礼菜", "和佐田舞緒", "大谷みくに", "栗原日向子", "遠藤羽琉", "梅津真珠", "木原桃香"],
 };
 
-type SourceRow = Record<string, string>;
+const JULY_LAUNCH_TEAM_DEFINITIONS: Record<string, string[]> = {
+  [ALL_TEAMS]: [],
+  "おろチーム": ["苙隼人", "田仲由敬", "河上まちこ", "折原加純", "佐々木爽"],
+  "こなつチーム": ["長谷川小夏", "関口愛里", "鈴木里果", "杉山ふうか", "中島絵美"],
+  "れいなチーム": ["高橋礼菜", "和佐田舞緒", "大谷みくに", "栗原日向子", "木原桃香", "小牟田早智", "木村知代", "遠藤羽琉"],
+  "りくチーム": ["加藤陸", "水野王羅", "藤田吉陽"],
+  "むさしチーム": ["坂口武蔵", "久田翔太", "佐々木将城", "杉井友紀", "稲波杏奈", "西岡駿", "横山英輝"],
+  "ひかりチーム": ["橋口陽香里", "上村勇人", "岡崎未来代", "仲戸奈子", "仲戸茶子", "須見浩人"],
+  "かずきチーム": ["野嶋一樹", "三浦拓迪", "笠松佑衣", "持木玲那", "持木紀哉", "田中悠喜"],
+  "あおいチーム": ["野中碧", "五十嵐凌大", "田口亮太", "早川大貴"],
+  "ひなたチーム": ["佐藤ひなた", "根本義暉"],
+};
 
-function parseTeamDefinitions() {
-  return IMAGE_TEAM_DEFINITIONS;
-}
+const TEAM_ORDER = [
+  ALL_TEAMS,
+  ...Object.keys(LEGACY_TEAM_DEFINITIONS).filter((team) => team !== ALL_TEAMS),
+  ...Object.keys(JULY_LAUNCH_TEAM_DEFINITIONS).filter((team) => team !== ALL_TEAMS && !Object.prototype.hasOwnProperty.call(LEGACY_TEAM_DEFINITIONS, team)),
+];
+
+type SourceRow = Record<string, string>;
 
 function parseCsv(text: string) {
   const rows: string[][] = [];
@@ -238,6 +255,44 @@ function getAppointmentSeminar(row: SourceRow) {
 
 function getEffectiveSeminar(row: SourceRow) {
   return isAdTraffic(row) ? getAppointmentSeminar(row) || getSeminar(row) : getSeminar(row);
+}
+
+function parseSeminarLaunchMonth(seminar: string) {
+  const match = seminar.match(/(\d{2,4})\D+(\d{1,2})/);
+  if (!match) return null;
+  const rawYear = Number(match[1]);
+  const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+  const month = Number(match[2]);
+  if (!year || !month) return null;
+  return { year, month };
+}
+
+function usesJulyLaunchTeam(row: SourceRow) {
+  const parsed = parseSeminarLaunchMonth(getEffectiveSeminar(row));
+  if (!parsed) return false;
+  return parsed.year > JULY_LAUNCH_CUTOFF.year || (parsed.year === JULY_LAUNCH_CUTOFF.year && parsed.month >= JULY_LAUNCH_CUTOFF.month);
+}
+
+function getTeamDefinitionsForRow(row: SourceRow) {
+  return usesJulyLaunchTeam(row) ? JULY_LAUNCH_TEAM_DEFINITIONS : LEGACY_TEAM_DEFINITIONS;
+}
+
+function getTeamOrderIndex(team: string) {
+  const index = TEAM_ORDER.indexOf(team);
+  if (index >= 0) return index;
+  return team === SALES_AGENCY_TEAM ? TEAM_ORDER.length : TEAM_ORDER.length + 1;
+}
+
+function resolveTeamForRow(row: SourceRow) {
+  return resolveTeamForMember(getMember(row), getTeamDefinitionsForRow(row));
+}
+
+function getMemberKey(team: string, member: string) {
+  return `${team}::${normalizeMemberName(member)}`;
+}
+
+function getMemberKeyForRow(row: SourceRow) {
+  return getMemberKey(resolveTeamForRow(row), getMember(row));
 }
 
 function getWeekLabel(row: SourceRow) {
@@ -509,10 +564,10 @@ function resolveTeamForMember(member: string, teamDefinitions: Record<string, st
   return match?.[0] ?? SALES_AGENCY_TEAM;
 }
 
-function getTeamOptions(teamDefinitions: Record<string, string[]>, members: string[]) {
-  const definedTeams = Object.keys(teamDefinitions).filter((team) => team !== ALL_TEAMS);
-  const hasSalesAgency = members.some((member) => resolveTeamForMember(member, teamDefinitions) === SALES_AGENCY_TEAM);
-  return [ALL_TEAMS, ...definedTeams, ...(hasSalesAgency ? [SALES_AGENCY_TEAM] : [])];
+function getTeamOptionsForRows(rows: SourceRow[]) {
+  const rowTeams = new Set(rows.map((row) => resolveTeamForRow(row)));
+  const orderedTeams = TEAM_ORDER.filter((team) => team !== ALL_TEAMS && rowTeams.has(team));
+  return [ALL_TEAMS, ...orderedTeams, ...(rowTeams.has(SALES_AGENCY_TEAM) ? [SALES_AGENCY_TEAM] : [])];
 }
 
 type WeeklyAccumulator = WeeklyKpi & { order: number };
@@ -590,36 +645,16 @@ function resolveSelectedTeam(options: string[], requestedTeam?: string | null) {
   return requested && options.includes(requested) ? requested : ALL_TEAMS;
 }
 
-function compareMembersByTeamOrder(
-  a: string,
-  b: string,
-  teamDefinitions: Record<string, string[]>,
-) {
-  const teamOrder = getTeamOptions(teamDefinitions, [a, b]);
-  const teamA = resolveTeamForMember(a, teamDefinitions);
-  const teamB = resolveTeamForMember(b, teamDefinitions);
-  const teamDiff = teamOrder.indexOf(teamA) - teamOrder.indexOf(teamB);
-  if (teamDiff !== 0) return teamDiff;
-
-  const definedMembers = teamDefinitions[teamA] ?? [];
-  const indexA = definedMembers.findIndex((member) => normalizeMemberName(member) === normalizeMemberName(a));
-  const indexB = definedMembers.findIndex((member) => normalizeMemberName(member) === normalizeMemberName(b));
-  if (indexA >= 0 && indexB >= 0) return indexA - indexB;
-  if (indexA >= 0) return -1;
-  if (indexB >= 0) return 1;
-  return a.localeCompare(b, "ja");
-}
-
 function buildCustomerRows(
   rows: SourceRow[],
-  teamDefinitions: Record<string, string[]>,
 ): CustomerManagementRow[] {
   return rows
     .map((row) => {
       const member = getMember(row);
+      const team = resolveTeamForRow(row);
       return {
         member,
-        team: resolveTeamForMember(member, teamDefinitions),
+        team,
         seminar: getSeminar(row),
         appointmentDate: getAppointmentDate(row),
         trafficRoute: getTrafficRoute(row),
@@ -634,7 +669,9 @@ function buildCustomerRows(
       };
     })
     .sort((a, b) => {
-      const memberDiff = compareMembersByTeamOrder(a.member, b.member, teamDefinitions);
+      const teamDiff = getTeamOrderIndex(a.team) - getTeamOrderIndex(b.team);
+      if (teamDiff !== 0) return teamDiff;
+      const memberDiff = a.member.localeCompare(b.member, "ja");
       if (memberDiff !== 0) return memberDiff;
       return a.appointmentDate.localeCompare(b.appointmentDate, "ja");
     });
@@ -647,7 +684,6 @@ function aggregateRows(
   requestedTraffic?: string | null,
   requestedAdSource?: string | null,
 ): TeamSalesDashboardData {
-  const teamDefinitions = parseTeamDefinitions();
   const seminars = getSeminarOptions(rows);
   const selectedSeminars = resolveSelectedSeminars(seminars, requestedSeminar);
   const selectedSeminar = selectedSeminars.join(SEMINAR_SEPARATOR);
@@ -699,17 +735,14 @@ function aggregateRows(
     );
   });
 
-  const memberNames = [...new Set([...seminarRows, ...displayRows, ...calendarBaseRows].map((row) => getMember(row)))].sort((a, b) => compareMembersByTeamOrder(a, b, teamDefinitions));
-  const teams = getTeamOptions(teamDefinitions, memberNames);
+  const optionRows = selectedSeminars.includes(ALL_SEMINARS) ? [...displayRows, ...calendarBaseRows] : displayRows;
+  const teams = getTeamOptionsForRows(optionRows);
   const selectedTeam = resolveSelectedTeam(teams, requestedTeam);
-  const scopedMemberNames = memberNames.filter((member) => {
-    if (selectedTeam === ALL_TEAMS) return true;
-    return resolveTeamForMember(member, teamDefinitions) === selectedTeam;
-  });
+  const matchesSelectedTeam = (row: SourceRow) => selectedTeam === ALL_TEAMS || resolveTeamForRow(row) === selectedTeam;
 
-  const scopedRows = seminarRows.filter((row) => scopedMemberNames.includes(getMember(row)));
-  const scopedDisplayRows = displayRows.filter((row) => scopedMemberNames.includes(getMember(row)));
-  const scopedCalendarRows = calendarBaseRows.filter((row) => scopedMemberNames.includes(getMember(row)));
+  const scopedRows = seminarRows.filter(matchesSelectedTeam);
+  const scopedDisplayRows = displayRows.filter(matchesSelectedTeam);
+  const scopedCalendarRows = calendarBaseRows.filter(matchesSelectedTeam);
   const allLostReasons = new Map<string, number>();
   const allHoldReasons = new Map<string, number>();
   const allHoldReasonDates = new Map<string, Set<string>>();
@@ -720,8 +753,18 @@ function aggregateRows(
     if (status) increment(statusCounts, status);
   });
 
-  const members: TeamMemberKpi[] = scopedMemberNames.map((name) => {
-    const memberRows = scopedRows.filter((row) => getMember(row) === name);
+  const memberGroups = [...new Map([...scopedRows, ...scopedDisplayRows].map((row) => {
+    const member = getMember(row);
+    const team = resolveTeamForRow(row);
+    return [getMemberKey(team, member), { key: getMemberKey(team, member), name: member, team }];
+  })).values()].sort((a, b) => {
+    const teamDiff = getTeamOrderIndex(a.team) - getTeamOrderIndex(b.team);
+    if (teamDiff !== 0) return teamDiff;
+    return a.name.localeCompare(b.name, "ja");
+  });
+
+  const members: TeamMemberKpi[] = memberGroups.map((group) => {
+    const memberRows = scopedRows.filter((row) => getMemberKeyForRow(row) === group.key);
     const lostReasons = new Map<string, number>();
     const holdReasons = new Map<string, number>();
     const holdReasonDates = new Map<string, Set<string>>();
@@ -772,8 +815,9 @@ function aggregateRows(
     const resolvedHold = holdClosed + holdLost + hold;
 
     return {
-      name,
-      team: resolveTeamForMember(name, teamDefinitions),
+      memberKey: group.key,
+      name: group.name,
+      team: group.team,
       leads,
       reservationSlots,
       seated,
@@ -805,8 +849,8 @@ function aggregateRows(
     .slice(0, 8);
   const weeklyKpis = buildWeeklyKpis(scopedRows);
   const appointmentWeeklyKpis = buildAppointmentWeeklyKpis(scopedRows);
-  const customerRows = buildCustomerRows(scopedDisplayRows, teamDefinitions);
-  const calendarRows = buildCustomerRows(scopedCalendarRows, teamDefinitions);
+  const customerRows = buildCustomerRows(scopedDisplayRows);
+  const calendarRows = buildCustomerRows(scopedCalendarRows);
 
   return {
     updatedAt: new Date().toISOString(),

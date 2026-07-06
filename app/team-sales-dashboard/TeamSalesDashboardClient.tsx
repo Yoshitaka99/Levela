@@ -102,6 +102,22 @@ function holdConversionBase(member: Pick<TeamMemberKpi, "holdClosed" | "holdLost
   return (member.holdClosed ?? 0) + (member.holdLost ?? 0) + (member.hold ?? 0);
 }
 
+function normalizeClientMemberName(member: string) {
+  return member.replace(/\s+/g, "");
+}
+
+function makeClientMemberKey(team: string, member: string) {
+  return `${team}::${normalizeClientMemberName(member)}`;
+}
+
+function memberSelectionValue(member: Pick<TeamMemberKpi, "memberKey" | "name">) {
+  return member.memberKey || member.name;
+}
+
+function findMemberBySelection(members: TeamMemberKpi[], selection: string) {
+  return members.find((member) => memberSelectionValue(member) === selection) ?? members.find((member) => member.name === selection);
+}
+
 function splitSeminars(value?: string) {
   return (value ?? "")
     .split(SEMINAR_SEPARATOR)
@@ -518,6 +534,192 @@ function ReasonList({
   );
 }
 
+const OPENING_LINES = ["俺らが変える", "Levelaを代表する", "営業チームだ"];
+
+function TeamSalesOpening({ onDone }: { onDone: () => void }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let width = 0;
+    let height = 0;
+    let raf = 0;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const sparks = Array.from({ length: 90 }, () => ({
+      x: Math.random(),
+      y: Math.random(),
+      speed: 0.2 + Math.random() * 0.8,
+      size: 0.7 + Math.random() * 2.4,
+      hue: Math.random() > 0.45 ? 185 : 320,
+    }));
+
+    const resize = () => {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const draw = (time: number) => {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = "rgba(2, 5, 12, 0.32)";
+      ctx.fillRect(0, 0, width, height);
+
+      const gradient = ctx.createRadialGradient(width * 0.5, height * 0.52, 0, width * 0.5, height * 0.52, Math.max(width, height) * 0.75);
+      gradient.addColorStop(0, "rgba(34, 211, 238, 0.16)");
+      gradient.addColorStop(0.42, "rgba(236, 72, 153, 0.08)");
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+
+      const gridOffset = reducedMotion ? 0 : (time * 0.065) % 48;
+      ctx.strokeStyle = "rgba(45, 212, 191, 0.16)";
+      ctx.lineWidth = 1;
+      for (let y = height * 0.48 + gridOffset; y < height; y += 48) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+      for (let x = -width; x < width * 2; x += 86) {
+        ctx.beginPath();
+        ctx.moveTo(width / 2 + (x - width / 2) * 0.15, height * 0.48);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+
+      sparks.forEach((spark, index) => {
+        const drift = reducedMotion ? 0 : time * 0.00012 * spark.speed;
+        const x = ((spark.x + drift) % 1) * width;
+        const y = ((spark.y + drift * 1.7 + index * 0.003) % 1) * height;
+        ctx.fillStyle = `hsla(${spark.hue}, 100%, 68%, 0.72)`;
+        ctx.shadowColor = `hsl(${spark.hue}, 100%, 62%)`;
+        ctx.shadowBlur = 18;
+        ctx.fillRect(x, y, spark.size * 7, spark.size);
+      });
+      ctx.shadowBlur = 0;
+
+      if (!reducedMotion) {
+        const scanY = (time * 0.18) % height;
+        ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+        ctx.fillRect(0, scanY, width, 2);
+      }
+
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", resize);
+    };
+  }, []);
+
+  const close = useCallback(() => {
+    setClosing(true);
+    window.setTimeout(onDone, 520);
+  }, [onDone]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(close, 6200);
+    return () => window.clearTimeout(timer);
+  }, [close]);
+
+  return (
+    <div
+      className={`fixed inset-0 z-[80] overflow-hidden bg-black text-white ${closing ? "team-opening-out" : ""}`}
+      role="dialog"
+      aria-label="チームセールスKPI オープニング"
+      onClick={close}
+    >
+      <style>{`
+        @keyframes team-open-line {
+          0% { opacity: 0; transform: translateY(28px) scale(1.08) skewX(-8deg); filter: blur(14px); clip-path: inset(0 100% 0 0); }
+          18% { opacity: 1; filter: blur(0); clip-path: inset(0 0 0 0); }
+          78% { opacity: 1; transform: translateY(0) scale(1) skewX(-3deg); }
+          100% { opacity: 0.2; transform: translateY(-18px) scale(0.98) skewX(-3deg); }
+        }
+        @keyframes team-open-pulse {
+          0%, 100% { transform: scaleX(0.2); opacity: 0.35; }
+          50% { transform: scaleX(1); opacity: 1; }
+        }
+        @keyframes team-open-glitch {
+          0%, 100% { transform: translate(0, 0); opacity: 0.85; }
+          20% { transform: translate(8px, -2px); opacity: 0.38; }
+          40% { transform: translate(-7px, 3px); opacity: 0.52; }
+          60% { transform: translate(4px, 1px); opacity: 0.22; }
+        }
+        @keyframes team-open-out {
+          to { opacity: 0; transform: scale(1.08); filter: blur(12px); }
+        }
+        .team-opening-out { animation: team-open-out 520ms cubic-bezier(.7,0,.9,.2) forwards; }
+        .team-open-line { animation: team-open-line 2.15s cubic-bezier(.16,1,.3,1) both; }
+        .team-open-line::before,
+        .team-open-line::after {
+          content: attr(data-text);
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          mix-blend-mode: screen;
+        }
+        .team-open-line::before { color: #22d3ee; animation: team-open-glitch 620ms steps(2,end) infinite; transform: translate(6px, -2px); }
+        .team-open-line::after { color: #fb7185; animation: team-open-glitch 740ms steps(2,end) infinite reverse; transform: translate(-5px, 2px); }
+        @media (prefers-reduced-motion: reduce) {
+          .team-open-line, .team-open-line::before, .team-open-line::after, .team-opening-out { animation-duration: 1ms; }
+        }
+      `}</style>
+      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[length:100%_4px] opacity-20" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-cyan-400/20 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-fuchsia-500/20 to-transparent" />
+
+      <div className="relative flex min-h-screen flex-col items-center justify-center px-5 text-center">
+        <div className="mb-7 h-px w-[min(72vw,680px)] min-w-[220px] bg-cyan-300/40 shadow-[0_0_26px_rgba(34,211,238,0.9)]" />
+        <div className="grid min-h-[42vh] place-items-center">
+          {OPENING_LINES.map((line, index) => (
+            <div
+              key={line}
+              data-text={line}
+              className="team-open-line absolute px-3 font-black leading-none tracking-normal text-white"
+              style={{
+                animationDelay: `${index * 1.45}s`,
+                fontSize: "clamp(2.6rem, 10vw, 8.2rem)",
+                textShadow: "0 0 18px rgba(34,211,238,.9), 0 0 48px rgba(217,70,239,.52), 0 0 86px rgba(244,63,94,.38)",
+              }}
+            >
+              {line}
+            </div>
+          ))}
+        </div>
+        <div
+          className="mt-8 h-1 w-[min(72vw,720px)] origin-center bg-gradient-to-r from-transparent via-cyan-300 to-transparent shadow-[0_0_28px_rgba(34,211,238,.85)]"
+          style={{ animation: "team-open-pulse 1.2s ease-in-out infinite" }}
+        />
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            close();
+          }}
+          className="mt-10 rounded-full border border-cyan-300/45 bg-cyan-300/10 px-7 py-2.5 text-xs font-bold tracking-[0.3em] text-cyan-50 shadow-[0_0_28px_rgba(34,211,238,.22)] backdrop-blur transition hover:bg-cyan-300/20"
+        >
+          ENTER KPI
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function TeamSalesDashboardClient({
   initialData,
   initialTab,
@@ -561,14 +763,25 @@ export function TeamSalesDashboardClient({
   const [selectedMember, setSelectedMember] = useState(
     initialMember === ALL_ADMIN_MEMBERS
       ? ALL_ADMIN_MEMBERS
-      : initialData.members.some((member) => member.name === initialMember)
-        ? initialMember ?? ""
-        : initialData.members[0]?.name ?? "",
+      : initialMember && findMemberBySelection(initialData.members, initialMember)
+        ? memberSelectionValue(findMemberBySelection(initialData.members, initialMember)!)
+        : initialData.members[0] ? memberSelectionValue(initialData.members[0]) : "",
   );
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showOpening, setShowOpening] = useState(false);
   const hasMountedRef = useRef(false);
   const refreshRequestRef = useRef(0);
+
+  useEffect(() => {
+    const key = "levela-team-sales-opening-seen";
+    if (!window.sessionStorage.getItem(key)) setShowOpening(true);
+  }, []);
+
+  const finishOpening = useCallback(() => {
+    window.sessionStorage.setItem("levela-team-sales-opening-seen", "1");
+    setShowOpening(false);
+  }, []);
 
   const refreshData = useCallback(async () => {
     const requestId = refreshRequestRef.current + 1;
@@ -597,9 +810,9 @@ export function TeamSalesDashboardClient({
       setSelectedAdSource(nextData.selectedAdSource || requestedAdSource);
       setLastSyncedAt(new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }));
       setSelectedMember((currentMember) =>
-        currentMember === ALL_ADMIN_MEMBERS || nextData.members.some((member) => member.name === currentMember)
+        currentMember === ALL_ADMIN_MEMBERS || Boolean(findMemberBySelection(nextData.members, currentMember))
           ? currentMember
-          : nextData.members[0]?.name ?? "",
+          : nextData.members[0] ? memberSelectionValue(nextData.members[0]) : "",
       );
     } finally {
       if (requestId === refreshRequestRef.current) setIsRefreshing(false);
@@ -658,12 +871,12 @@ export function TeamSalesDashboardClient({
   useEffect(() => {
     if (!filteredMembers.length) return;
     if (selectedMember === ALL_ADMIN_MEMBERS) return;
-    if (!filteredMembers.some((member) => member.name === selectedMember)) {
-      setSelectedMember(filteredMembers[0].name);
+    if (!findMemberBySelection(filteredMembers, selectedMember)) {
+      setSelectedMember(memberSelectionValue(filteredMembers[0]));
     }
   }, [filteredMembers, selectedMember]);
 
-  const selected = data.members.find((member) => member.name === selectedMember) ?? data.members[0];
+  const selected = findMemberBySelection(data.members, selectedMember) ?? data.members[0];
   const alertMembers = data.members.filter((member) => member.alert > 0 || member.hold > 0);
   const activeFilterCount = Number(onlyAlerts) + Number(onlyHold) + Number(Boolean(query.trim())) + Number(selectedTraffic !== "all");
   const selectedSeminarValues = useMemo(
@@ -802,7 +1015,9 @@ export function TeamSalesDashboardClient({
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#07100f] px-4 py-6 text-slate-100 sm:px-6 lg:px-8">
+    <>
+      {showOpening ? <TeamSalesOpening onDone={finishOpening} /> : null}
+      <main className="min-h-screen overflow-x-hidden bg-[#07100f] px-4 py-6 text-slate-100 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-7xl">
         <div className="flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -1047,7 +1262,7 @@ export function TeamSalesDashboardClient({
 
         {activeTab === "overview" ? (
           <div className="mt-5 grid gap-5">
-            <MemberTable members={filteredMembers} onSelect={selectMember} selectedMember={selected?.name} />
+            <MemberTable members={filteredMembers} onSelect={selectMember} selectedMember={selected ? memberSelectionValue(selected) : ""} />
             <div className="grid gap-5 lg:grid-cols-2">
               <StatusPanel statusMix={data.statusMix} />
               <ReasonList title="失注理由 TOP" icon={CircleDot} reasons={data.lostReasons} tone="rose" />
@@ -1072,11 +1287,11 @@ export function TeamSalesDashboardClient({
               <div className="mt-4 grid gap-2">
                 {filteredMembers.length ? filteredMembers.map((member) => (
                   <button
-                    key={member.name}
+                    key={memberSelectionValue(member)}
                     type="button"
-                    onClick={() => selectMember(member.name)}
+                    onClick={() => selectMember(memberSelectionValue(member))}
                     className={`rounded-md border px-3 py-3 text-left transition ${
-                      selected.name === member.name
+                      memberSelectionValue(selected) === memberSelectionValue(member)
                         ? "border-teal-300/60 bg-teal-300/10"
                         : "border-white/10 bg-slate-950/35 hover:border-white/25"
                     }`}
@@ -1168,9 +1383,9 @@ export function TeamSalesDashboardClient({
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {alertMembers.length ? alertMembers.map((member) => (
                 <button
-                  key={member.name}
+                  key={memberSelectionValue(member)}
                   type="button"
-                  onClick={() => selectMember(member.name)}
+                  onClick={() => selectMember(memberSelectionValue(member))}
                   className="rounded-lg border border-white/10 bg-slate-950/40 p-4 text-left hover:border-teal-300/50"
                 >
                   <p className="font-semibold text-white">{member.name}</p>
@@ -1190,7 +1405,8 @@ export function TeamSalesDashboardClient({
           </>
         )}
       </section>
-    </main>
+      </main>
+    </>
   );
 }
 
@@ -1206,7 +1422,7 @@ function WeeklyAppointmentCalendar({
   const weekStart = useMemo(() => getWeekStart(), []);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
   const weekEnd = useMemo(() => addDays(weekStart, 7), [weekStart]);
-  const visibleMemberNames = useMemo(() => new Set(members.map((member) => member.name)), [members]);
+  const visibleMemberKeys = useMemo(() => new Set(members.map((member) => memberSelectionValue(member))), [members]);
   const firstLetterCounts = useMemo(() => {
     const counts = new Map<string, number>();
     members.forEach((member) => {
@@ -1218,14 +1434,14 @@ function WeeklyAppointmentCalendar({
   const memberColorMap = useMemo(() => {
     const map = new Map<string, string>();
     members.forEach((member, index) => {
-      map.set(member.name, memberColorClasses[index % memberColorClasses.length]);
+      map.set(memberSelectionValue(member), memberColorClasses[index % memberColorClasses.length]);
     });
     return map;
   }, [members]);
 
   const appointments = useMemo<CalendarAppointment[]>(() => {
     return rows
-      .filter((row) => visibleMemberNames.has(row.member))
+      .filter((row) => visibleMemberKeys.has(makeClientMemberKey(row.team, row.member)))
       .map((row, index) => {
         const startsAt = parseAppointmentDate(row.appointmentDate);
         if (!startsAt || startsAt < weekStart || startsAt >= weekEnd) return null;
@@ -1243,12 +1459,12 @@ function WeeklyAppointmentCalendar({
           statusLabel: state.label,
           tone: state.tone,
           memberInitial: getMemberInitial(row.member, firstLetterCounts),
-          memberColor: memberColorMap.get(row.member) ?? memberColorClasses[0],
+          memberColor: memberColorMap.get(makeClientMemberKey(row.team, row.member)) ?? memberColorClasses[0],
         };
       })
       .filter((appointment): appointment is CalendarAppointment => Boolean(appointment))
       .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime() || a.member.localeCompare(b.member, "ja"));
-  }, [firstLetterCounts, memberColorMap, rows, visibleMemberNames, weekEnd, weekStart]);
+  }, [firstLetterCounts, memberColorMap, rows, visibleMemberKeys, weekEnd, weekStart]);
 
   const appointmentsByBucket = useMemo(() => {
     const map = new Map<string, CalendarAppointment[]>();
@@ -1321,8 +1537,8 @@ function WeeklyAppointmentCalendar({
 
         <div className="mt-4 flex flex-wrap gap-2">
           {members.map((member) => (
-            <span key={member.name} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 px-2.5 py-1 text-xs text-slate-300">
-              <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[11px] font-bold ${memberColorMap.get(member.name) ?? memberColorClasses[0]}`}>
+            <span key={memberSelectionValue(member)} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 px-2.5 py-1 text-xs text-slate-300">
+              <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[11px] font-bold ${memberColorMap.get(memberSelectionValue(member)) ?? memberColorClasses[0]}`}>
                 {getMemberInitial(member.name, firstLetterCounts)}
               </span>
               {member.name}
@@ -1453,12 +1669,8 @@ function AdminCustomerPanel({
   onSelectMember: (member: string) => void;
 }) {
   const isAllMembers = selectedMember === ALL_ADMIN_MEMBERS;
-  const effectiveMember = isAllMembers
-    ? ALL_ADMIN_MEMBERS
-    : members.some((member) => member.name === selectedMember)
-      ? selectedMember
-      : members[0]?.name ?? "";
-  const selectedKpi = members.find((member) => member.name === effectiveMember);
+  const selectedKpi = isAllMembers ? undefined : findMemberBySelection(members, selectedMember) ?? members[0];
+  const effectiveMember = isAllMembers ? ALL_ADMIN_MEMBERS : selectedKpi ? memberSelectionValue(selectedKpi) : "";
   const summaryKpi = useMemo(() => {
     if (!isAllMembers) return selectedKpi;
         const summary = members.reduce(
@@ -1478,13 +1690,15 @@ function AdminCustomerPanel({
   }, [isAllMembers, members, selectedKpi]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [adminSort, setAdminSort] = useState<AdminSortKey>("appointmentDesc");
-  const visibleMemberNames = useMemo(() => new Set(members.map((member) => member.name)), [members]);
+  const visibleMemberKeys = useMemo(() => new Set(members.map((member) => memberSelectionValue(member))), [members]);
   const memberRowsAll = useMemo(
     () =>
       isAllMembers
-        ? rows.filter((row) => visibleMemberNames.has(row.member))
-        : rows.filter((row) => row.member === effectiveMember),
-    [effectiveMember, isAllMembers, rows, visibleMemberNames],
+        ? rows.filter((row) => visibleMemberKeys.has(makeClientMemberKey(row.team, row.member)))
+        : selectedKpi
+          ? rows.filter((row) => row.member === selectedKpi.name && row.team === selectedKpi.team)
+          : [],
+    [isAllMembers, rows, selectedKpi, visibleMemberKeys],
   );
   const statusOptions = useMemo(
     () =>
@@ -1537,8 +1751,8 @@ function AdminCustomerPanel({
           >
             <option value={ALL_ADMIN_MEMBERS}>全て</option>
             {members.map((member) => (
-              <option key={member.name} value={member.name}>
-                {member.name}
+              <option key={memberSelectionValue(member)} value={memberSelectionValue(member)}>
+                {member.name} / {member.team}
               </option>
             ))}
           </select>
@@ -1723,11 +1937,11 @@ function MemberTable({
       <div className="grid gap-3 p-3 lg:hidden">
         {members.map((member, index) => (
           <button
-            key={member.name}
+            key={memberSelectionValue(member)}
             type="button"
-            onClick={() => onSelect(member.name)}
+            onClick={() => onSelect(memberSelectionValue(member))}
             className={`rounded-lg border p-3 text-left ${
-              selectedMember === member.name ? "border-teal-300/60 bg-teal-300/10" : "border-white/10 bg-slate-950/35"
+              selectedMember === memberSelectionValue(member) ? "border-teal-300/60 bg-teal-300/10" : "border-white/10 bg-slate-950/35"
             }`}
           >
             <div className="flex items-start justify-between gap-3">
@@ -1778,10 +1992,10 @@ function MemberTable({
           <tbody>
             {members.map((member, index) => (
               <tr
-                key={member.name}
-                onClick={() => onSelect(member.name)}
+                key={memberSelectionValue(member)}
+                onClick={() => onSelect(memberSelectionValue(member))}
                 className={`cursor-pointer border-t border-white/10 odd:bg-white/[0.02] hover:bg-teal-300/5 ${
-                  selectedMember === member.name ? "bg-teal-300/10" : ""
+                  selectedMember === memberSelectionValue(member) ? "bg-teal-300/10" : ""
                 }`}
               >
                 <td className="px-3 py-3 text-right font-semibold text-cyan-100">#{index + 1}</td>
@@ -1868,7 +2082,7 @@ function ReasonMatrix({ members }: { members: TeamMemberKpi[] }) {
           </thead>
           <tbody>
             {members.map((member) => (
-              <tr key={member.name} className="border-t border-white/10 odd:bg-white/[0.02]">
+              <tr key={memberSelectionValue(member)} className="border-t border-white/10 odd:bg-white/[0.02]">
                 <td className="px-3 py-3 font-medium text-white">{member.name}</td>
                 <td className="whitespace-normal break-words px-3 py-3 leading-5 text-slate-300">{topReason(member.lostReasons)}</td>
                 <td className="px-3 py-3 text-right text-rose-100">{sumReasons(member.lostReasons)}</td>
@@ -1881,7 +2095,7 @@ function ReasonMatrix({ members }: { members: TeamMemberKpi[] }) {
       </div>
       <div className="mt-4 grid gap-3 lg:hidden">
         {members.map((member) => (
-          <div key={member.name} className="rounded-lg border border-white/10 bg-slate-950/35 p-3">
+          <div key={memberSelectionValue(member)} className="rounded-lg border border-white/10 bg-slate-950/35 p-3">
             <p className="font-semibold text-white">{member.name}</p>
             <div className="mt-3 grid gap-2">
               <SmallMetric label="失注理由TOP" value={`${topReason(member.lostReasons)} / ${sumReasons(member.lostReasons)}件`} />
