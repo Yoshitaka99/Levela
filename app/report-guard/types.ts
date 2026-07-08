@@ -1,11 +1,47 @@
-import type { CustomerRow, FalseReportRow } from "../false-report-checker/types";
+export type CustomerRow = {
+  rowIndex: number;
+  rowKey: string;
+  confirmed: boolean;
+  diffConfirmed: boolean;
+  customerName: string;
+  staffName: string;
+  seminar: string;
+  appliedAt: string;
+  interviewAt: string;
+  interviewDate: string;
+  seated: string;
+  status: string;
+  plan: string;
+  confirmedStatus: string;
+  currentStatus: string;
+  changeDetected: boolean;
+};
 
-export type { CustomerRow, FalseReportRow };
+export type FalseReportRow = {
+  rowIndex: number;
+  rowKey: string;
+  managementId: string;
+  legacy: boolean;
+  falseReport: string;
+  correctReport: string;
+  confirmedStatus: string;
+  currentStatus: string;
+  confirmedAt: string;
+  detectedAt: string;
+  memo: string;
+  customerName: string;
+  staffName: string;
+  seminar: string;
+  appliedAt: string;
+  interviewAt: string;
+  seated: string;
+  status: string;
+};
 
 export type TriageState = "" | "ok" | "investigating" | "confirmed_false";
 
 export type GuardAlert = {
-  /** rowKey#rowIndex (行キーは重複予約で重複するため) */
+  /** rowKey#rowIndex */
   id: string;
   rowKey: string;
   rowIndex: number;
@@ -14,11 +50,10 @@ export type GuardAlert = {
   seminar: string;
   interviewAt: string;
   interviewDate: string;
-  /** auto=大元シート照合で検知 / manual=差分確認チェック */
+  /** auto=master sheet difference / manual=diff checkbox */
   kind: "auto" | "manual";
   beforeStatus: string;
   afterStatus: string;
-  /** 確認済みチェックが入った日時 (分かる場合のみ) */
   confirmedAt: string;
   triage: TriageState;
   triageMemo: string;
