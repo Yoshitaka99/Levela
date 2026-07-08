@@ -247,14 +247,8 @@ function parseSheetDate(value: string) {
   return null;
 }
 
-function getAppointmentSeminar(row: SourceRow) {
-  const parsedDate = parseSheetDate(getAppointmentDate(row));
-  if (!parsedDate) return "";
-  return `${String(parsedDate.year).slice(-2)}年${parsedDate.month}月セミナー`;
-}
-
 function getEffectiveSeminar(row: SourceRow) {
-  return isAdTraffic(row) ? getAppointmentSeminar(row) || getSeminar(row) : getSeminar(row);
+  return getSeminar(row);
 }
 
 function parseSeminarLaunchMonth(seminar: string) {
