@@ -2,796 +2,1050 @@
 
 import {
   AlertTriangle,
-  CalendarDays,
   CheckCircle2,
   Loader2,
+  MessageSquareText,
   RefreshCw,
+  Save,
   Search,
-  ShieldAlert,
-  Users,
-  X,
+  Send,
 } from "lucide-react";
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type {
   CustomerRow,
-  FalseReportCheckerData,
+  DiffDecision,
+  FalseReportAction,
+  FalseReportData,
   FalseReportRow,
+  ProblemOkRow,
+  ReplyRow,
 } from "./types";
 
-type TabKey = "customers" | "diffs" | "falseReports";
+type TabId = "customers" | "changes" | "falseReports" | "problemOk" | "replies";
 
-const PAGE_SIZE = 100;
-// 前回取得したデータで即描画し、裏で最新に更新する
-const DATA_CACHE_KEY = "false-report-checker-data-v1";
+const handlers = ["成勢将司", "野中碧", "梅津真珠", "笠松佑衣", "大谷みくに"];
 
-const tabs: { key: TabKey; label: string; icon: typeof Users }[] = [
-  { key: "customers", label: "顧客管理", icon: Users },
-  { key: "diffs", label: "差分", icon: RefreshCw },
-  { key: "falseReports", label: "虚偽報告", icon: ShieldAlert },
-];
-
-function falseReportId(report: FalseReportRow) {
-  return report.rowKey || report.managementId || String(report.rowIndex);
-}
-
-// 行キーは重複予約などで重複するため、シート行番号と組み合わせて一意にする
-function customerId(row: CustomerRow) {
-  return `${row.rowKey}#${row.rowIndex}`;
-}
-
-async function postAction(payload: Record<string, unknown>) {
-  const response = await fetch("/api/false-report-checker", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const result = await response.json().catch(() => ({ ok: false, error: "invalid response" }));
-  if (!response.ok || result.ok === false) {
-    throw new Error(result.error || `保存に失敗しました (status=${response.status})`);
-  }
-  return result;
-}
-
-function statusChipClass(text: string) {
-  if (text.includes("成約") && !text.includes("失注")) {
-    return "bg-[#e60012]/10 text-[#c90010]";
-  }
-  if (text.includes("失注") || text.includes("キャンセル") || text.includes("飛び")) {
-    return "bg-[#231815]/8 text-[#6f6259]";
-  }
-  return "bg-[#f3ead9] text-[#8a7355]";
-}
-
-export function FalseReportCheckerClient() {
-  const [data, setData] = useState<FalseReportCheckerData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
-  const [tab, setTab] = useState<TabKey>("customers");
-  const [query, setQuery] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [unconfirmedOnly, setUnconfirmedOnly] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
-  const [notice, setNotice] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setLoadError("");
-    try {
-      const response = await fetch("/api/false-report-checker", { cache: "no-store" });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || `データ取得に失敗しました (status=${response.status})`);
-      }
-      const payload = (await response.json()) as FalseReportCheckerData;
-      setData(payload);
-      try {
-        sessionStorage.setItem(DATA_CACHE_KEY, JSON.stringify(payload));
-      } catch {
-        // 容量超過などは無視 (キャッシュなしで動作する)
-      }
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "データ取得に失敗しました");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      const cached = sessionStorage.getItem(DATA_CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached) as FalseReportCheckerData;
-        setData((previous) => previous ?? parsed);
-      }
-    } catch {
-      // 壊れたキャッシュは無視
-    }
-    void loadData();
-  }, [loadData]);
-
-  useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [tab, query, dateFrom, unconfirmedOnly]);
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = setTimeout(() => setNotice(""), 2600);
-    return () => clearTimeout(timer);
-  }, [notice]);
-
-  const markSaving = useCallback((key: string, saving: boolean) => {
-    setSavingKeys((previous) => {
-      const nextSet = new Set(previous);
-      if (saving) nextSet.add(key);
-      else nextSet.delete(key);
-      return nextSet;
-    });
-  }, []);
-
-  // チェックは押した瞬間に画面へ反映し、保存失敗時だけ巻き戻す
-  const setCustomerFlag = useCallback(
-    (row: CustomerRow, field: "confirmed" | "diffConfirmed", value: boolean) => {
-      if (!data?.writeEnabled) {
-        setErrorMessage("書き込みは未接続です (Apps Script の設定が必要)。");
-        return;
-      }
-      const action = field === "confirmed" ? "setConfirmed" : "setDiffConfirmed";
-      const id = customerId(row);
-      const applyValue = (flag: boolean) => {
-        setData((previous) =>
-          previous
-            ? {
-                ...previous,
-                customers: previous.customers.map((customer) =>
-                  customerId(customer) === id ? { ...customer, [field]: flag } : customer,
-                ),
-              }
-            : previous,
-        );
-      };
-
-      applyValue(value);
-      markSaving(`${action}:${id}`, true);
-      setErrorMessage("");
-      postAction({ action, rowKey: row.rowKey, rowIndex: row.rowIndex, value })
-        .then(() => setNotice("保存しました"))
-        .catch((error) => {
-          applyValue(!value);
-          setErrorMessage(error instanceof Error ? error.message : "保存に失敗しました");
-        })
-        .finally(() => markSaving(`${action}:${id}`, false));
-    },
-    [data?.writeEnabled, markSaving],
-  );
-
-  const saveFalseReportMemo = useCallback(
-    (target: FalseReportRow, memo: string) => {
-      if (!data?.writeEnabled) {
-        setErrorMessage("書き込みは未接続です (Apps Script の設定が必要)。");
-        return;
-      }
-      const id = falseReportId(target);
-      markSaving(`memo:${id}`, true);
-      setErrorMessage("");
-      postAction({
-        action: "saveFalseReportMemo",
-        rowKey: target.rowKey,
-        managementId: target.managementId,
-        rowIndex: target.rowIndex,
-        customerName: target.customerName,
-        memo,
-      })
-        .then(() => {
-          setData((previous) =>
-            previous
-              ? {
-                  ...previous,
-                  falseReports: previous.falseReports.map((report) =>
-                    falseReportId(report) === id ? { ...report, memo } : report,
-                  ),
-                }
-              : previous,
-          );
-          setNotice("保存しました");
-        })
-        .catch((error) =>
-          setErrorMessage(error instanceof Error ? error.message : "保存に失敗しました"),
-        )
-        .finally(() => markSaving(`memo:${id}`, false));
-    },
-    [data?.writeEnabled, markSaving],
-  );
-
-  // 差分タブ: 大元シートとの照合で検知した行 + 手動で差分確認チェックを入れた行
-  const diffs = useMemo(
-    () =>
-      data?.customers.filter((customer) => customer.changeDetected || customer.diffConfirmed) ?? [],
-    [data?.customers],
-  );
-
-  // 入力のたびに2500行のフィルタで固まらないよう、絞り込みは一拍遅らせる
-  const deferredQuery = useDeferredValue(query);
-  const normalizedQuery = deferredQuery.trim().toLowerCase();
-  const matchesQuery = useCallback(
-    (...values: string[]) =>
-      !normalizedQuery || values.some((value) => value.toLowerCase().includes(normalizedQuery)),
-    [normalizedQuery],
-  );
-
-  const filteredCustomers = useMemo(() => {
-    const source = tab === "diffs" ? diffs : data?.customers ?? [];
-    return source.filter((customer) => {
-      if (tab === "customers" && unconfirmedOnly && customer.confirmed) return false;
-      if (dateFrom && (!customer.interviewDate || customer.interviewDate < dateFrom)) return false;
-      return matchesQuery(customer.customerName, customer.staffName, customer.status, customer.seminar);
-    });
-  }, [data?.customers, dateFrom, diffs, matchesQuery, tab, unconfirmedOnly]);
-
-  const filteredFalseReports = useMemo(
-    () =>
-      (data?.falseReports ?? []).filter((report) =>
-        matchesQuery(report.customerName, report.staffName, report.confirmedStatus, report.currentStatus),
-      ),
-    [data?.falseReports, matchesQuery],
-  );
-
-  const tabCounts: Record<TabKey, number> = {
-    customers: data?.customers.length ?? 0,
-    diffs: diffs.length,
-    falseReports: data?.falseReports.length ?? 0,
-  };
-
-  return (
-    <div className="relative min-h-screen overflow-x-hidden">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#231815]/25 to-transparent" />
-
-      <header className="sticky top-0 z-20 border-b border-[#d8cbb8] bg-[#fffaf2]/90 shadow-sm shadow-[#231815]/5 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 md:px-6 md:py-4">
-          <div className="min-w-0">
-            <h1 className="truncate text-base font-bold tracking-wide md:text-lg">
-              虚偽報告チェック
-            </h1>
-            <p className="hidden text-xs text-[#8a7a63] md:block">
-              軽量版シートの確認・差分チェック (大元シートには書き込みません)
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {data && !data.writeEnabled && (
-              <span className="rounded-full border border-[#e8d9ba] bg-[#fdf1dc] px-3 py-1 text-[11px] font-medium text-[#9a6b1f]">
-                読み取り専用
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => void loadData()}
-              disabled={loading}
-              className="flex items-center gap-1.5 rounded-full border border-[#d8cbb8] bg-white/90 px-3.5 py-2 text-xs font-medium text-[#231815] shadow-sm transition hover:bg-[#f8f3ea] disabled:opacity-50 md:text-sm"
-            >
-              <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">再読み込み</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-6xl px-4 pb-24 pt-4 md:px-6 md:pt-6">
-        <nav className="-mx-4 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
-          <div className="flex w-max gap-2 md:w-auto">
-            {tabs.map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setTab(key)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition ${
-                  tab === key
-                    ? "bg-[#231815] text-[#fffaf2] shadow-lg shadow-[#231815]/20"
-                    : "border border-[#dfd1bc] bg-white/80 text-[#231815] hover:bg-[#fffaf2]"
-                }`}
-              >
-                <Icon className={`size-4 ${tab === key ? "text-[#f2c9c2]" : "text-[#a08b6f]"}`} />
-                {label}
-                <span
-                  className={`rounded-full px-1.5 py-0.5 text-[11px] leading-none ${
-                    tab === key ? "bg-white/15 text-[#fffaf2]" : "bg-[#f3ead9] text-[#8a7355]"
-                  }`}
-                >
-                  {tabCounts[key]}
-                </span>
-              </button>
-            ))}
-          </div>
-        </nav>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2 md:mt-4 md:gap-3">
-          <div className="relative min-w-0 flex-1 basis-56 sm:max-w-xs">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[#a08b6f]" />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="顧客名・担当者・ステータスで検索"
-              className="w-full rounded-full border border-[#d8cbb8] bg-white/95 py-2.5 pl-10 pr-4 text-sm text-[#231815] shadow-sm placeholder:text-[#b3a48c] focus:border-[#231815]/50 focus:outline-none"
-            />
-          </div>
-          {tab !== "falseReports" && (
-            <label className="flex items-center gap-1.5 rounded-full border border-[#dfd1bc] bg-white/90 py-1.5 pl-3.5 pr-2 text-sm text-[#6f6259]">
-              <CalendarDays className="size-4 shrink-0 text-[#a08b6f]" />
-              <span className="shrink-0 text-xs">面談日</span>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(event) => setDateFrom(event.target.value)}
-                className="bg-transparent text-sm text-[#231815] focus:outline-none"
-              />
-              <span className="shrink-0 text-xs">〜</span>
-              {dateFrom && (
-                <button
-                  type="button"
-                  onClick={() => setDateFrom("")}
-                  aria-label="面談日フィルタを解除"
-                  className="rounded-full p-1 text-[#a08b6f] hover:bg-[#f3ead9] hover:text-[#231815]"
-                >
-                  <X className="size-3.5" />
-                </button>
-              )}
-            </label>
-          )}
-          {tab === "customers" && (
-            <label className="flex cursor-pointer items-center gap-1.5 rounded-full border border-[#dfd1bc] bg-white/80 px-3.5 py-2 text-sm text-[#6f6259]">
-              <input
-                type="checkbox"
-                checked={unconfirmedOnly}
-                onChange={(event) => setUnconfirmedOnly(event.target.checked)}
-                className="size-4 accent-[#e60012]"
-              />
-              未確認のみ
-            </label>
-          )}
-        </div>
-
-        {loadError && (
-          <div className="mt-4 flex items-center gap-2 rounded-[20px] border border-[#f0c9c9] bg-[#fdeeee] px-4 py-3 text-sm text-[#a3272d]">
-            <AlertTriangle className="size-4 shrink-0" />
-            {loadError}
-          </div>
-        )}
-        {errorMessage && (
-          <div className="mt-4 flex items-center gap-2 rounded-[20px] border border-[#f0c9c9] bg-[#fdeeee] px-4 py-3 text-sm text-[#a3272d]">
-            <AlertTriangle className="size-4 shrink-0" />
-            {errorMessage}
-          </div>
-        )}
-
-        <div className="mt-4 md:mt-5">
-          {loading && !data ? (
-            <div className="flex items-center justify-center gap-2 rounded-[28px] border border-[#dfd1bc] bg-[#fffaf2]/80 py-24 text-[#8a7a63]">
-              <Loader2 className="size-5 animate-spin" />
-              読み込み中...
-            </div>
-          ) : (
-            <>
-              {(tab === "customers" || tab === "diffs") && (
-                <CustomerList
-                  rows={filteredCustomers.slice(0, visibleCount)}
-                  totalCount={filteredCustomers.length}
-                  showDiffColumns={tab === "diffs"}
-                  savingKeys={savingKeys}
-                  writeEnabled={data?.writeEnabled ?? false}
-                  onToggle={setCustomerFlag}
-                  onShowMore={() => setVisibleCount((count) => count + PAGE_SIZE)}
-                />
-              )}
-              {tab === "falseReports" && (
-                <FalseReportList
-                  rows={filteredFalseReports}
-                  savingKeys={savingKeys}
-                  writeEnabled={data?.writeEnabled ?? false}
-                  onSaveMemo={saveFalseReportMemo}
-                />
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {notice && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-30 flex justify-center px-4">
-          <div className="flex items-center gap-2 rounded-full bg-[#231815] px-5 py-2.5 text-sm text-[#fffaf2] shadow-2xl shadow-[#231815]/30">
-            <CheckCircle2 className="size-4 text-[#7fd8a5]" />
-            {notice}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <p className="rounded-[28px] border border-[#dfd1bc] bg-[#fffaf2]/80 py-16 text-center text-sm text-[#8a7a63]">
-      該当するデータがありません
-    </p>
-  );
-}
-
-function ShowMoreButton({
-  shown,
-  total,
-  onShowMore,
-}: {
-  shown: number;
-  total: number;
-  onShowMore: () => void;
-}) {
-  if (shown >= total) return null;
-  return (
-    <div className="mt-4 text-center">
-      <button
-        type="button"
-        onClick={onShowMore}
-        className="rounded-full border border-[#d8cbb8] bg-white/90 px-6 py-2.5 text-sm font-medium text-[#231815] shadow-sm transition hover:bg-[#f8f3ea]"
-      >
-        さらに表示 ({shown} / {total})
-      </button>
-    </div>
-  );
-}
-
-type CustomerRowItemProps = {
-  row: CustomerRow;
-  showDiffColumns: boolean;
-  writeEnabled: boolean;
-  confirmSaving: boolean;
-  diffSaving: boolean;
-  onToggle: (row: CustomerRow, field: "confirmed" | "diffConfirmed", value: boolean) => void;
+const emptyData: FalseReportData = {
+  updatedAt: "",
+  writeReady: false,
+  source: "public-csv",
+  sheetsUrl: "",
+  customers: [],
+  falseReports: [],
+  problemOk: [],
+  replies: [],
+  stats: {
+    totalCustomers: 0,
+    confirmedCustomers: 0,
+    changedCustomers: 0,
+    unreviewedChanges: 0,
+    falseReports: 0,
+    problemOk: 0,
+    replies: 0,
+  },
 };
 
-// チェック1つで一覧全体を再描画しないよう、行単位でメモ化する
-const CustomerTableRow = memo(function CustomerTableRow({
-  row,
-  showDiffColumns,
-  writeEnabled,
-  confirmSaving,
-  diffSaving,
-  onToggle,
-}: CustomerRowItemProps) {
-  return (
-    <tr
-      className={`transition hover:bg-[#f8f3ea] ${row.changeDetected ? "bg-[#fdeeee]/60" : ""}`}
-    >
-      <td className="px-4 py-2.5">
-        <input
-          type="checkbox"
-          checked={row.confirmed}
-          disabled={!writeEnabled || confirmSaving || !row.rowKey}
-          onChange={(event) => onToggle(row, "confirmed", event.target.checked)}
-          className="size-[18px] accent-[#e60012] disabled:opacity-40"
-        />
-      </td>
-      <td className="px-4 py-2.5">
-        <input
-          type="checkbox"
-          checked={row.diffConfirmed}
-          disabled={!writeEnabled || diffSaving || !row.rowKey}
-          onChange={(event) => onToggle(row, "diffConfirmed", event.target.checked)}
-          className="size-[18px] accent-[#e60012] disabled:opacity-40"
-        />
-      </td>
-      <td className="whitespace-nowrap px-4 py-2.5 font-medium">
-        {row.customerName}
-        {showDiffColumns && (
-          <span className="ml-2">
-            <DiffKindBadge row={row} />
-          </span>
-        )}
-      </td>
-      <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.staffName}</td>
-      <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.appliedAt}</td>
-      <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.interviewAt}</td>
-      {showDiffColumns ? (
-        <>
-          <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">
-            {row.confirmedStatus || "-"}
-          </td>
-          <td className="whitespace-nowrap px-4 py-2.5 font-medium text-[#c90010]">
-            {row.currentStatus || "-"}
-          </td>
-        </>
-      ) : (
-        <>
-          <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.seated}</td>
-          <td className="whitespace-nowrap px-4 py-2.5">
-            {row.status ? (
-              <span
-                className={`inline-block rounded-full px-2.5 py-1 text-xs ${statusChipClass(row.status)}`}
-              >
-                {row.status}
-              </span>
-            ) : (
-              <span className="text-[#b3a48c]">-</span>
-            )}
-          </td>
-          <td className="whitespace-nowrap px-4 py-2.5 text-[#6f6259]">{row.plan}</td>
-        </>
-      )}
-    </tr>
-  );
-});
+const tabs: { id: TabId; label: string }[] = [
+  { id: "changes", label: "差分" },
+  { id: "falseReports", label: "虚偽報告" },
+  { id: "problemOk", label: "問題無し" },
+  { id: "customers", label: "顧客管理" },
+  { id: "replies", label: "返信あり" },
+];
 
-const CustomerCard = memo(function CustomerCard({
-  row,
-  showDiffColumns,
-  writeEnabled,
-  confirmSaving,
-  diffSaving,
-  onToggle,
-}: CustomerRowItemProps) {
-  return (
-    <div
-      className={`rounded-[20px] border bg-[#fffaf2] p-4 shadow-lg shadow-[#231815]/5 ${
-        row.changeDetected ? "border-[#f0c9c9]" : "border-[#dfd1bc]"
-      }`}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold">{row.customerName}</p>
-          <p className="mt-0.5 text-xs text-[#8a7a63]">
-            担当: {row.staffName || "-"} / {row.seminar}
-          </p>
-        </div>
-        {(showDiffColumns ? row.currentStatus : row.status) && (
-          <span
-            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${statusChipClass(
-              showDiffColumns ? row.currentStatus : row.status,
-            )}`}
-          >
-            {showDiffColumns ? row.currentStatus : row.status}
-          </span>
-        )}
-      </div>
-      <p className="mt-2 text-xs text-[#8a7a63]">
-        申込 {row.appliedAt || "-"} / 面談 {row.interviewAt || "-"}
-      </p>
-      {showDiffColumns && (
-        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[#a3272d]">
-          <DiffKindBadge row={row} />
-          変更前【{row.confirmedStatus || "-"}】▶︎ 変更後【{row.currentStatus || "-"}】
-        </p>
-      )}
-      <div className="mt-3 flex items-center gap-4 border-t border-[#eee3d0] pt-3">
-        <CheckField
-          label="確認済み"
-          checked={row.confirmed}
-          disabled={!writeEnabled || confirmSaving || !row.rowKey}
-          onChange={(value) => onToggle(row, "confirmed", value)}
-        />
-        <CheckField
-          label="差分確認"
-          checked={row.diffConfirmed}
-          disabled={!writeEnabled || diffSaving || !row.rowKey}
-          onChange={(value) => onToggle(row, "diffConfirmed", value)}
-        />
-      </div>
-    </div>
-  );
-});
+function includesQuery(values: string[], query: string) {
+  if (!query) return true;
+  const normalized = query.toLowerCase();
+  return values.some((value) => value.toLowerCase().includes(normalized));
+}
 
-function DiffKindBadge({ row }: { row: CustomerRow }) {
-  return row.changeDetected ? (
-    <span className="inline-block rounded-full bg-[#e60012]/10 px-2 py-0.5 text-[10px] font-medium text-[#c90010]">
-      自動検知
-    </span>
-  ) : (
-    <span className="inline-block rounded-full bg-[#f3ead9] px-2 py-0.5 text-[10px] font-medium text-[#8a7355]">
-      手動チェック
+function formatDateTime(value: string) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString("ja-JP", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function statusClass(status: string) {
+  const normalized = status.trim();
+
+  if (!normalized) return "border-zinc-200 bg-zinc-50 text-zinc-500";
+  if (normalized.includes("担当者変更")) return "border-red-200 bg-red-700 text-white";
+  if (normalized.includes("成約")) return "border-red-200 bg-red-50 text-red-700";
+  if (normalized.includes("着座")) return "border-yellow-200 bg-yellow-100 text-yellow-900";
+  if (normalized.includes("事前キャンセル") || normalized.includes("その場キャンセル")) {
+    return "border-orange-900 bg-orange-900 text-white";
+  }
+  if (normalized.includes("営業マン都合キャンセル")) {
+    return "border-yellow-950 bg-yellow-950 text-yellow-50";
+  }
+  if (normalized.includes("リスケ") || normalized.includes("再日程調整中") || normalized.includes("日程調整中")) {
+    return "border-green-200 bg-green-100 text-emerald-800";
+  }
+  if (normalized.includes("返信なし")) return "border-red-200 bg-red-100 text-red-700";
+  if (normalized.includes("日程調整済")) return "border-zinc-200 bg-zinc-100 text-zinc-800";
+  if (normalized.includes("重複予約") || normalized.includes("無効アポ") || normalized.includes("MLM失注")) {
+    return "border-purple-200 bg-purple-700 text-white";
+  }
+  if (normalized === "飛び" || normalized.includes("飛び")) return "border-zinc-200 bg-zinc-100 text-zinc-700";
+
+  return "border-zinc-200 bg-white text-zinc-800";
+}
+
+function StatusBadge({ value }: { value: string }) {
+  return (
+    <span
+      className={`inline-flex max-w-full items-center rounded-md border px-2 py-1 text-xs font-medium leading-tight ${statusClass(value)}`}
+      title={value || "-"}
+    >
+      <span className="truncate">{value || "-"}</span>
     </span>
   );
 }
 
-function CheckField({
-  label,
+function SheetCheckbox({
   checked,
   disabled,
+  label,
   onChange,
 }: {
-  label: string;
   checked: boolean;
   disabled: boolean;
-  onChange: (value: boolean) => void;
+  label: string;
+  onChange: (checked: boolean) => void;
 }) {
   return (
-    <label
-      className={`flex items-center gap-1.5 text-xs ${
-        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-      } text-[#6f6259]`}
-    >
+    <label className="inline-flex items-center gap-2 whitespace-nowrap text-sm text-zinc-800">
       <input
-        type="checkbox"
+        aria-label={label}
         checked={checked}
+        className="h-4 w-4 accent-zinc-900 disabled:cursor-not-allowed disabled:opacity-40"
         disabled={disabled}
+        type="checkbox"
         onChange={(event) => onChange(event.target.checked)}
-        className="size-[18px] accent-[#e60012]"
       />
-      {label}
+      <span>{label}</span>
     </label>
   );
 }
 
-function CustomerList({
-  rows,
-  totalCount,
-  showDiffColumns,
-  savingKeys,
-  writeEnabled,
-  onToggle,
-  onShowMore,
+function DecisionCheckbox({
+  decision,
+  selected,
+  disabled,
+  onSelect,
 }: {
-  rows: CustomerRow[];
-  totalCount: number;
-  showDiffColumns: boolean;
-  savingKeys: Set<string>;
-  writeEnabled: boolean;
-  onToggle: (row: CustomerRow, field: "confirmed" | "diffConfirmed", value: boolean) => void;
-  onShowMore: () => void;
+  decision: "ok" | "ng";
+  selected: boolean;
+  disabled: boolean;
+  onSelect: () => void;
 }) {
-  if (!totalCount) return <EmptyState />;
   return (
-    <div>
-      {/* PC: テーブル表示 */}
-      <div className="hidden overflow-hidden rounded-[24px] border border-[#dfd1bc] bg-[#fffaf2] shadow-lg shadow-[#231815]/5 md:block">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="bg-[#f3ead9] text-left text-xs text-[#8a7355]">
-                <th className="px-4 py-3 font-medium">確認済み</th>
-                <th className="px-4 py-3 font-medium">差分確認</th>
-                <th className="px-4 py-3 font-medium">お客様名</th>
-                <th className="px-4 py-3 font-medium">担当者</th>
-                <th className="px-4 py-3 font-medium">申込日</th>
-                <th className="px-4 py-3 font-medium">面談日</th>
-                {showDiffColumns ? (
-                  <>
-                    <th className="px-4 py-3 font-medium">変更前 (確認時)</th>
-                    <th className="px-4 py-3 font-medium">変更後 (現在)</th>
-                  </>
-                ) : (
-                  <>
-                    <th className="px-4 py-3 font-medium">着席</th>
-                    <th className="px-4 py-3 font-medium">ステータス</th>
-                    <th className="px-4 py-3 font-medium">成約プラン</th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#eee3d0]">
-              {rows.map((row) => {
-                const id = customerId(row);
-                return (
-                  <CustomerTableRow
-                    key={id}
-                    row={row}
-                    showDiffColumns={showDiffColumns}
-                    writeEnabled={writeEnabled}
-                    confirmSaving={savingKeys.has(`setConfirmed:${id}`)}
-                    diffSaving={savingKeys.has(`setDiffConfirmed:${id}`)}
-                    onToggle={onToggle}
-                  />
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <label
+      className={`inline-flex items-center gap-2 rounded border px-2 py-1 text-xs font-semibold ${
+        decision === "ok"
+          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+          : "border-red-200 bg-red-50 text-red-700"
+      }`}
+    >
+      <input
+        checked={selected}
+        className="h-4 w-4 accent-zinc-900"
+        disabled={disabled}
+        type="checkbox"
+        onChange={onSelect}
+      />
+      {decision.toUpperCase()}
+    </label>
+  );
+}
 
-      {/* スマホ: カード表示 */}
-      <div className="space-y-3 md:hidden">
-        {rows.map((row) => {
-          const id = customerId(row);
-          return (
-            <CustomerCard
-              key={id}
-              row={row}
-              showDiffColumns={showDiffColumns}
-              writeEnabled={writeEnabled}
-              confirmSaving={savingKeys.has(`setConfirmed:${id}`)}
-              diffSaving={savingKeys.has(`setDiffConfirmed:${id}`)}
-              onToggle={onToggle}
-            />
-          );
-        })}
-      </div>
+export default function FalseReportCheckerClient() {
+  const [data, setData] = useState<FalseReportData>(emptyData);
+  const [activeTab, setActiveTab] = useState<TabId>("changes");
+  const [query, setQuery] = useState("");
+  const [launchFilter, setLaunchFilter] = useState("all");
+  const [handler, setHandler] = useState(handlers[0]);
+  const [diffSelections, setDiffSelections] = useState<Record<number, "ok" | "ng">>({});
+  const [loading, setLoading] = useState(true);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [memoDrafts, setMemoDrafts] = useState<Record<number, string>>({});
+  const [replyMemoDrafts, setReplyMemoDrafts] = useState<Record<number, string>>({});
 
-      <ShowMoreButton shown={rows.length} total={totalCount} onShowMore={onShowMore} />
+  const loadData = async () => {
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/false-report-checker", { cache: "no-store" });
+      const nextData = (await response.json()) as FalseReportData;
+      setData({
+        ...nextData,
+        problemOk: nextData.problemOk ?? [],
+        stats: {
+          ...nextData.stats,
+          problemOk: nextData.stats.problemOk ?? 0,
+        },
+      });
+      setMemoDrafts(Object.fromEntries(nextData.falseReports.map((row) => [row.rowNumber, row.memo])));
+      setReplyMemoDrafts(Object.fromEntries(nextData.replies.map((row) => [row.rowNumber, row.contactMemo])));
+      if (nextData.warning) setMessage(nextData.warning);
+    } catch {
+      setMessage("データ取得に失敗しました。");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  const launches = useMemo(() => {
+    return [...new Set(data.customers.map((row) => row.seminar).filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b, "ja", { numeric: true }),
+    );
+  }, [data.customers]);
+
+  const seatOptions = useMemo(() => {
+    return [
+      "",
+      ...new Set(
+        [
+          ...data.customers.map((row) => row.seatStatus),
+          ...data.replies.map((row) => row.seatStatus),
+          "着座",
+          "日程変更→着座",
+          "飛び",
+          "事前キャンセル",
+          "その場キャンセル",
+          "リスケ/再日程調整中",
+          "日程調整済",
+          "重複予約",
+          "無効アポ",
+          "担当者変更",
+          "営業マン都合キャンセル",
+        ].filter(Boolean),
+      ),
+    ];
+  }, [data.customers, data.replies]);
+
+  const contractOptions = useMemo(() => {
+    return [
+      "",
+      ...new Set(
+        [
+          ...data.customers.map((row) => row.secondStatus),
+          ...data.replies.map((row) => row.contractStatus),
+          "成約",
+          "失注",
+          "MLM失注",
+          "保留",
+          "日程調整→返信なし",
+          "日程調整済",
+        ].filter(Boolean),
+      ),
+    ];
+  }, [data.customers, data.replies]);
+
+  const matchesLaunch = useCallback(
+    (seminar: string) => launchFilter === "all" || seminar === launchFilter,
+    [launchFilter],
+  );
+
+  const filteredCustomers = useMemo(() => {
+    return data.customers.filter(
+      (row) =>
+        matchesLaunch(row.seminar) &&
+        includesQuery(
+          [row.customerName, row.ownerName, row.seminar, row.seatStatus, row.secondStatus],
+          query,
+        ),
+    );
+  }, [data.customers, matchesLaunch, query]);
+
+  const filteredChanges = useMemo(() => filteredCustomers.filter((row) => row.changed), [filteredCustomers]);
+
+  const filteredFalseReports = useMemo(() => {
+    return data.falseReports.filter(
+      (row) =>
+        matchesLaunch(row.seminar) &&
+        includesQuery(
+          [row.customerName, row.ownerName, row.seminar, row.falseReport, row.correctReport, row.memo],
+          query,
+        ),
+    );
+  }, [data.falseReports, matchesLaunch, query]);
+
+  const filteredProblemOk = useMemo(() => {
+    return data.problemOk.filter(
+      (row) =>
+        matchesLaunch(row.seminar) &&
+        includesQuery(
+          [row.customerName, row.ownerName, row.seminar, row.falseReport, row.correctReport, row.handler, row.memo],
+          query,
+        ),
+    );
+  }, [data.problemOk, matchesLaunch, query]);
+
+  const filteredReplies = useMemo(() => {
+    return data.replies.filter(
+      (row) =>
+        matchesLaunch(row.seminar) &&
+        includesQuery([row.customerName, row.ownerName, row.seminar, row.memo, row.contactMemo], query),
+    );
+  }, [data.replies, matchesLaunch, query]);
+
+  const selectedDecisions = useMemo<DiffDecision[]>(() => {
+    return Object.entries(diffSelections).map(([rowNumber, decision]) => ({
+      rowNumber: Number(rowNumber),
+      decision,
+    }));
+  }, [diffSelections]);
+
+  const runAction = async (key: string, action: FalseReportAction) => {
+    if (!data.writeReady) {
+      setMessage("書き込み用のApps Script連携が未設定です。");
+      return false;
+    }
+
+    setSavingKey(key);
+    setMessage("");
+    try {
+      const response = await fetch("/api/false-report-checker", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(action),
+      });
+      const result = (await response.json()) as { ok?: boolean; message?: string };
+      if (!response.ok || result.ok === false) {
+        setMessage(result.message ?? "保存に失敗しました。");
+        return false;
+      }
+
+      setMessage("保存しました。");
+      patchLocal(action);
+      return true;
+    } catch {
+      setMessage("保存に失敗しました。");
+      return false;
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const applyDiffDecisions = async () => {
+    if (!selectedDecisions.length) {
+      setMessage("OK/NGを選んでから反映してください。");
+      return;
+    }
+
+    const ok = await runAction("apply-diff-decisions", {
+      action: "applyDiffDecisions",
+      handler,
+      decisions: selectedDecisions,
+    });
+    if (ok) {
+      setDiffSelections({});
+      await loadData();
+    }
+  };
+
+  const patchLocal = (action: FalseReportAction) => {
+    if (action.action === "setConfirmed") {
+      setData((current) => ({
+        ...current,
+        customers: current.customers.map((row) =>
+          row.rowNumber === action.rowNumber ? { ...row, confirmed: action.checked } : row,
+        ),
+      }));
+      return;
+    }
+
+    if (action.action === "setDiffReviewed") {
+      setData((current) => ({
+        ...current,
+        customers: current.customers.map((row) =>
+          row.rowNumber === action.rowNumber ? { ...row, diffReviewed: action.checked } : row,
+        ),
+      }));
+      return;
+    }
+
+    if (action.action === "applyDiffDecisions") {
+      const reviewedRows = new Set(action.decisions.map((decision) => decision.rowNumber));
+      setData((current) => ({
+        ...current,
+        customers: current.customers.map((row) =>
+          reviewedRows.has(row.rowNumber) ? { ...row, diffReviewed: true } : row,
+        ),
+      }));
+      return;
+    }
+
+    if (action.action === "saveFalseReportMemo") {
+      setData((current) => ({
+        ...current,
+        falseReports: current.falseReports.map((row) =>
+          row.rowNumber === action.rowNumber ? { ...row, memo: action.memo } : row,
+        ),
+      }));
+      return;
+    }
+
+    if (action.action === "updateReply") {
+      setData((current) => ({
+        ...current,
+        replies: current.replies.map((row) =>
+          row.rowNumber === action.rowNumber ? { ...row, [action.field]: action.value } : row,
+        ),
+      }));
+    }
+  };
+
+  return (
+    <main className="min-h-screen bg-zinc-50 text-zinc-950">
+      <div className="mx-auto flex w-full max-w-none flex-col gap-4 px-6 py-5 2xl:px-10">
+        <header className="flex flex-col gap-3 border-b border-zinc-200 pb-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <p className="text-sm font-medium text-zinc-500">軽量版シート操作</p>
+            <h1 className="text-2xl font-semibold tracking-normal">虚偽報告チェック</h1>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              className="inline-flex h-10 items-center rounded border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
+              href={data.sheetsUrl || "#"}
+              rel="noreferrer"
+              target="_blank"
+            >
+              シートを開く
+            </a>
+            <button
+              className="inline-flex h-10 items-center gap-2 rounded bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-wait disabled:opacity-60"
+              disabled={loading}
+              title="再読み込み"
+              type="button"
+              onClick={() => void loadData()}
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              更新
+            </button>
+          </div>
+        </header>
+
+        <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-7">
+          <Metric label="確認済み" value={`${data.stats.confirmedCustomers}/${data.stats.totalCustomers}`} />
+          <Metric label="未確認差分" value={data.stats.unreviewedChanges.toLocaleString("ja-JP")} danger />
+          <Metric label="差分あり" value={data.stats.changedCustomers.toLocaleString("ja-JP")} />
+          <Metric label="虚偽報告" value={data.stats.falseReports.toLocaleString("ja-JP")} />
+          <Metric label="問題無し" value={data.stats.problemOk.toLocaleString("ja-JP")} />
+          <Metric label="返信あり" value={data.stats.replies.toLocaleString("ja-JP")} />
+          <Metric label="最終取得" value={formatDateTime(data.updatedAt)} />
+        </section>
+
+        <section className="flex flex-col gap-3 border-b border-zinc-200 pb-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1 rounded bg-zinc-200 p-1">
+              {tabs.map((tab) => (
+                <button
+                  className={`h-9 whitespace-nowrap rounded px-3 text-sm font-medium ${
+                    activeTab === tab.id ? "bg-white text-zinc-950 shadow-sm" : "text-zinc-600 hover:bg-zinc-100"
+                  }`}
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <select
+              className="h-10 min-w-72 rounded border border-zinc-300 bg-white px-3 text-sm outline-none focus:border-zinc-900"
+              value={launchFilter}
+              onChange={(event) => setLaunchFilter(event.target.value)}
+            >
+              <option value="all">すべてのローンチ</option>
+              {launches.map((launch) => (
+                <option key={launch} value={launch}>
+                  {launch}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {activeTab === "changes" ? (
+              <>
+                <select
+                  className="h-10 rounded border border-zinc-300 bg-white px-3 text-sm outline-none focus:border-zinc-900"
+                  value={handler}
+                  onChange={(event) => setHandler(event.target.value)}
+                >
+                  {handlers.map((name) => (
+                    <option key={name} value={name}>
+                      対応者: {name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="inline-flex h-10 items-center gap-2 rounded bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!selectedDecisions.length || savingKey === "apply-diff-decisions"}
+                  type="button"
+                  onClick={() => void applyDiffDecisions()}
+                >
+                  {savingKey === "apply-diff-decisions" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  反映 {selectedDecisions.length ? `(${selectedDecisions.length})` : ""}
+                </button>
+              </>
+            ) : null}
+
+            <label className="relative block w-80">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+              <input
+                className="h-10 w-full rounded border border-zinc-300 bg-white pl-9 pr-3 text-sm outline-none focus:border-zinc-900"
+                placeholder="名前・担当・ローンチで検索"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+          </div>
+        </section>
+
+        {message ? (
+          <div className="flex items-start gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{message}</span>
+          </div>
+        ) : null}
+
+        {activeTab === "customers" ? (
+          <CustomersTable
+            disabled={!data.writeReady}
+            rows={filteredCustomers.slice(0, 350)}
+            savingKey={savingKey}
+            onAction={runAction}
+          />
+        ) : null}
+
+        {activeTab === "changes" ? (
+          <CustomersTable
+            changesOnly
+            decisionSelections={diffSelections}
+            disabled={!data.writeReady}
+            rows={filteredChanges.slice(0, 350)}
+            savingKey={savingKey}
+            setDecisionSelections={setDiffSelections}
+            onAction={runAction}
+          />
+        ) : null}
+
+        {activeTab === "falseReports" ? (
+          <FalseReportsTable
+            disabled={!data.writeReady}
+            memoDrafts={memoDrafts}
+            rows={filteredFalseReports.slice(0, 350)}
+            savingKey={savingKey}
+            setMemoDrafts={setMemoDrafts}
+            onAction={runAction}
+          />
+        ) : null}
+
+        {activeTab === "problemOk" ? <ProblemOkTable rows={filteredProblemOk.slice(0, 350)} /> : null}
+
+        {activeTab === "replies" ? (
+          <RepliesTable
+            contractOptions={contractOptions}
+            disabled={!data.writeReady}
+            memoDrafts={replyMemoDrafts}
+            rows={filteredReplies.slice(0, 350)}
+            savingKey={savingKey}
+            seatOptions={seatOptions}
+            setMemoDrafts={setReplyMemoDrafts}
+            onAction={runAction}
+          />
+        ) : null}
+      </div>
+    </main>
+  );
+}
+
+function Metric({ label, value, danger = false }: { label: string; value: string | number; danger?: boolean }) {
+  return (
+    <div className="rounded border border-zinc-200 bg-white px-3 py-3">
+      <div className="text-xs font-medium text-zinc-500">{label}</div>
+      <div className={`mt-1 truncate text-xl font-semibold ${danger ? "text-red-700" : "text-zinc-950"}`}>
+        {value}
+      </div>
     </div>
   );
 }
 
-function FalseReportList({
+function CustomersTable({
   rows,
-  savingKeys,
-  writeEnabled,
-  onSaveMemo,
+  disabled,
+  savingKey,
+  changesOnly = false,
+  decisionSelections = {},
+  setDecisionSelections,
+  onAction,
+}: {
+  rows: CustomerRow[];
+  disabled: boolean;
+  savingKey: string | null;
+  changesOnly?: boolean;
+  decisionSelections?: Record<number, "ok" | "ng">;
+  setDecisionSelections?: Dispatch<SetStateAction<Record<number, "ok" | "ng">>>;
+  onAction: (key: string, action: FalseReportAction) => Promise<boolean>;
+}) {
+  return (
+    <TableShell>
+      <table className="w-full table-fixed text-left text-sm">
+        <thead className="sticky top-0 bg-zinc-100 text-xs font-semibold text-zinc-600">
+          <tr>
+            <Th className="w-[9%]">操作</Th>
+            <Th className="w-[13%]">顧客</Th>
+            <Th className="w-[14%]">ローンチ</Th>
+            <Th className="w-[9%]">担当</Th>
+            <Th className="w-[11%]">確認時 着座</Th>
+            <Th className="w-[12%]">確認時 ステータス</Th>
+            <Th className="w-[11%]">現在 着座</Th>
+            <Th className="w-[12%]">現在 ステータス</Th>
+            <Th className="w-[9%]">状態</Th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-100 bg-white">
+          {rows.map((row) => {
+            const key = `customer-${row.rowNumber}`;
+            const selected = decisionSelections[row.rowNumber];
+            return (
+              <tr
+                className={row.changed ? "bg-red-50/60" : row.confirmed ? "bg-zinc-50 text-zinc-500" : ""}
+                key={row.rowNumber}
+              >
+                <Td>
+                  <div className="flex flex-col gap-2">
+                    {changesOnly ? (
+                      <div className="flex flex-wrap gap-1">
+                        <DecisionCheckbox
+                          decision="ok"
+                          disabled={disabled}
+                          selected={selected === "ok"}
+                          onSelect={() =>
+                            setDecisionSelections?.((current) => {
+                              const next = { ...current };
+                              if (next[row.rowNumber] === "ok") {
+                                delete next[row.rowNumber];
+                              } else {
+                                next[row.rowNumber] = "ok";
+                              }
+                              return next;
+                            })
+                          }
+                        />
+                        <DecisionCheckbox
+                          decision="ng"
+                          disabled={disabled}
+                          selected={selected === "ng"}
+                          onSelect={() =>
+                            setDecisionSelections?.((current) => {
+                              const next = { ...current };
+                              if (next[row.rowNumber] === "ng") {
+                                delete next[row.rowNumber];
+                              } else {
+                                next[row.rowNumber] = "ng";
+                              }
+                              return next;
+                            })
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <SheetCheckbox
+                        checked={row.confirmed}
+                        disabled={disabled || savingKey === key}
+                        label="確認済み"
+                        onChange={(checked) =>
+                          onAction(key, { action: "setConfirmed", rowNumber: row.rowNumber, checked })
+                        }
+                      />
+                    )}
+                  </div>
+                </Td>
+                <Td>
+                  <div className={row.confirmed ? "line-through decoration-zinc-500" : ""}>
+                    <div className="break-words font-medium text-zinc-950">{row.customerName}</div>
+                    <div className="text-xs text-zinc-500">行 {row.rowNumber}</div>
+                  </div>
+                </Td>
+                <Td>{row.seminar || "-"}</Td>
+                <Td>{row.ownerName || "-"}</Td>
+                <Td>
+                  <StatusBadge value={row.confirmedSeatStatus} />
+                </Td>
+                <Td>
+                  <StatusBadge value={row.confirmedSecondStatus} />
+                </Td>
+                <Td>
+                  <StatusBadge value={row.currentSeatStatus} />
+                </Td>
+                <Td>
+                  <StatusBadge value={row.currentSecondStatus} />
+                </Td>
+                <Td>
+                  <span
+                    className={`inline-flex rounded px-2 py-1 text-xs font-medium ${
+                      row.changed && !row.diffReviewed
+                        ? "border border-red-200 bg-red-50 text-red-700"
+                        : "border border-zinc-200 bg-zinc-50 text-zinc-600"
+                    }`}
+                  >
+                    {row.changed ? (row.diffReviewed ? "対応済" : "差分あり") : "通常"}
+                  </span>
+                </Td>
+              </tr>
+            );
+          })}
+          {rows.length === 0 ? <EmptyRow colSpan={9} text="対象データがありません。" /> : null}
+        </tbody>
+      </table>
+    </TableShell>
+  );
+}
+
+function FalseReportsTable({
+  rows,
+  disabled,
+  savingKey,
+  memoDrafts,
+  setMemoDrafts,
+  onAction,
 }: {
   rows: FalseReportRow[];
-  savingKeys: Set<string>;
-  writeEnabled: boolean;
-  onSaveMemo: (report: FalseReportRow, memo: string) => void;
+  disabled: boolean;
+  savingKey: string | null;
+  memoDrafts: Record<number, string>;
+  setMemoDrafts: Dispatch<SetStateAction<Record<number, string>>>;
+  onAction: (key: string, action: FalseReportAction) => Promise<boolean>;
 }) {
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-
-  if (!rows.length) return <EmptyState />;
   return (
-    <div className="space-y-4">
-      {rows.map((report) => {
-        const id = falseReportId(report);
-        const draft = drafts[id] ?? report.memo;
-        const saving = savingKeys.has(`memo:${id}`);
-        return (
-          <div
-            key={id}
-            className="relative overflow-hidden rounded-[24px] border border-[#dfd1bc] bg-[#fffaf2] shadow-lg shadow-[#231815]/5"
-          >
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#231815] via-[#e60012] to-[#231815]" />
-            <div className="p-4 pt-5 md:p-5 md:pt-6">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <div className="min-w-0">
-                  <span className="font-semibold">{report.customerName}</span>
-                  <span className="ml-2 text-sm text-[#8a7a63]">担当: {report.staffName || "-"}</span>
-                  {report.legacy && (
-                    <span className="ml-2 inline-block rounded-full bg-[#f3ead9] px-2 py-0.5 align-middle text-[10px] font-medium text-[#8a7355]">
-                      旧シート移行分
-                    </span>
-                  )}
-                </div>
-                <span className="text-[11px] text-[#a08b6f]">
-                  {report.legacy
-                    ? `移行日 ${report.detectedAt || "-"}`
-                    : `確認 ${report.confirmedAt || "-"} / 差分検知 ${report.detectedAt || "-"}`}
-                </span>
-              </div>
-              <p className="mt-3 text-[15px] leading-relaxed">
-                変更前【
-                <span className="font-semibold text-[#c90010]">
-                  {report.confirmedStatus || "記録なし"}
-                </span>
-                】▶︎ 変更後【
-                <span className="font-semibold text-[#2c5e34]">
-                  {report.currentStatus || report.correctReport || "-"}
-                </span>
-                】
-              </p>
-              {report.legacy && (
-                <p className="mt-1 text-[11px] text-[#a08b6f]">
-                  旧まとめシートでチェック済みのデータのため、虚偽報告時点のステータスは残っていません
-                  {report.correctReport ? ` (移行時の正しい報告: ${report.correctReport})` : ""}
-                </p>
-              )}
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
-                <textarea
-                  value={draft}
-                  onChange={(event) =>
-                    setDrafts((previous) => ({ ...previous, [id]: event.target.value }))
-                  }
-                  rows={2}
-                  placeholder="メモを入力..."
-                  className="flex-1 rounded-[16px] border border-[#d8cbb8] bg-white/95 px-3.5 py-2.5 text-sm shadow-inner placeholder:text-[#b3a48c] focus:border-[#231815]/50 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  disabled={!writeEnabled || saving || draft === report.memo}
-                  onClick={() => onSaveMemo(report, draft)}
-                  className="flex items-center justify-center gap-1.5 rounded-full bg-[#e60012] px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-[#e60012]/20 transition hover:bg-[#c90010] disabled:opacity-40 disabled:shadow-none"
-                >
-                  {saving && <Loader2 className="size-3.5 animate-spin" />}
-                  メモ保存
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <TableShell>
+      <table className="w-full table-fixed text-left text-sm">
+        <thead className="sticky top-0 bg-zinc-100 text-xs font-semibold text-zinc-600">
+          <tr>
+            <Th className="w-[15%]">顧客</Th>
+            <Th className="w-[14%]">ローンチ</Th>
+            <Th className="w-[18%]">虚偽報告</Th>
+            <Th className="w-[18%]">正しい報告</Th>
+            <Th className="w-[12%]">検知</Th>
+            <Th className="w-[23%]">メモ</Th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-100 bg-white">
+          {rows.map((row) => {
+            const key = `false-report-${row.rowNumber}`;
+            return (
+              <tr key={row.rowNumber}>
+                <Td>
+                  <div className="break-words font-medium text-zinc-950">{row.customerName || "-"}</div>
+                  <div className="text-xs text-zinc-500">{row.ownerName || "-"} / 行 {row.rowNumber}</div>
+                </Td>
+                <Td>{row.seminar || "-"}</Td>
+                <Td>
+                  <StatusBadge value={row.falseReport} />
+                </Td>
+                <Td>
+                  <StatusBadge value={row.correctReport} />
+                </Td>
+                <Td>
+                  <div>{formatDateTime(row.detectedAt)}</div>
+                  <div className="text-xs text-zinc-500">確認 {formatDateTime(row.confirmedAt)}</div>
+                </Td>
+                <Td>
+                  <div className="flex gap-2">
+                    <input
+                      className="h-9 min-w-0 flex-1 rounded border border-zinc-300 px-2 text-sm outline-none focus:border-zinc-900 disabled:bg-zinc-100"
+                      disabled={disabled}
+                      value={memoDrafts[row.rowNumber] ?? ""}
+                      onChange={(event) =>
+                        setMemoDrafts((current) => ({ ...current, [row.rowNumber]: event.target.value }))
+                      }
+                    />
+                    <button
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded bg-zinc-900 text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={disabled || savingKey === key}
+                      title="保存"
+                      type="button"
+                      onClick={() =>
+                        onAction(key, {
+                          action: "saveFalseReportMemo",
+                          rowNumber: row.rowNumber,
+                          memo: memoDrafts[row.rowNumber] ?? "",
+                        })
+                      }
+                    >
+                      {savingKey === key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </Td>
+              </tr>
+            );
+          })}
+          {rows.length === 0 ? <EmptyRow colSpan={6} text="虚偽報告データがありません。" /> : null}
+        </tbody>
+      </table>
+    </TableShell>
   );
+}
+
+function ProblemOkTable({ rows }: { rows: ProblemOkRow[] }) {
+  return (
+    <TableShell>
+      <table className="w-full table-fixed text-left text-sm">
+        <thead className="sticky top-0 bg-zinc-100 text-xs font-semibold text-zinc-600">
+          <tr>
+            <Th className="w-[16%]">顧客</Th>
+            <Th className="w-[14%]">ローンチ</Th>
+            <Th className="w-[17%]">確認時</Th>
+            <Th className="w-[17%]">現在</Th>
+            <Th className="w-[12%]">対応者</Th>
+            <Th className="w-[12%]">反映日時</Th>
+            <Th className="w-[12%]">元行</Th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-100 bg-white">
+          {rows.map((row) => (
+            <tr key={row.rowNumber}>
+              <Td>
+                <div className="break-words font-medium text-zinc-950">{row.customerName || "-"}</div>
+                <div className="text-xs text-zinc-500">{row.ownerName || "-"}</div>
+              </Td>
+              <Td>{row.seminar || "-"}</Td>
+              <Td>
+                <StatusBadge value={row.falseReport} />
+              </Td>
+              <Td>
+                <StatusBadge value={row.correctReport} />
+              </Td>
+              <Td>{row.handler || "-"}</Td>
+              <Td>{formatDateTime(row.reflectedAt)}</Td>
+              <Td>{row.sourceRowNumber || "-"}</Td>
+            </tr>
+          ))}
+          {rows.length === 0 ? <EmptyRow colSpan={7} text="問題無しデータがありません。" /> : null}
+        </tbody>
+      </table>
+    </TableShell>
+  );
+}
+
+function RepliesTable({
+  rows,
+  disabled,
+  savingKey,
+  memoDrafts,
+  seatOptions,
+  contractOptions,
+  setMemoDrafts,
+  onAction,
+}: {
+  rows: ReplyRow[];
+  disabled: boolean;
+  savingKey: string | null;
+  memoDrafts: Record<number, string>;
+  seatOptions: string[];
+  contractOptions: string[];
+  setMemoDrafts: Dispatch<SetStateAction<Record<number, string>>>;
+  onAction: (key: string, action: FalseReportAction) => Promise<boolean>;
+}) {
+  return (
+    <TableShell>
+      <table className="w-full table-fixed text-left text-sm">
+        <thead className="sticky top-0 bg-zinc-100 text-xs font-semibold text-zinc-600">
+          <tr>
+            <Th className="w-[14%]">顧客</Th>
+            <Th className="w-[14%]">ローンチ</Th>
+            <Th className="w-[16%]">返信</Th>
+            <Th className="w-[12%]">対応</Th>
+            <Th className="w-[12%]">着座</Th>
+            <Th className="w-[12%]">成約</Th>
+            <Th className="w-[20%]">メモ</Th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-100 bg-white">
+          {rows.map((row) => {
+            const key = `reply-${row.rowNumber}`;
+            return (
+              <tr key={row.rowNumber}>
+                <Td>
+                  <div className="break-words font-medium text-zinc-950">{row.customerName}</div>
+                  <div className="text-xs text-zinc-500">{row.ownerName || "-"} / 行 {row.rowNumber}</div>
+                </Td>
+                <Td>{row.seminar || "-"}</Td>
+                <Td>
+                  <div>{formatDateTime(row.replyAt)}</div>
+                  <div className="flex items-center gap-1 text-xs text-zinc-500">
+                    <MessageSquareText className="h-3.5 w-3.5" />
+                    <span className="break-words">{row.memo || "-"}</span>
+                  </div>
+                </Td>
+                <Td>
+                  <div className="flex flex-col gap-2">
+                    <SheetCheckbox
+                      checked={row.messageDone}
+                      disabled={disabled || savingKey === key}
+                      label="メッセ済"
+                      onChange={(checked) =>
+                        onAction(key, {
+                          action: "updateReply",
+                          rowNumber: row.rowNumber,
+                          field: "messageDone",
+                          value: checked,
+                        })
+                      }
+                    />
+                    <SheetCheckbox
+                      checked={row.contacted}
+                      disabled={disabled || savingKey === key}
+                      label="接触済"
+                      onChange={(checked) =>
+                        onAction(key, {
+                          action: "updateReply",
+                          rowNumber: row.rowNumber,
+                          field: "contacted",
+                          value: checked,
+                        })
+                      }
+                    />
+                  </div>
+                </Td>
+                <Td>
+                  <SelectCell
+                    disabled={disabled || savingKey === key}
+                    options={seatOptions}
+                    value={row.seatStatus}
+                    onChange={(value) =>
+                      onAction(key, {
+                        action: "updateReply",
+                        rowNumber: row.rowNumber,
+                        field: "seatStatus",
+                        value,
+                      })
+                    }
+                  />
+                </Td>
+                <Td>
+                  <SelectCell
+                    disabled={disabled || savingKey === key}
+                    options={contractOptions}
+                    value={row.contractStatus}
+                    onChange={(value) =>
+                      onAction(key, {
+                        action: "updateReply",
+                        rowNumber: row.rowNumber,
+                        field: "contractStatus",
+                        value,
+                      })
+                    }
+                  />
+                </Td>
+                <Td>
+                  <div className="flex gap-2">
+                    <input
+                      className="h-9 min-w-0 flex-1 rounded border border-zinc-300 px-2 text-sm outline-none focus:border-zinc-900 disabled:bg-zinc-100"
+                      disabled={disabled}
+                      value={memoDrafts[row.rowNumber] ?? ""}
+                      onChange={(event) =>
+                        setMemoDrafts((current) => ({ ...current, [row.rowNumber]: event.target.value }))
+                      }
+                    />
+                    <button
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded bg-zinc-900 text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={disabled || savingKey === key}
+                      title="保存"
+                      type="button"
+                      onClick={() =>
+                        onAction(key, {
+                          action: "updateReply",
+                          rowNumber: row.rowNumber,
+                          field: "contactMemo",
+                          value: memoDrafts[row.rowNumber] ?? "",
+                        })
+                      }
+                    >
+                      {savingKey === key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </Td>
+              </tr>
+            );
+          })}
+          {rows.length === 0 ? <EmptyRow colSpan={7} text="返信あり顧客データがありません。" /> : null}
+        </tbody>
+      </table>
+    </TableShell>
+  );
+}
+
+function SelectCell({
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  options: string[];
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <select
+      className="h-9 w-full rounded border border-zinc-300 bg-white px-2 text-sm outline-none focus:border-zinc-900 disabled:bg-zinc-100"
+      disabled={disabled}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      {options.map((option) => (
+        <option key={option || "empty"} value={option}>
+          {option || "-"}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function TableShell({ children }: { children: ReactNode }) {
+  return (
+    <section className="overflow-hidden rounded border border-zinc-200 bg-white">
+      <div className="max-h-[68vh] overflow-y-auto overflow-x-hidden">{children}</div>
+    </section>
+  );
+}
+
+function EmptyRow({ colSpan, text }: { colSpan: number; text: string }) {
+  return (
+    <tr>
+      <td className="px-4 py-10 text-center text-sm text-zinc-500" colSpan={colSpan}>
+        <CheckCircle2 className="mx-auto mb-2 h-5 w-5 text-zinc-400" />
+        {text}
+      </td>
+    </tr>
+  );
+}
+
+function Th({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <th className={`px-2 py-2 ${className}`}>{children}</th>;
+}
+
+function Td({ children }: { children: ReactNode }) {
+  return <td className="align-top break-words px-2 py-3">{children}</td>;
 }

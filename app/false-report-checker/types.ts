@@ -1,53 +1,118 @@
 export type CustomerRow = {
-  rowIndex: number;
-  rowKey: string;
+  rowNumber: number;
   confirmed: boolean;
-  diffConfirmed: boolean;
+  diffReviewed: boolean;
   customerName: string;
-  staffName: string;
+  ownerName: string;
   seminar: string;
-  appliedAt: string;
-  interviewAt: string;
-  /** 面談日 (YYYY-MM-DD)。日付で絞り込むためのパース済み値。解析不能時は空 */
-  interviewDate: string;
-  seated: string;
-  status: string;
-  plan: string;
-  /** 確認済みチェック時点のステータス (チェック管理 > 確認済みタブ > 確認チェックタブの優先順) */
-  confirmedStatus: string;
-  /** 大元シートの現在ステータス (リアルタイム)。管理IDが無い行は軽量版の値 */
-  currentStatus: string;
-  /** 確認済みチェック後に大元シートのステータスが変わった (虚偽報告候補) */
-  changeDetected: boolean;
+  applicationDate: string;
+  meetingDate: string;
+  source: string;
+  seatStatus: string;
+  secondStatus: string;
+  confirmedSeatStatus: string;
+  confirmedSecondStatus: string;
+  currentSeatStatus: string;
+  currentSecondStatus: string;
+  changed: boolean;
+  rowKey: string;
 };
 
 export type FalseReportRow = {
-  rowIndex: number;
-  rowKey: string;
-  managementId: string;
-  /** 旧まとめシートからの移行データ (虚偽報告時点のステータス記録なし) */
-  legacy: boolean;
+  rowNumber: number;
   falseReport: string;
   correctReport: string;
-  /** 確認済みチェック時点のステータス (スナップショット結合) */
-  confirmedStatus: string;
-  /** 大元シートの現在ステータス (リアルタイム) */
-  currentStatus: string;
-  confirmedAt: string;
   detectedAt: string;
+  confirmedAt: string;
   memo: string;
   customerName: string;
-  staffName: string;
+  ownerName: string;
   seminar: string;
-  appliedAt: string;
-  interviewAt: string;
-  seated: string;
-  status: string;
+  seatStatus: string;
+  secondStatus: string;
 };
 
-export type FalseReportCheckerData = {
+export type ProblemOkRow = {
+  rowNumber: number;
+  falseReport: string;
+  correctReport: string;
+  reflectedAt: string;
+  handler: string;
+  memo: string;
+  customerName: string;
+  ownerName: string;
+  seminar: string;
+  seatStatus: string;
+  secondStatus: string;
+  sourceRowNumber: string;
+};
+
+export type ReplyRow = {
+  rowNumber: number;
+  customerName: string;
+  ownerName: string;
+  seminar: string;
+  replyAt: string;
+  memo: string;
+  messageDone: boolean;
+  contacted: boolean;
+  seatStatus: string;
+  contractStatus: string;
+  contactMemo: string;
+};
+
+export type FalseReportStats = {
+  totalCustomers: number;
+  confirmedCustomers: number;
+  changedCustomers: number;
+  unreviewedChanges: number;
+  falseReports: number;
+  problemOk: number;
+  replies: number;
+};
+
+export type FalseReportData = {
   updatedAt: string;
-  writeEnabled: boolean;
+  writeReady: boolean;
+  source: "apps-script" | "public-csv";
+  sheetsUrl: string;
   customers: CustomerRow[];
   falseReports: FalseReportRow[];
+  problemOk: ProblemOkRow[];
+  replies: ReplyRow[];
+  stats: FalseReportStats;
+  warning?: string;
 };
+
+export type DiffDecision = {
+  rowNumber: number;
+  decision: "ok" | "ng";
+};
+
+export type FalseReportAction =
+  | {
+      action: "setConfirmed";
+      rowNumber: number;
+      checked: boolean;
+    }
+  | {
+      action: "setDiffReviewed";
+      rowNumber: number;
+      checked: boolean;
+    }
+  | {
+      action: "saveFalseReportMemo";
+      rowNumber: number;
+      memo: string;
+    }
+  | {
+      action: "updateReply";
+      rowNumber: number;
+      field: "messageDone" | "contacted" | "seatStatus" | "contractStatus" | "contactMemo";
+      value: string | boolean;
+    }
+  | {
+      action: "applyDiffDecisions";
+      handler: string;
+      decisions: DiffDecision[];
+    };
