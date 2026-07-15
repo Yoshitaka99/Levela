@@ -1,0 +1,76 @@
+# ロープレ実施記録フォーム セットアップ
+
+## 画面
+
+```text
+/roleplay-log
+```
+
+入力タブで実施記録を登録し、集計タブで日付範囲ごとの営業役回数・お客さん役回数を確認します。
+実施範囲は複数選択できます。
+
+## 環境変数
+
+標準の共有保存先は Upstash Redis です。Vercel に以下が入っていれば、全ユーザーの登録が同じ集計に反映されます。
+
+```env
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+```
+
+Vercel KV 連携の場合は以下の名前でも動作します。
+
+```env
+KV_REST_API_URL=
+KV_REST_API_TOKEN=
+```
+
+Google Sheets に保存したい場合だけ、以下を設定します。Sheets 設定がある場合は Sheets を優先します。
+
+```env
+ROLEPLAY_LOG_SHEET_WEBHOOK_URL=
+ROLEPLAY_LOG_SHEET_SECRET=
+```
+
+- `ROLEPLAY_LOG_SHEET_WEBHOOK_URL`: Apps Script を Web アプリとしてデプロイしたURL
+- `ROLEPLAY_LOG_SHEET_SECRET`: Apps Script のスクリプトプロパティに入れる同じ値
+
+共有保存先が1つも設定されていない場合、登録はできません。端末ごとのローカル保存にはフォールバックしません。
+
+## スプレッドシート設定
+
+1. 管理用スプレッドシートを開く。
+2. 拡張機能 → Apps Script を開く。
+3. `apps-script/RoleplayLogReceiver.gs` の内容を貼り付ける。
+4. プロジェクトの設定 → スクリプト プロパティに `ROLEPLAY_LOG_SHEET_SECRET` を追加する。
+5. デプロイ → 新しいデプロイ → 種類「ウェブアプリ」で公開する。
+6. Web アプリURLを Next.js の `ROLEPLAY_LOG_SHEET_WEBHOOK_URL` に入れる。
+
+初回登録時に `ロープレ実施記録` シートが作成され、見出し付きで追記されます。
+
+## 相互実施の扱い
+
+入力画面で「役割入れ替え分も登録」を押して送信すると、裏側では2行保存します。
+
+```text
+営業役 A / お客さん役 B
+営業役 B / お客さん役 A
+```
+
+集計ではそれぞれ営業役1回・お客さん役1回としてカウントされます。
+
+## 実施範囲
+
+- すべて実施
+- 自己紹介から
+- 自己紹介のみ
+- 権威性から
+- 権威性のみ
+- ヒアリングから
+- ヒアリングのみ
+- アカウント提案まで
+- アカウント提案のみ
+- 料金提案まで
+- クロージングのみ
+- 契約作業まで
+- 契約作業のみ
