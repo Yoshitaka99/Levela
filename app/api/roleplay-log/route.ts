@@ -24,6 +24,10 @@ type RoleplayPayload = {
   reciprocal?: unknown;
 };
 
+type RoleplayImportPayload = {
+  records?: unknown;
+};
+
 type NormalizedPayload = {
   sessionDate: string;
   sellerName: string;
@@ -46,6 +50,7 @@ type StorageConfig =
     };
 
 const redisRecordsKey = "roleplay-log:records:v1";
+const maxImportRecords = 1000;
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -55,47 +60,14 @@ export async function GET(request: NextRequest) {
     return sharedStorageNotConfigured();
   }
 
-  if (storage.type === "spreadsheet") {
-    const targetUrl = new URL(storage.webhookUrl);
-    targetUrl.searchParams.set("secret", storage.secret);
-
-    for (const key of ["from", "to"]) {
-      const value = searchParams.get(key);
-      if (value) targetUrl.searchParams.set(key, value);
-    }
-
-    const response = await fetch(targetUrl, { cache: "no-store" });
-
-    if (!response.ok) {
-      return NextResponse.json(
-        { ok: false, error: `Spreadsheet webhook failed: ${response.status}` },
-        { status: 502 },
-      );
-    }
-
-    const payload = await response.json();
-    const rawRecords = Array.isArray(payload.records) ? payload.records : [];
-
-    return NextResponse.json({
-      ok: true,
-      source: "spreadsheet",
-      records: rawRecords.map(normalizeSheetRecord).filter(Boolean),
-    });
-  }
-
   try {
     const from = searchParams.get("from") || "";
     const to = searchParams.get("to") || "";
-    const rawRecords = await redisCommand(storage, ["LRANGE", redisRecordsKey, "0", "-1"]);
-    const records = (Array.isArray(rawRecords) ? rawRecords : [])
-      .map(parseRedisRecord)
-      .map(normalizeSheetRecord)
-      .filter((record): record is RoleplayRecord => Boolean(record))
-      .filter((record) => isInDateRange(record, from, to));
+    const records = await readStoredRecords(storage, from, to);
 
     return NextResponse.json({
       ok: true,
-      source: "redis",
+      source: storage.type,
       records,
     });
   } catch (error) {
@@ -146,6 +118,73 @@ export async function POST(request: NextRequest) {
     savedTargets: [storage.type],
     message: records.length === 2 ? "2件まとめて登録しました。" : "1件登録しました。",
   });
+}
+
+export async function PUT(request: NextRequest) {
+  let body: RoleplayImportPayload;
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: "JSON形式で送信してください。" }, { status: 400 });
+  }
+
+  const rawRecords = Array.isArray(body.records) ? body.records.slice(0, maxImportRecords) : [];
+  const records = rawRecords.map(normalizeImportedRecord).filter((record): record is RoleplayRecord => Boolean(record));
+
+  if (records.length === 0) {
+    return NextResponse.json({ ok: false, error: "取り込める過去記録がありません。" }, { status: 400 });
+  }
+
+  const storage = getStorageConfig();
+
+  if (!storage) {
+    return sharedStorageNotConfigured();
+  }
+
+  try {
+    const existingRecords = await readStoredRecords(storage);
+    const existingIds = new Set(existingRecords.map((record) => record.id));
+    const seenIds = new Set<string>();
+    const acceptedIds: string[] = [];
+    const importRecords: RoleplayRecord[] = [];
+
+    for (const record of records) {
+      if (seenIds.has(record.id)) {
+        acceptedIds.push(record.id);
+        continue;
+      }
+
+      seenIds.add(record.id);
+      acceptedIds.push(record.id);
+
+      if (!existingIds.has(record.id)) {
+        importRecords.push(record);
+      }
+    }
+
+    if (importRecords.length > 0) {
+      await saveRecords(importRecords, storage);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      source: storage.type,
+      importedCount: importRecords.length,
+      skippedCount: records.length - importRecords.length,
+      invalidCount: rawRecords.length - records.length,
+      acceptedIds,
+      message:
+        importRecords.length > 0
+          ? `${importRecords.length}件の過去記録を共有データへ取り込みました。`
+          : "過去記録はすでに共有データに取り込み済みです。",
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "過去記録の取り込みに失敗しました。" },
+      { status: 502 },
+    );
+  }
 }
 
 function normalizePayload(body: RoleplayPayload): { ok: true; data: NormalizedPayload } | { ok: false; error: string } {
@@ -237,6 +276,34 @@ async function saveRecords(records: RoleplayRecord[], storage: StorageConfig) {
   }
 
   await postRecordsToSheet(records, storage);
+}
+
+async function readStoredRecords(storage: StorageConfig, from = "", to = ""): Promise<RoleplayRecord[]> {
+  if (storage.type === "spreadsheet") {
+    const targetUrl = new URL(storage.webhookUrl);
+    targetUrl.searchParams.set("secret", storage.secret);
+    if (from) targetUrl.searchParams.set("from", from);
+    if (to) targetUrl.searchParams.set("to", to);
+
+    const response = await fetch(targetUrl, { cache: "no-store" });
+
+    if (!response.ok) {
+      throw new Error(`Spreadsheet webhook failed: ${response.status}`);
+    }
+
+    const payload = await response.json();
+    const rawRecords = Array.isArray(payload.records) ? payload.records : [];
+
+    return rawRecords.map(normalizeSheetRecord).filter(isStoredRoleplayRecord);
+  }
+
+  const rawRecords = await redisCommand(storage, ["LRANGE", redisRecordsKey, "0", "-1"]);
+
+  return (Array.isArray(rawRecords) ? rawRecords : [])
+    .map(parseRedisRecord)
+    .map(normalizeSheetRecord)
+    .filter(isStoredRoleplayRecord)
+    .filter((record) => isInDateRange(record, from, to));
 }
 
 async function postRecordsToSheet(records: RoleplayRecord[], storage: Extract<StorageConfig, { type: "spreadsheet" }>) {
@@ -355,6 +422,25 @@ function normalizeSheetRecord(value: unknown): RoleplayRecord | null {
     pairSessionId: text(source.pairSessionId, 100),
     pairDirection: isPairDirection(pairDirection) ? pairDirection : "single",
   };
+}
+
+function normalizeImportedRecord(value: unknown): RoleplayRecord | null {
+  if (!value || typeof value !== "object") return null;
+
+  const id = text((value as Record<string, unknown>).id, 100);
+  if (!id) return null;
+
+  const record = normalizeSheetRecord(value);
+  if (!record) return null;
+
+  return {
+    ...record,
+    id,
+  };
+}
+
+function isStoredRoleplayRecord(value: RoleplayRecord | null): value is RoleplayRecord {
+  return value !== null;
 }
 
 function isPairDirection(value: string): value is RoleplayPairDirection {

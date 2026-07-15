@@ -8,6 +8,7 @@ import {
   Repeat2,
   Search,
   Send,
+  UploadCloud,
   UsersRound,
 } from "lucide-react";
 import type { FormEvent } from "react";
@@ -16,7 +17,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  getRoleplayScopeLabels,
   getRoleplayScopeText,
+  normalizeRoleplayScopes,
   roleplayMembers,
   roleplayScopeOptions,
   type RoleplayRecord,
@@ -42,6 +45,8 @@ type SummaryRow = {
   total: number;
 };
 
+const localRecordsKey = "levela-roleplay-log-local-records-v1";
+
 export function RoleplayLogClient() {
   const [activeView, setActiveView] = useState<ActiveView>("form");
   const [form, setForm] = useState<FormState>(() => createInitialForm());
@@ -50,8 +55,10 @@ export function RoleplayLogClient() {
   const [nameFilter, setNameFilter] = useState("all");
   const [scopeFilter, setScopeFilter] = useState<"all" | RoleplayScope>("all");
   const [records, setRecords] = useState<RoleplayRecord[]>([]);
+  const [legacyRecords, setLegacyRecords] = useState<RoleplayRecord[]>([]);
   const [storageMode, setStorageMode] = useState<StorageMode>("unknown");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isImportingLegacy, setIsImportingLegacy] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState<{ tone: "idle" | "success" | "error"; text: string }>({
     tone: "idle",
@@ -91,6 +98,10 @@ export function RoleplayLogClient() {
   useEffect(() => {
     void refreshRecords();
   }, [refreshRecords]);
+
+  useEffect(() => {
+    setLegacyRecords(readLegacyLocalRecords());
+  }, []);
 
   const visibleRecords = useMemo(() => {
     return records
@@ -144,6 +155,7 @@ export function RoleplayLogClient() {
   const totalSellerCount = visibleRecords.length;
   const totalParticipantCount = visibleRecords.length * 2;
   const storageUnavailable = storageMode === "unconfigured";
+  const hasLegacyRecords = legacyRecords.length > 0;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -192,6 +204,50 @@ export function RoleplayLogClient() {
     }
   }
 
+  async function handleImportLegacyRecords() {
+    if (legacyRecords.length === 0) return;
+
+    if (storageUnavailable) {
+      setStatus({ tone: "error", text: "共有保存先が未設定のため取り込めません。" });
+      return;
+    }
+
+    setIsImportingLegacy(true);
+    setStatus({ tone: "idle", text: "" });
+
+    try {
+      const response = await fetch("/api/roleplay-log", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ records: legacyRecords }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "過去記録の取り込みに失敗しました。");
+      }
+
+      const acceptedIds = Array.isArray(result.acceptedIds)
+        ? result.acceptedIds.filter((id: unknown): id is string => typeof id === "string")
+        : legacyRecords.map((record) => record.id);
+      removeLegacyLocalRecordsByIds(acceptedIds);
+      setLegacyRecords(readLegacyLocalRecords());
+      await refreshRecords();
+
+      setStatus({
+        tone: "success",
+        text: result.message || `${result.importedCount ?? 0}件の過去記録を共有データへ取り込みました。`,
+      });
+    } catch (error) {
+      setStatus({
+        tone: "error",
+        text: error instanceof Error ? error.message : "過去記録の取り込みに失敗しました。",
+      });
+    } finally {
+      setIsImportingLegacy(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#f6f8fb] px-4 py-4 text-[#14211f] sm:px-6 lg:px-8">
       <div className="mx-auto grid w-full max-w-7xl gap-5">
@@ -230,6 +286,26 @@ export function RoleplayLogClient() {
           >
             {status.text}
           </div>
+        ) : null}
+
+        {hasLegacyRecords ? (
+          <section className="grid gap-3 rounded-md border border-[#c8ddd6] bg-[#f1fbf8] p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="grid gap-1">
+              <h2 className="text-sm font-bold text-[#0f5f52]">この端末に過去記録があります</h2>
+              <p className="text-sm text-[#31524a]">
+                {legacyRecords.length}件を共有データへ取り込めます。取り込み済みの同じIDは自動でスキップします。
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={() => void handleImportLegacyRecords()}
+              disabled={isImportingLegacy || storageUnavailable}
+              className="h-11 rounded-md bg-[#0f766e] px-4 text-white hover:bg-[#0b5f59]"
+            >
+              {isImportingLegacy ? <RefreshCw className="animate-spin" size={17} /> : <UploadCloud size={17} />}
+              過去記録を取り込む
+            </Button>
+          </section>
         ) : null}
 
         {activeView === "form" ? (
@@ -595,6 +671,51 @@ function formatDate(value: string) {
     day: "numeric",
     weekday: "short",
   });
+}
+
+function readLegacyLocalRecords(): RoleplayRecord[] {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(localRecordsKey) || "[]");
+    return Array.isArray(parsed) ? parsed.map(normalizeLocalRecord).filter(isRoleplayRecord) : [];
+  } catch {
+    return [];
+  }
+}
+
+function removeLegacyLocalRecordsByIds(ids: string[]) {
+  if (typeof window === "undefined") return;
+
+  const removeIds = new Set(ids);
+  const remainingRecords = readLegacyLocalRecords().filter((record) => !removeIds.has(record.id));
+
+  if (remainingRecords.length === 0) {
+    window.localStorage.removeItem(localRecordsKey);
+    return;
+  }
+
+  window.localStorage.setItem(localRecordsKey, JSON.stringify(remainingRecords));
+}
+
+function isRoleplayRecord(value: RoleplayRecord | null): value is RoleplayRecord {
+  return value !== null;
+}
+
+function normalizeLocalRecord(value: unknown): RoleplayRecord | null {
+  if (!value || typeof value !== "object") return null;
+
+  const record = value as RoleplayRecord;
+  const scopes = normalizeRoleplayScopes(record.scopes ?? record.scope);
+  if (!record.id || scopes.length === 0) return null;
+
+  return {
+    ...record,
+    scope: scopes.join(","),
+    scopeLabel: record.scopeLabel || getRoleplayScopeText(scopes),
+    scopes,
+    scopeLabels: record.scopeLabels?.length ? record.scopeLabels : getRoleplayScopeLabels(scopes),
+  };
 }
 
 function getStorageModeLabel(mode: StorageMode) {
