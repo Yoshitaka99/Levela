@@ -46,12 +46,31 @@ const emptyData: FalseReportData = {
 };
 
 const tabs: { id: TabId; label: string }[] = [
+  { id: "customers", label: "顧客管理" },
   { id: "changes", label: "差分" },
   { id: "falseReports", label: "虚偽報告" },
   { id: "problemOk", label: "問題無し" },
-  { id: "customers", label: "顧客管理" },
   { id: "replies", label: "返信あり" },
 ];
+
+function splitCombinedStatus(value: string) {
+  const parts = value.split(/\s+\/\s+/).map((part) => part.trim()).filter(Boolean);
+  return {
+    first: parts[0] ?? value.trim(),
+    second: parts.length > 1 ? parts.slice(1).join(" / ") : "",
+  };
+}
+
+function seatOnly(value: string) {
+  return splitCombinedStatus(value).first;
+}
+
+function statusOnly(value: string, fallback = "") {
+  const split = splitCombinedStatus(value);
+  if (split.second) return split.second;
+  if (fallback && fallback !== value) return statusOnly(fallback);
+  return value.trim();
+}
 
 function includesQuery(values: string[], query: string) {
   if (!query) return true;
@@ -88,11 +107,15 @@ function statusClass(status: string) {
     return "border-green-200 bg-green-100 text-emerald-800";
   }
   if (normalized.includes("返信なし")) return "border-red-200 bg-red-100 text-red-700";
-  if (normalized.includes("日程調整済")) return "border-zinc-200 bg-zinc-100 text-zinc-800";
+  if (normalized.includes("日程調整済")) {
+    return "border-zinc-200 bg-zinc-100 text-zinc-800";
+  }
   if (normalized.includes("重複予約") || normalized.includes("無効アポ") || normalized.includes("MLM失注")) {
     return "border-purple-200 bg-purple-700 text-white";
   }
-  if (normalized === "飛び" || normalized.includes("飛び")) return "border-zinc-200 bg-zinc-100 text-zinc-700";
+  if (normalized === "飛び" || normalized.includes("飛び")) {
+    return "border-zinc-200 bg-zinc-100 text-zinc-700";
+  }
 
   return "border-zinc-200 bg-white text-zinc-800";
 }
@@ -167,7 +190,7 @@ function DecisionCheckbox({
 
 export default function FalseReportCheckerClient() {
   const [data, setData] = useState<FalseReportData>(emptyData);
-  const [activeTab, setActiveTab] = useState<TabId>("changes");
+  const [activeTab, setActiveTab] = useState<TabId>("customers");
   const [query, setQuery] = useState("");
   const [launchFilter, setLaunchFilter] = useState("all");
   const [handler, setHandler] = useState(handlers[0]);
@@ -409,11 +432,11 @@ export default function FalseReportCheckerClient() {
   };
 
   return (
-    <main className="min-h-screen bg-zinc-50 text-zinc-950">
+    <main className="min-h-screen bg-slate-200 text-slate-950">
       <div className="mx-auto flex w-full max-w-none flex-col gap-4 px-6 py-5 2xl:px-10">
-        <header className="flex flex-col gap-3 border-b border-zinc-200 pb-4 xl:flex-row xl:items-end xl:justify-between">
+        <header className="flex flex-col gap-3 rounded-lg border border-slate-300 bg-slate-50 px-5 py-4 shadow-sm xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="text-sm font-medium text-zinc-500">軽量版シート操作</p>
+            <p className="text-sm font-medium text-slate-500">軽量版シート操作</p>
             <h1 className="text-2xl font-semibold tracking-normal">虚偽報告チェック</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -448,13 +471,13 @@ export default function FalseReportCheckerClient() {
           <Metric label="最終取得" value={formatDateTime(data.updatedAt)} />
         </section>
 
-        <section className="flex flex-col gap-3 border-b border-zinc-200 pb-4 xl:flex-row xl:items-center xl:justify-between">
+        <section className="flex flex-col gap-3 rounded-lg border border-slate-300 bg-slate-50 p-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex gap-1 rounded bg-zinc-200 p-1">
+            <div className="flex gap-1 rounded bg-slate-200 p-1">
               {tabs.map((tab) => (
                 <button
                   className={`h-9 whitespace-nowrap rounded px-3 text-sm font-medium ${
-                    activeTab === tab.id ? "bg-white text-zinc-950 shadow-sm" : "text-zinc-600 hover:bg-zinc-100"
+                    activeTab === tab.id ? "bg-blue-700 text-white shadow-sm" : "text-slate-700 hover:bg-white"
                   }`}
                   key={tab.id}
                   type="button"
@@ -581,9 +604,13 @@ export default function FalseReportCheckerClient() {
 
 function Metric({ label, value, danger = false }: { label: string; value: string | number; danger?: boolean }) {
   return (
-    <div className="rounded border border-zinc-200 bg-white px-3 py-3">
-      <div className="text-xs font-medium text-zinc-500">{label}</div>
-      <div className={`mt-1 truncate text-xl font-semibold ${danger ? "text-red-700" : "text-zinc-950"}`}>
+    <div
+      className={`rounded-lg border px-3 py-3 shadow-sm ${
+        danger ? "border-red-200 bg-red-50" : "border-slate-200 bg-white"
+      }`}
+    >
+      <div className="text-xs font-medium text-slate-500">{label}</div>
+      <div className={`mt-1 truncate text-xl font-semibold ${danger ? "text-red-700" : "text-slate-950"}`}>
         {value}
       </div>
     </div>
@@ -610,16 +637,16 @@ function CustomersTable({
   return (
     <TableShell>
       <table className="w-full table-fixed text-left text-sm">
-        <thead className="sticky top-0 bg-zinc-100 text-xs font-semibold text-zinc-600">
+        <thead className="sticky top-0 bg-slate-200 text-xs font-semibold text-slate-700">
           <tr>
             <Th className="w-[9%]">操作</Th>
             <Th className="w-[13%]">顧客</Th>
             <Th className="w-[14%]">ローンチ</Th>
             <Th className="w-[9%]">担当</Th>
-            <Th className="w-[11%]">確認時 着座</Th>
-            <Th className="w-[12%]">確認時 ステータス</Th>
-            <Th className="w-[11%]">現在 着座</Th>
-            <Th className="w-[12%]">現在 ステータス</Th>
+            <Th className="w-[11%] bg-sky-100">確認時 着座</Th>
+            <Th className="w-[12%] bg-sky-100">確認時 ステータス</Th>
+            <Th className="w-[11%] bg-amber-100">現在 着座</Th>
+            <Th className="w-[12%] bg-amber-100">現在 ステータス</Th>
             <Th className="w-[9%]">状態</Th>
           </tr>
         </thead>
@@ -629,7 +656,15 @@ function CustomersTable({
             const selected = decisionSelections[row.rowNumber];
             return (
               <tr
-                className={row.changed ? "bg-red-50/60" : row.confirmed ? "bg-zinc-50 text-zinc-500" : ""}
+                className={
+                  row.changed
+                    ? changesOnly
+                      ? "bg-red-50/60"
+                      : "bg-yellow-100/70"
+                    : row.confirmed
+                      ? "bg-slate-50 text-slate-500"
+                      : "bg-white"
+                }
                 key={row.rowNumber}
               >
                 <Td>
@@ -689,17 +724,17 @@ function CustomersTable({
                 </Td>
                 <Td>{row.seminar || "-"}</Td>
                 <Td>{row.ownerName || "-"}</Td>
-                <Td>
-                  <StatusBadge value={row.confirmedSeatStatus} />
+                <Td className="bg-sky-50/80">
+                  <StatusBadge value={seatOnly(row.confirmedSeatStatus || row.confirmedSecondStatus)} />
                 </Td>
-                <Td>
-                  <StatusBadge value={row.confirmedSecondStatus} />
+                <Td className="bg-sky-50/80">
+                  <StatusBadge value={statusOnly(row.confirmedSecondStatus, row.confirmedSeatStatus)} />
                 </Td>
-                <Td>
-                  <StatusBadge value={row.currentSeatStatus} />
+                <Td className="bg-amber-50/80">
+                  <StatusBadge value={seatOnly(row.currentSeatStatus)} />
                 </Td>
-                <Td>
-                  <StatusBadge value={row.currentSecondStatus} />
+                <Td className="bg-amber-50/80">
+                  <StatusBadge value={statusOnly(row.currentSecondStatus, row.currentSeatStatus)} />
                 </Td>
                 <Td>
                   <span
@@ -740,7 +775,7 @@ function FalseReportsTable({
   return (
     <TableShell>
       <table className="w-full table-fixed text-left text-sm">
-        <thead className="sticky top-0 bg-zinc-100 text-xs font-semibold text-zinc-600">
+        <thead className="sticky top-0 bg-slate-200 text-xs font-semibold text-slate-700">
           <tr>
             <Th className="w-[15%]">顧客</Th>
             <Th className="w-[14%]">ローンチ</Th>
@@ -811,7 +846,7 @@ function ProblemOkTable({ rows }: { rows: ProblemOkRow[] }) {
   return (
     <TableShell>
       <table className="w-full table-fixed text-left text-sm">
-        <thead className="sticky top-0 bg-zinc-100 text-xs font-semibold text-zinc-600">
+        <thead className="sticky top-0 bg-slate-200 text-xs font-semibold text-slate-700">
           <tr>
             <Th className="w-[16%]">顧客</Th>
             <Th className="w-[14%]">ローンチ</Th>
@@ -870,7 +905,7 @@ function RepliesTable({
   return (
     <TableShell>
       <table className="w-full table-fixed text-left text-sm">
-        <thead className="sticky top-0 bg-zinc-100 text-xs font-semibold text-zinc-600">
+        <thead className="sticky top-0 bg-slate-200 text-xs font-semibold text-slate-700">
           <tr>
             <Th className="w-[14%]">顧客</Th>
             <Th className="w-[14%]">ローンチ</Th>
@@ -1025,7 +1060,7 @@ function SelectCell({
 
 function TableShell({ children }: { children: ReactNode }) {
   return (
-    <section className="overflow-hidden rounded border border-zinc-200 bg-white">
+    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="max-h-[68vh] overflow-y-auto overflow-x-hidden">{children}</div>
     </section>
   );
@@ -1046,6 +1081,6 @@ function Th({ children, className = "" }: { children: ReactNode; className?: str
   return <th className={`px-2 py-2 ${className}`}>{children}</th>;
 }
 
-function Td({ children }: { children: ReactNode }) {
-  return <td className="align-top break-words px-2 py-3">{children}</td>;
+function Td({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <td className={`align-top break-words px-2 py-3 ${className}`}>{children}</td>;
 }
