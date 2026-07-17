@@ -843,6 +843,16 @@ function aggregateRows(
     .slice(0, 8);
   const weeklyKpis = buildWeeklyKpis(scopedRows);
   const appointmentWeeklyKpis = buildAppointmentWeeklyKpis(scopedRows);
+  const memberWeeklyKpis = memberGroups.map((group) => {
+    const memberRows = scopedRows.filter((row) => getMemberKeyForRow(row) === group.key);
+    return {
+      memberKey: group.key,
+      name: group.name,
+      team: group.team,
+      weeklyKpis: buildWeeklyKpis(memberRows),
+      appointmentWeeklyKpis: buildAppointmentWeeklyKpis(memberRows),
+    };
+  });
   const customerRows = buildCustomerRows(scopedDisplayRows);
   const calendarRows = buildCustomerRows(scopedCalendarRows);
 
@@ -861,6 +871,7 @@ function aggregateRows(
     statusMix,
     weeklyKpis,
     appointmentWeeklyKpis,
+    memberWeeklyKpis,
     customerRows,
     calendarRows,
   };

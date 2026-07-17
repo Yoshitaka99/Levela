@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AdSourceFilter, CustomerManagementRow, ReasonCount, TeamMemberKpi, TeamSalesDashboardData, TrafficFilter } from "./data";
+import type { AdSourceFilter, CustomerManagementRow, MemberWeeklyKpis, ReasonCount, TeamMemberKpi, TeamSalesDashboardData, TrafficFilter } from "./data";
 
 type TabKey = "overview" | "appointments" | "members" | "reasons" | "alerts";
 type SortKey = "projectedRate" | "closeRate" | "seatRate" | "reservationSlots" | "seated" | "closed" | "projected" | "lost" | "hold";
@@ -300,14 +300,20 @@ function getWeekOrder(label: string) {
 
 function WeeklyLineCharts({
   weeks,
+  comparisonWeeks = [],
+  comparisonLabel,
   title,
   emptyText,
 }: {
   weeks: TeamSalesDashboardData["weeklyKpis"];
+  comparisonWeeks?: TeamSalesDashboardData["weeklyKpis"];
+  comparisonLabel?: string;
   title: string;
   emptyText: string;
 }) {
-  if (!weeks.length) {
+  const chartWeeks = [...weeks, ...comparisonWeeks];
+
+  if (!chartWeeks.length) {
     return (
       <div className="rounded-lg border border-white/10 bg-slate-950/30 p-3">
         <p className="text-sm font-semibold text-white">{title}</p>
@@ -316,8 +322,8 @@ function WeeklyLineCharts({
     );
   }
 
-  const weekLabels = Array.from(new Set(weeks.map((week) => week.label))).sort((a, b) => getWeekOrder(a) - getWeekOrder(b));
-  const seminars = Array.from(new Set(weeks.map((week) => week.seminar)));
+  const weekLabels = Array.from(new Set(chartWeeks.map((week) => week.label))).sort((a, b) => getWeekOrder(a) - getWeekOrder(b));
+  const seminars = Array.from(new Set(chartWeeks.map((week) => week.seminar)));
   const chartWidth = 280;
   const chartHeight = 118;
   const padding = { top: 10, right: 8, bottom: 24, left: 30 };
@@ -341,6 +347,12 @@ function WeeklyLineCharts({
               {seminar}
             </span>
           ))}
+          {comparisonLabel ? (
+            <span className="inline-flex items-center gap-1 text-amber-100">
+              <span className="h-px w-5 border-t border-dashed border-amber-200" />
+              {comparisonLabel}
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -398,6 +410,41 @@ function WeeklyLineCharts({
                   </g>
                 );
               })}
+
+              {comparisonLabel ? seminars.map((seminar, seminarIndex) => {
+                const color = weeklyLineColors[seminarIndex % weeklyLineColors.length];
+                const points = weekLabels
+                  .map((label, index) => {
+                    const week = comparisonWeeks.find((item) => item.seminar === seminar && item.label === label);
+                    if (!week) return null;
+                    const point = getPoint(index, week[metric.key]);
+                    return { ...point, value: week[metric.key], key: `${comparisonLabel}-${seminar}-${label}` };
+                  })
+                  .filter((point): point is { x: number; y: number; value: number; key: string } => Boolean(point));
+                const linePoints = points.map((point) => `${point.x},${point.y}`).join(" ");
+
+                return (
+                  <g key={`${comparisonLabel}-${seminar}`}>
+                    {points.length > 1 ? (
+                      <polyline
+                        points={linePoints}
+                        fill="none"
+                        stroke={color}
+                        strokeWidth="2"
+                        strokeDasharray="5 4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        opacity="0.95"
+                      />
+                    ) : null}
+                    {points.map((point) => (
+                      <circle key={point.key} cx={point.x} cy={point.y} r="3.1" fill="#020617" stroke={color} strokeWidth="2">
+                        <title>{`${comparisonLabel} ${seminar} ${formatPercent(point.value)}`}</title>
+                      </circle>
+                    ))}
+                  </g>
+                );
+              }) : null}
             </svg>
           </div>
         ))}
@@ -406,13 +453,55 @@ function WeeklyLineCharts({
   );
 }
 
+function findMatchingWeek(weeks: TeamSalesDashboardData["weeklyKpis"], target: TeamSalesDashboardData["weeklyKpis"][number]) {
+  return weeks.find((week) => week.seminar === target.seminar && week.label === target.label);
+}
+
+function findMemberWeeklyKpis(items: MemberWeeklyKpis[], selection: string) {
+  if (!selection) return undefined;
+  return items.find((item) => item.memberKey === selection) ?? items.find((item) => item.name === selection);
+}
+
+function WeeklyComparisonMetric({
+  label,
+  teamValue,
+  memberValue,
+}: {
+  label: string;
+  teamValue: number;
+  memberValue: number;
+}) {
+  const delta = memberValue - teamValue;
+  const deltaText = `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}pt`;
+  const deltaClass = delta > 0 ? "text-emerald-200" : delta < 0 ? "text-rose-200" : "text-slate-300";
+
+  return (
+    <div className="rounded-md border border-amber-200/15 bg-amber-200/10 px-2 py-1.5">
+      <p className="text-[11px] text-slate-400">{label}</p>
+      <p className="mt-0.5 text-xs font-semibold text-amber-50">{formatPercent(memberValue)}</p>
+      <p className={`mt-0.5 text-[11px] font-medium ${deltaClass}`}>{deltaText}</p>
+    </div>
+  );
+}
+
 function WeeklyKpiPanel({
   weeks,
   appointmentWeeks,
+  memberWeeklyKpis,
+  members,
+  selectedComparisonMember,
+  onComparisonMemberChange,
 }: {
   weeks: TeamSalesDashboardData["weeklyKpis"];
   appointmentWeeks: TeamSalesDashboardData["appointmentWeeklyKpis"];
+  memberWeeklyKpis: TeamSalesDashboardData["memberWeeklyKpis"];
+  members: TeamMemberKpi[];
+  selectedComparisonMember: string;
+  onComparisonMemberChange: (member: string) => void;
 }) {
+  const comparison = findMemberWeeklyKpis(memberWeeklyKpis, selectedComparisonMember);
+  const comparisonLabel = comparison ? `${comparison.name} / ${comparison.team}` : "";
+
   if (!weeks.length && !appointmentWeeks.length) {
     return (
       <section className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-4">
@@ -435,48 +524,99 @@ function WeeklyKpiPanel({
           </div>
           <p className="mt-1 text-xs text-slate-400">上段はセミナー別、下段は面談日の年月別で第1週〜第5週に分けています。</p>
         </div>
-        <span className="rounded-md border border-white/10 bg-slate-950/50 px-2 py-1 text-xs text-slate-300">
-          {weeks.length}枠
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-xs text-slate-400" htmlFor="weekly-member-comparison">
+            比較メンバー
+          </label>
+          <select
+            id="weekly-member-comparison"
+            value={selectedComparisonMember}
+            onChange={(event) => onComparisonMemberChange(event.target.value)}
+            className="h-9 min-w-[180px] rounded-md border border-amber-200/25 bg-slate-950 px-3 text-sm text-white outline-none"
+          >
+            <option value="">比較なし</option>
+            {members.map((member) => (
+              <option key={memberSelectionValue(member)} value={memberSelectionValue(member)}>
+                {member.name} / {member.team}
+              </option>
+            ))}
+          </select>
+          <span className="rounded-md border border-white/10 bg-slate-950/50 px-2 py-1 text-xs text-slate-300">
+            {weeks.length}枠
+          </span>
+        </div>
       </div>
 
       <div className="mt-4 space-y-3">
-        <WeeklyLineCharts weeks={weeks} title="セミナー別折れ線" emptyText="セミナー別に表示できる週別データがありません。" />
+        <WeeklyLineCharts
+          weeks={weeks}
+          comparisonWeeks={comparison?.weeklyKpis}
+          comparisonLabel={comparisonLabel}
+          title="セミナー別折れ線"
+          emptyText="セミナー別に表示できる週別データがありません。"
+        />
         <WeeklyLineCharts
           weeks={appointmentWeeks}
+          comparisonWeeks={comparison?.appointmentWeeklyKpis}
+          comparisonLabel={comparisonLabel}
           title="面談日基準の折れ線"
           emptyText="面談日基準で表示できる週別データがありません。"
         />
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-        {weeks.map((week) => (
-          <div key={week.key} className="rounded-lg border border-white/10 bg-slate-950/35 p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-white" title={week.seminar}>
-                  {week.seminar}
-                </p>
-                <p className="mt-1 text-xs text-teal-100">{week.label}</p>
+        {weeks.map((week) => {
+          const comparisonWeek = comparison ? findMatchingWeek(comparison.weeklyKpis, week) : undefined;
+
+          return (
+            <div key={week.key} className="rounded-lg border border-white/10 bg-slate-950/35 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-white" title={week.seminar}>
+                    {week.seminar}
+                  </p>
+                  <p className="mt-1 text-xs text-teal-100">{week.label}</p>
+                </div>
+                <span className="shrink-0 rounded bg-white/5 px-2 py-1 text-xs text-slate-300">抽出 {week.leads}</span>
               </div>
-              <span className="shrink-0 rounded bg-white/5 px-2 py-1 text-xs text-slate-300">抽出 {week.leads}</span>
-            </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-              <SmallMetric label="着座率" value={formatPercent(week.seatRate)} />
-              <SmallMetric label="成約率" value={formatPercent(week.closeRate)} />
-              <SmallMetric label="保留率" value={formatPercent(week.holdRate)} />
-              <SmallMetric label="着金率" value={formatPercent(week.paidRate)} />
-            </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                <SmallMetric label="着座率" value={formatPercent(week.seatRate)} />
+                <SmallMetric label="成約率" value={formatPercent(week.closeRate)} />
+                <SmallMetric label="保留率" value={formatPercent(week.holdRate)} />
+                <SmallMetric label="着金率" value={formatPercent(week.paidRate)} />
+              </div>
 
-            <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs text-slate-400">
-              <span>着座 {week.seated}</span>
-              <span>成約 {week.closed}</span>
-              <span>予定 {week.pending}</span>
-              <span>保留 {week.hold}</span>
+              <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs text-slate-400">
+                <span>着座 {week.seated}</span>
+                <span>成約 {week.closed}</span>
+                <span>予定 {week.pending}</span>
+                <span>保留 {week.hold}</span>
+              </div>
+
+              {comparison ? (
+                comparisonWeek ? (
+                  <div className="mt-3 rounded-lg border border-amber-200/15 bg-amber-200/5 p-2">
+                    <div className="mb-2 flex items-center justify-between gap-2 text-xs">
+                      <span className="font-semibold text-amber-100">{comparison.name} / {comparison.team}</span>
+                      <span className="text-slate-400">抽出 {comparisonWeek.leads} / 成約 {comparisonWeek.closed}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <WeeklyComparisonMetric label="着座率" teamValue={week.seatRate} memberValue={comparisonWeek.seatRate} />
+                      <WeeklyComparisonMetric label="成約率" teamValue={week.closeRate} memberValue={comparisonWeek.closeRate} />
+                      <WeeklyComparisonMetric label="保留率" teamValue={week.holdRate} memberValue={comparisonWeek.holdRate} />
+                      <WeeklyComparisonMetric label="着金率" teamValue={week.paidRate} memberValue={comparisonWeek.paidRate} />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-3 rounded-md border border-amber-200/15 bg-amber-200/5 px-2 py-2 text-xs text-slate-400">
+                    {comparison.name}のこの週のデータはありません。
+                  </p>
+                )
+              ) : null}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -767,6 +907,7 @@ export function TeamSalesDashboardClient({
         ? memberSelectionValue(findMemberBySelection(initialData.members, initialMember)!)
         : initialData.members[0] ? memberSelectionValue(initialData.members[0]) : "",
   );
+  const [selectedWeeklyMember, setSelectedWeeklyMember] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showOpening, setShowOpening] = useState(false);
@@ -875,6 +1016,13 @@ export function TeamSalesDashboardClient({
       setSelectedMember(memberSelectionValue(filteredMembers[0]));
     }
   }, [filteredMembers, selectedMember]);
+
+  useEffect(() => {
+    if (!selectedWeeklyMember) return;
+    if (!findMemberBySelection(data.members, selectedWeeklyMember)) {
+      setSelectedWeeklyMember("");
+    }
+  }, [data.members, selectedWeeklyMember]);
 
   const selected = findMemberBySelection(data.members, selectedMember) ?? data.members[0];
   const alertMembers = data.members.filter((member) => member.alert > 0 || member.hold > 0);
@@ -1224,7 +1372,14 @@ export function TeamSalesDashboardClient({
           <MetricTile label="要確認" value={`${totals.alert}`} sub="成約済みで着金日未入力" tone="rose" icon={AlertTriangle} />
         </div>
 
-        <WeeklyKpiPanel weeks={data.weeklyKpis} appointmentWeeks={data.appointmentWeeklyKpis} />
+        <WeeklyKpiPanel
+          weeks={data.weeklyKpis}
+          appointmentWeeks={data.appointmentWeeklyKpis}
+          memberWeeklyKpis={data.memberWeeklyKpis}
+          members={data.members}
+          selectedComparisonMember={selectedWeeklyMember}
+          onComparisonMemberChange={setSelectedWeeklyMember}
+        />
 
         <div className="mt-5 flex flex-wrap gap-2">
           {tabs.map((tab) => (

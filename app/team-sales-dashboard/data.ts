@@ -55,6 +55,14 @@ export type WeeklyKpi = {
   paidRate: number;
 };
 
+export type MemberWeeklyKpis = {
+  memberKey: string;
+  name: string;
+  team: string;
+  weeklyKpis: WeeklyKpi[];
+  appointmentWeeklyKpis: WeeklyKpi[];
+};
+
 export type CustomerManagementRow = {
   member: string;
   team: string;
@@ -86,6 +94,7 @@ export type TeamSalesDashboardData = {
   statusMix: StatusCount[];
   weeklyKpis: WeeklyKpi[];
   appointmentWeeklyKpis: WeeklyKpi[];
+  memberWeeklyKpis: MemberWeeklyKpis[];
   customerRows: CustomerManagementRow[];
   calendarRows: CustomerManagementRow[];
 };
@@ -105,6 +114,7 @@ export const defaultTeamSalesDashboardData: TeamSalesDashboardData = {
   statusMix: [],
   weeklyKpis: [],
   appointmentWeeklyKpis: [],
+  memberWeeklyKpis: [],
   customerRows: [],
   calendarRows: [],
 };
