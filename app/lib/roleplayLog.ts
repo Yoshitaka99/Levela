@@ -5,6 +5,7 @@ export const roleplayScopeOptions = [
   { value: "authorityFrom", label: "権威性から" },
   { value: "authorityOnly", label: "権威性のみ" },
   { value: "hearingFrom", label: "ヒアリングから" },
+  { value: "hearingUntil", label: "ヒアリングまで" },
   { value: "hearing", label: "ヒアリングのみ" },
   { value: "accountProposal", label: "アカウント提案まで" },
   { value: "accountProposalOnly", label: "アカウント提案のみ" },
