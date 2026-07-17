@@ -2,7 +2,6 @@ node_modules/
 .next/
 .git/
 .vercel/
-.env*
 *.log
 
 outputs/
