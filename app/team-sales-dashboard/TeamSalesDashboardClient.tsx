@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AdSourceFilter, CustomerManagementRow, MemberWeeklyKpis, ReasonCount, TeamMemberKpi, TeamSalesDashboardData, TrafficFilter } from "./data";
+import type { AdSourceFilter, CustomerManagementRow, DateBasis, MemberWeeklyKpis, ReasonCount, TeamMemberKpi, TeamSalesDashboardData, TrafficFilter } from "./data";
 
 type TabKey = "overview" | "appointments" | "members" | "reasons" | "alerts";
 type SortKey = "projectedRate" | "closeRate" | "seatRate" | "reservationSlots" | "seated" | "closed" | "projected" | "lost" | "hold";
@@ -24,6 +24,11 @@ type AdminSortKey = "appointmentDesc" | "appointmentAsc" | "memberAsc" | "member
 const ALL_ADMIN_MEMBERS = "all";
 const ALL_SEMINARS_LABEL = "全期間";
 const SEMINAR_SEPARATOR = ",";
+
+const dateBasisOptions: { key: DateBasis; label: string }[] = [
+  { key: "seminar", label: "セミナー月基準" },
+  { key: "appointment", label: "面談日月基準" },
+];
 
 const tabs: { key: TabKey; label: string }[] = [
   { key: "overview", label: "全体" },
@@ -870,6 +875,7 @@ export function TeamSalesDashboardClient({
   initialTeam,
   initialTraffic,
   initialAdSource,
+  initialDateBasis,
   initialOnlyAlerts,
   initialOnlyHold,
   initialView = "user",
@@ -884,6 +890,7 @@ export function TeamSalesDashboardClient({
   initialTeam?: string;
   initialTraffic: TrafficFilter;
   initialAdSource: AdSourceFilter;
+  initialDateBasis?: DateBasis;
   initialOnlyAlerts: boolean;
   initialOnlyHold: boolean;
   initialView?: ViewMode;
@@ -898,6 +905,7 @@ export function TeamSalesDashboardClient({
   const [selectedTeam, setSelectedTeam] = useState(initialTeam ?? initialData.selectedTeam);
   const [selectedTraffic, setSelectedTraffic] = useState<TrafficFilter>(initialTraffic ?? initialData.selectedTraffic);
   const [selectedAdSource, setSelectedAdSource] = useState<AdSourceFilter>(initialAdSource ?? initialData.selectedAdSource);
+  const [selectedDateBasis, setSelectedDateBasis] = useState<DateBasis>(initialDateBasis ?? initialData.selectedDateBasis ?? "seminar");
   const [onlyAlerts, setOnlyAlerts] = useState(initialOnlyAlerts);
   const [onlyHold, setOnlyHold] = useState(initialOnlyHold);
   const [selectedMember, setSelectedMember] = useState(
@@ -931,6 +939,7 @@ export function TeamSalesDashboardClient({
     const requestedTeam = selectedTeam;
     const requestedTraffic = selectedTraffic;
     const requestedAdSource = selectedAdSource;
+    const requestedDateBasis = selectedDateBasis;
 
     setIsRefreshing(true);
     try {
@@ -939,6 +948,7 @@ export function TeamSalesDashboardClient({
       if (requestedTeam) params.set("team", requestedTeam);
       if (requestedTraffic !== "all") params.set("traffic", requestedTraffic);
       if (requestedTraffic === "ad" && requestedAdSource !== "all") params.set("adSource", requestedAdSource);
+      params.set("dateBasis", requestedDateBasis);
       const response = await fetch(`/api/team-sales-dashboard?${params.toString()}`, { cache: "no-store" });
       const nextData = (await response.json()) as TeamSalesDashboardData;
 
@@ -949,6 +959,7 @@ export function TeamSalesDashboardClient({
       setSelectedTeam(nextData.selectedTeam || requestedTeam);
       setSelectedTraffic(nextData.selectedTraffic || requestedTraffic);
       setSelectedAdSource(nextData.selectedAdSource || requestedAdSource);
+      setSelectedDateBasis(nextData.selectedDateBasis || requestedDateBasis);
       setLastSyncedAt(new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }));
       setSelectedMember((currentMember) =>
         currentMember === ALL_ADMIN_MEMBERS || Boolean(findMemberBySelection(nextData.members, currentMember))
@@ -958,7 +969,7 @@ export function TeamSalesDashboardClient({
     } finally {
       if (requestId === refreshRequestRef.current) setIsRefreshing(false);
     }
-  }, [selectedAdSource, selectedSeminar, selectedTeam, selectedTraffic]);
+  }, [selectedAdSource, selectedDateBasis, selectedSeminar, selectedTeam, selectedTraffic]);
 
   useEffect(() => {
     if (hasMountedRef.current) {
@@ -1049,6 +1060,7 @@ export function TeamSalesDashboardClient({
       team?: string | null;
       traffic?: TrafficFilter;
       adSource?: AdSourceFilter;
+      dateBasis?: DateBasis;
       alerts?: boolean;
       hold?: boolean;
     } = {},
@@ -1067,6 +1079,7 @@ export function TeamSalesDashboardClient({
     const nextTeam = overrides.team === undefined ? selectedTeam : overrides.team;
     const nextTraffic = overrides.traffic ?? selectedTraffic;
     const nextAdSource = overrides.adSource ?? selectedAdSource;
+    const nextDateBasis = overrides.dateBasis ?? selectedDateBasis;
     const nextAlerts = overrides.alerts ?? onlyAlerts;
     const nextHold = overrides.hold ?? onlyHold;
 
@@ -1074,6 +1087,7 @@ export function TeamSalesDashboardClient({
     if (nextTeam) params.set("team", nextTeam);
     if (nextTraffic !== "all") params.set("traffic", nextTraffic);
     if (nextTraffic === "ad" && nextAdSource !== "all") params.set("adSource", nextAdSource);
+    if (nextDateBasis !== "seminar") params.set("dateBasis", nextDateBasis);
     if (nextMember) params.set("member", nextMember);
     if (nextQuery) params.set("q", nextQuery);
     if (nextAlerts) params.set("alerts", "1");
@@ -1137,6 +1151,14 @@ export function TeamSalesDashboardClient({
     window.history.replaceState(null, "", dashboardHref({ team: nextTeam, member: null }));
   }
 
+  function changeDateBasis(nextDateBasis: DateBasis) {
+    refreshRequestRef.current += 1;
+    setSelectedDateBasis(nextDateBasis);
+    setSelectedMember("");
+    setSelectedWeeklyMember("");
+    window.history.replaceState(null, "", dashboardHref({ dateBasis: nextDateBasis, member: null }));
+  }
+
   function changeTraffic(nextTraffic: TrafficFilter) {
     refreshRequestRef.current += 1;
     const nextAdSource = nextTraffic === "ad" ? selectedAdSource : "all";
@@ -1176,6 +1198,9 @@ export function TeamSalesDashboardClient({
             <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
               <CalendarDays className="h-4 w-4" />
               <span>{formatSelectedSeminars(selectedSeminar)}</span>
+              <span className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-2 py-0.5 text-xs text-cyan-100">
+                {dateBasisOptions.find((option) => option.key === selectedDateBasis)?.label}
+              </span>
               <span className="rounded-full border border-slate-600 px-2 py-0.5 text-xs">{data.selectedTeam}</span>
               <span className="rounded-full border border-slate-600 px-2 py-0.5 text-xs">
                 {selectedTraffic === "ad"
@@ -1216,6 +1241,20 @@ export function TeamSalesDashboardClient({
               >
                 管理者画面
               </button>
+            </div>
+            <div className="flex h-10 rounded-md border border-cyan-300/20 bg-white/5 p-1">
+              {dateBasisOptions.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => changeDateBasis(option.key)}
+                  className={`rounded px-3 text-sm font-medium ${
+                    selectedDateBasis === option.key ? "bg-cyan-300 text-slate-950" : "text-slate-300 hover:bg-white/10"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
             <div className="flex min-h-10 w-full max-w-full flex-wrap gap-1.5 rounded-md border border-teal-300/25 bg-slate-950 p-1 sm:w-[360px]">
               {data.seminars.map((seminar) => {
@@ -1283,6 +1322,7 @@ export function TeamSalesDashboardClient({
               <input type="hidden" name="sort" value={sortKey} />
               <input type="hidden" name="seminar" value={selectedSeminar} />
               <input type="hidden" name="team" value={selectedTeam} />
+              {selectedDateBasis !== "seminar" ? <input type="hidden" name="dateBasis" value={selectedDateBasis} /> : null}
               {selectedTraffic !== "all" ? <input type="hidden" name="traffic" value={selectedTraffic} /> : null}
               {selectedTraffic === "ad" && selectedAdSource !== "all" ? <input type="hidden" name="adSource" value={selectedAdSource} /> : null}
               {onlyAlerts ? <input type="hidden" name="alerts" value="1" /> : null}

@@ -3,6 +3,7 @@ import {
   defaultTeamSalesDashboardData,
   type AdSourceFilter,
   type CustomerManagementRow,
+  type DateBasis,
   type ReasonCount,
   type StatusCount,
   type TeamMemberKpi,
@@ -28,6 +29,8 @@ const ALL_TEAMS = "全チーム";
 const ALL_TRAFFIC: TrafficFilter = "all";
 const AD_TRAFFIC: TrafficFilter = "ad";
 const EXCLUDE_AD_TRAFFIC: TrafficFilter = "exclude_ad";
+const SEMINAR_DATE_BASIS: DateBasis = "seminar";
+const APPOINTMENT_DATE_BASIS: DateBasis = "appointment";
 const ALL_AD_SOURCES: AdSourceFilter = "all";
 const AD_SOURCE_X = "x";
 const AD_SOURCE_META = "meta";
@@ -247,7 +250,20 @@ function parseSheetDate(value: string) {
   return null;
 }
 
-function getEffectiveSeminar(row: SourceRow) {
+function formatSeminarMonthLabel(year: number, month: number) {
+  return `${String(year).slice(-2)}年${month}月セミナー`;
+}
+
+function getAppointmentSeminar(row: SourceRow) {
+  const parsedDate = parseSheetDate(getAppointmentDate(row));
+  if (!parsedDate) return "";
+  return formatSeminarMonthLabel(parsedDate.year, parsedDate.month);
+}
+
+function getEffectiveSeminar(row: SourceRow, dateBasis: DateBasis = SEMINAR_DATE_BASIS) {
+  if (dateBasis === APPOINTMENT_DATE_BASIS) {
+    return getAppointmentSeminar(row) || getSeminar(row);
+  }
   return getSeminar(row);
 }
 
@@ -261,14 +277,14 @@ function parseSeminarLaunchMonth(seminar: string) {
   return { year, month };
 }
 
-function usesJulyLaunchTeam(row: SourceRow) {
-  const parsed = parseSeminarLaunchMonth(getEffectiveSeminar(row));
+function usesJulyLaunchTeam(row: SourceRow, dateBasis: DateBasis) {
+  const parsed = parseSeminarLaunchMonth(getEffectiveSeminar(row, dateBasis));
   if (!parsed) return false;
   return parsed.year > JULY_LAUNCH_CUTOFF.year || (parsed.year === JULY_LAUNCH_CUTOFF.year && parsed.month >= JULY_LAUNCH_CUTOFF.month);
 }
 
-function getTeamDefinitionsForRow(row: SourceRow) {
-  return usesJulyLaunchTeam(row) ? JULY_LAUNCH_TEAM_DEFINITIONS : LEGACY_TEAM_DEFINITIONS;
+function getTeamDefinitionsForRow(row: SourceRow, dateBasis: DateBasis) {
+  return usesJulyLaunchTeam(row, dateBasis) ? JULY_LAUNCH_TEAM_DEFINITIONS : LEGACY_TEAM_DEFINITIONS;
 }
 
 function getTeamOrderIndex(team: string) {
@@ -277,20 +293,20 @@ function getTeamOrderIndex(team: string) {
   return team === SALES_AGENCY_TEAM ? TEAM_ORDER.length : TEAM_ORDER.length + 1;
 }
 
-function resolveTeamForRow(row: SourceRow) {
-  return resolveTeamForMember(getMember(row), getTeamDefinitionsForRow(row));
+function resolveTeamForRow(row: SourceRow, dateBasis: DateBasis = SEMINAR_DATE_BASIS) {
+  return resolveTeamForMember(getMember(row), getTeamDefinitionsForRow(row, dateBasis));
 }
 
 function getMemberKey(team: string, member: string) {
   return `${team}::${normalizeMemberName(member)}`;
 }
 
-function getMemberKeyForRow(row: SourceRow) {
-  return getMemberKey(resolveTeamForRow(row), getMember(row));
+function getMemberKeyForRow(row: SourceRow, dateBasis: DateBasis = SEMINAR_DATE_BASIS) {
+  return getMemberKey(resolveTeamForRow(row, dateBasis), getMember(row));
 }
 
-function getWeekLabel(row: SourceRow) {
-  const seminar = getEffectiveSeminar(row);
+function getWeekLabel(row: SourceRow, dateBasis: DateBasis = SEMINAR_DATE_BASIS) {
+  const seminar = getEffectiveSeminar(row, dateBasis);
   const parsedDate = parseSheetDate(getAppointmentDate(row));
   if (!parsedDate) {
     return {
@@ -420,6 +436,10 @@ function resolveTrafficFilter(value?: string | null): TrafficFilter {
   return ALL_TRAFFIC;
 }
 
+function resolveDateBasis(value?: string | null): DateBasis {
+  return value === APPOINTMENT_DATE_BASIS ? APPOINTMENT_DATE_BASIS : SEMINAR_DATE_BASIS;
+}
+
 function resolveAdSourceFilter(value?: string | null): AdSourceFilter {
   const requested = value
     ?.split(AD_SOURCE_SEPARATOR)
@@ -509,11 +529,11 @@ function isSeated(seat: string) {
   return normalized === "着座" || normalized === "着席" || normalized.endsWith("→着座");
 }
 
-function getSeminarOptions(rows: SourceRow[]) {
+function getSeminarOptions(rows: SourceRow[], dateBasis: DateBasis) {
   const seminars = [
     ...new Set(
       rows
-        .map((row) => getEffectiveSeminar(row))
+        .map((row) => getEffectiveSeminar(row, dateBasis))
         .filter((seminar) => seminar.includes("セミナー")),
     ),
   ].sort((a, b) => a.localeCompare(b, "ja", { numeric: true }));
@@ -558,16 +578,16 @@ function resolveTeamForMember(member: string, teamDefinitions: Record<string, st
   return match?.[0] ?? SALES_AGENCY_TEAM;
 }
 
-function getTeamOptionsForRows(rows: SourceRow[]) {
-  const rowTeams = new Set(rows.map((row) => resolveTeamForRow(row)));
+function getTeamOptionsForRows(rows: SourceRow[], dateBasis: DateBasis) {
+  const rowTeams = new Set(rows.map((row) => resolveTeamForRow(row, dateBasis)));
   const orderedTeams = TEAM_ORDER.filter((team) => team !== ALL_TEAMS && rowTeams.has(team));
   return [ALL_TEAMS, ...orderedTeams, ...(rowTeams.has(SALES_AGENCY_TEAM) ? [SALES_AGENCY_TEAM] : [])];
 }
 
 type WeeklyAccumulator = WeeklyKpi & { order: number };
 
-function buildWeeklyKpis(rows: SourceRow[]): WeeklyKpi[] {
-  return buildWeeklyKpisBy(rows, getWeekLabel);
+function buildWeeklyKpis(rows: SourceRow[], dateBasis: DateBasis): WeeklyKpi[] {
+  return buildWeeklyKpisBy(rows, (row) => getWeekLabel(row, dateBasis));
 }
 
 function buildAppointmentWeeklyKpis(rows: SourceRow[]): WeeklyKpi[] {
@@ -641,11 +661,12 @@ function resolveSelectedTeam(options: string[], requestedTeam?: string | null) {
 
 function buildCustomerRows(
   rows: SourceRow[],
+  dateBasis: DateBasis,
 ): CustomerManagementRow[] {
   return rows
     .map((row) => {
       const member = getMember(row);
-      const team = resolveTeamForRow(row);
+      const team = resolveTeamForRow(row, dateBasis);
       return {
         member,
         team,
@@ -677,8 +698,10 @@ function aggregateRows(
   requestedTeam?: string | null,
   requestedTraffic?: string | null,
   requestedAdSource?: string | null,
+  requestedDateBasis?: string | null,
 ): TeamSalesDashboardData {
-  const seminars = getSeminarOptions(rows);
+  const selectedDateBasis = resolveDateBasis(requestedDateBasis);
+  const seminars = getSeminarOptions(rows, selectedDateBasis);
   const selectedSeminars = resolveSelectedSeminars(seminars, requestedSeminar);
   const selectedSeminar = selectedSeminars.join(SEMINAR_SEPARATOR);
   const selectedTraffic = resolveTrafficFilter(requestedTraffic);
@@ -686,7 +709,7 @@ function aggregateRows(
 
   const seminarRows = rows.filter((row) => {
     const member = getMember(row);
-    const seminar = getEffectiveSeminar(row);
+    const seminar = getEffectiveSeminar(row, selectedDateBasis);
     const seat = getSeat(row);
     const status = getStatus(row);
     const matchesSeminar = selectedSeminars.includes(ALL_SEMINARS) || selectedSeminars.includes(seminar);
@@ -702,7 +725,7 @@ function aggregateRows(
 
   const displayRows = rows.filter((row) => {
     const member = getMember(row);
-    const seminar = getEffectiveSeminar(row);
+    const seminar = getEffectiveSeminar(row, selectedDateBasis);
     const seat = getSeat(row);
     const status = getStatus(row);
     const matchesSeminar = selectedSeminars.includes(ALL_SEMINARS) || selectedSeminars.includes(seminar);
@@ -730,9 +753,9 @@ function aggregateRows(
   });
 
   const optionRows = selectedSeminars.includes(ALL_SEMINARS) ? [...displayRows, ...calendarBaseRows] : displayRows;
-  const teams = getTeamOptionsForRows(optionRows);
+  const teams = getTeamOptionsForRows(optionRows, selectedDateBasis);
   const selectedTeam = resolveSelectedTeam(teams, requestedTeam);
-  const matchesSelectedTeam = (row: SourceRow) => selectedTeam === ALL_TEAMS || resolveTeamForRow(row) === selectedTeam;
+  const matchesSelectedTeam = (row: SourceRow) => selectedTeam === ALL_TEAMS || resolveTeamForRow(row, selectedDateBasis) === selectedTeam;
 
   const scopedRows = seminarRows.filter(matchesSelectedTeam);
   const scopedDisplayRows = displayRows.filter(matchesSelectedTeam);
@@ -749,7 +772,7 @@ function aggregateRows(
 
   const memberGroups = [...new Map([...scopedRows, ...scopedDisplayRows].map((row) => {
     const member = getMember(row);
-    const team = resolveTeamForRow(row);
+    const team = resolveTeamForRow(row, selectedDateBasis);
     return [getMemberKey(team, member), { key: getMemberKey(team, member), name: member, team }];
   })).values()].sort((a, b) => {
     const teamDiff = getTeamOrderIndex(a.team) - getTeamOrderIndex(b.team);
@@ -758,7 +781,7 @@ function aggregateRows(
   });
 
   const members: TeamMemberKpi[] = memberGroups.map((group) => {
-    const memberRows = scopedRows.filter((row) => getMemberKeyForRow(row) === group.key);
+    const memberRows = scopedRows.filter((row) => getMemberKeyForRow(row, selectedDateBasis) === group.key);
     const lostReasons = new Map<string, number>();
     const holdReasons = new Map<string, number>();
     const holdReasonDates = new Map<string, Set<string>>();
@@ -841,20 +864,20 @@ function aggregateRows(
     }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "ja"))
     .slice(0, 8);
-  const weeklyKpis = buildWeeklyKpis(scopedRows);
+  const weeklyKpis = buildWeeklyKpis(scopedRows, selectedDateBasis);
   const appointmentWeeklyKpis = buildAppointmentWeeklyKpis(scopedRows);
   const memberWeeklyKpis = memberGroups.map((group) => {
-    const memberRows = scopedRows.filter((row) => getMemberKeyForRow(row) === group.key);
+    const memberRows = scopedRows.filter((row) => getMemberKeyForRow(row, selectedDateBasis) === group.key);
     return {
       memberKey: group.key,
       name: group.name,
       team: group.team,
-      weeklyKpis: buildWeeklyKpis(memberRows),
+      weeklyKpis: buildWeeklyKpis(memberRows, selectedDateBasis),
       appointmentWeeklyKpis: buildAppointmentWeeklyKpis(memberRows),
     };
   });
-  const customerRows = buildCustomerRows(scopedDisplayRows);
-  const calendarRows = buildCustomerRows(scopedCalendarRows);
+  const customerRows = buildCustomerRows(scopedDisplayRows, selectedDateBasis);
+  const calendarRows = buildCustomerRows(scopedCalendarRows, selectedDateBasis);
 
   return {
     updatedAt: new Date().toISOString(),
@@ -863,6 +886,7 @@ function aggregateRows(
     selectedTeam,
     selectedTraffic,
     selectedAdSource,
+    selectedDateBasis,
     seminars,
     teams,
     members,
@@ -882,8 +906,9 @@ export async function fetchTeamSalesData(
   requestedTeam?: string | null,
   requestedTraffic?: string | null,
   requestedAdSource?: string | null,
+  requestedDateBasis?: string | null,
 ): Promise<TeamSalesDashboardData | null> {
-  const cacheKey = `${requestedSeminar ?? ""}::${requestedTeam ?? ""}::${requestedTraffic ?? ""}::${requestedAdSource ?? ""}`;
+  const cacheKey = `${requestedSeminar ?? ""}::${requestedTeam ?? ""}::${requestedTraffic ?? ""}::${requestedAdSource ?? ""}::${requestedDateBasis ?? ""}`;
   const cached = dataCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
@@ -919,7 +944,7 @@ export async function fetchTeamSalesData(
         (row) => getValue(row, 1, "担当者名").trim() && getValue(row, 2, "セミナー").trim(),
       );
       if (rows.length && hasExpectedHeaders) {
-        const data = aggregateRows(rows as SourceRow[], requestedSeminar, requestedTeam, requestedTraffic, requestedAdSource);
+        const data = aggregateRows(rows as SourceRow[], requestedSeminar, requestedTeam, requestedTraffic, requestedAdSource, requestedDateBasis);
         dataCache.set(cacheKey, { data, expiresAt: Date.now() + DATA_CACHE_TTL_MS });
         return data;
       }
@@ -936,7 +961,13 @@ export async function fetchTeamSalesData(
 export async function GET(request: Request) {
   try {
     const searchParams = new URL(request.url).searchParams;
-    const liveData = await fetchTeamSalesData(searchParams.get("seminar"), searchParams.get("team"), searchParams.get("traffic"), searchParams.get("adSource"));
+    const liveData = await fetchTeamSalesData(
+      searchParams.get("seminar"),
+      searchParams.get("team"),
+      searchParams.get("traffic"),
+      searchParams.get("adSource"),
+      searchParams.get("dateBasis"),
+    );
 
     return NextResponse.json(liveData ?? defaultTeamSalesDashboardData, {
       headers: { "Cache-Control": "no-store, max-age=0" },

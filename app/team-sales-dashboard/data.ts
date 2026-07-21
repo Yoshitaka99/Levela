@@ -7,6 +7,7 @@ export type ReasonCount = {
 
 export type TrafficFilter = "all" | "ad" | "exclude_ad";
 export type AdSourceFilter = string;
+export type DateBasis = "seminar" | "appointment";
 
 export type StatusCount = {
   label: string;
@@ -86,6 +87,7 @@ export type TeamSalesDashboardData = {
   selectedTeam: string;
   selectedTraffic: TrafficFilter;
   selectedAdSource: AdSourceFilter;
+  selectedDateBasis: DateBasis;
   seminars: string[];
   teams: string[];
   members: TeamMemberKpi[];
@@ -106,6 +108,7 @@ export const defaultTeamSalesDashboardData: TeamSalesDashboardData = {
   selectedTeam: "全チーム",
   selectedTraffic: "all",
   selectedAdSource: "all",
+  selectedDateBasis: "seminar",
   seminars: ["全期間", "5月セミナー"],
   teams: ["全チーム"],
   members: [],
