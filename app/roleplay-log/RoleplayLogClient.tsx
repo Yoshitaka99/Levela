@@ -45,6 +45,17 @@ type SummaryRow = {
   total: number;
 };
 
+type WeeklySummaryRow = {
+  weekStart: string;
+  weekEnd: string;
+  label: string;
+  recordCount: number;
+  sellerCount: number;
+  customerCount: number;
+  participantCount: number;
+  uniqueParticipantCount: number;
+};
+
 const localRecordsKey = "levela-roleplay-log-local-records-v1";
 
 export function RoleplayLogClient() {
@@ -149,6 +160,43 @@ export function RoleplayLogClient() {
     });
   }, [visibleRecords]);
 
+  const weeklyRows = useMemo(() => {
+    const rows = new Map<string, Omit<WeeklySummaryRow, "label" | "uniqueParticipantCount">>();
+    const participantNamesByWeek = new Map<string, Set<string>>();
+
+    for (const record of visibleRecords) {
+      const weekStart = getWeekStartDate(record.sessionDate);
+      const current = rows.get(weekStart) ?? {
+        weekStart,
+        weekEnd: addDaysToDateInput(weekStart, 6),
+        recordCount: 0,
+        sellerCount: 0,
+        customerCount: 0,
+        participantCount: 0,
+      };
+      const participantNames = participantNamesByWeek.get(weekStart) ?? new Set<string>();
+
+      current.recordCount += 1;
+      current.sellerCount += 1;
+      current.customerCount += 1;
+      current.participantCount += 2;
+      participantNames.add(record.sellerName);
+      participantNames.add(record.customerName);
+
+      rows.set(weekStart, current);
+      participantNamesByWeek.set(weekStart, participantNames);
+    }
+
+    return Array.from(rows.values())
+      .map((row) => ({
+        ...row,
+        label: formatWeekRange(row.weekStart),
+        uniqueParticipantCount: participantNamesByWeek.get(row.weekStart)?.size ?? 0,
+      }))
+      .sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+  }, [visibleRecords]);
+
+  const weeklyMaxRecordCount = Math.max(1, ...weeklyRows.map((row) => row.recordCount));
   const sellerEqualsCustomer = form.sellerName === form.customerName;
   const scopeMissing = form.scopes.length === 0;
   const submitCount = form.reciprocal ? 2 : 1;
@@ -478,6 +526,74 @@ export function RoleplayLogClient() {
               </Button>
             </div>
 
+            <section className="rounded-md border border-[#d9e2df] bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e3ebe8] px-4 py-3">
+                <div>
+                  <h2 className="font-bold">週別推移</h2>
+                  <p className="mt-1 text-xs font-medium text-[#60736c]">実施日ベース / 月曜始まり</p>
+                </div>
+                <span className="rounded-md bg-[#eef6f4] px-2 py-1 text-xs font-semibold text-[#0f5f52]">
+                  {weeklyRows.length}週
+                </span>
+              </div>
+              {weeklyRows.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-[#60736c]">該当する週別データはありません。</p>
+              ) : (
+                <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(360px,0.8fr)]">
+                  <div className="grid content-start gap-3">
+                    {weeklyRows.slice(0, 8).map((row) => {
+                      const percent = Math.max(6, Math.round((row.recordCount / weeklyMaxRecordCount) * 100));
+
+                      return (
+                        <article key={row.weekStart} className="grid gap-2 rounded-md border border-[#edf1ef] bg-[#fbfdfc] p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-semibold text-[#14211f]">{row.label}</div>
+                              <div className="mt-1 text-xs text-[#60736c]">参加者 {row.uniqueParticipantCount}名</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-xl font-bold tabular-nums text-[#0f5f52]">{row.recordCount}</div>
+                              <div className="text-xs font-medium text-[#60736c]">件</div>
+                            </div>
+                          </div>
+                          <div className="h-2 overflow-hidden rounded-full bg-[#e8efec]">
+                            <div className="h-full rounded-full bg-[#0f766e]" style={{ width: `${percent}%` }} />
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[560px] text-left text-sm">
+                      <thead className="bg-[#f6f8fb] text-xs text-[#60736c]">
+                        <tr>
+                          <th className="px-4 py-3">週</th>
+                          <th className="px-4 py-3 text-right">記録</th>
+                          <th className="px-4 py-3 text-right">営業役</th>
+                          <th className="px-4 py-3 text-right">お客さん役</th>
+                          <th className="px-4 py-3 text-right">役割合計</th>
+                          <th className="px-4 py-3 text-right">参加者</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {weeklyRows.map((row) => (
+                          <tr key={row.weekStart} className="border-t border-[#edf1ef]">
+                            <td className="px-4 py-3 font-medium">{row.label}</td>
+                            <td className="px-4 py-3 text-right font-bold tabular-nums">{row.recordCount}</td>
+                            <td className="px-4 py-3 text-right tabular-nums">{row.sellerCount}</td>
+                            <td className="px-4 py-3 text-right tabular-nums">{row.customerCount}</td>
+                            <td className="px-4 py-3 text-right tabular-nums">{row.participantCount}</td>
+                            <td className="px-4 py-3 text-right tabular-nums">{row.uniqueParticipantCount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </section>
+
             <div className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,0.55fr)]">
               <section className="rounded-md border border-[#d9e2df] bg-white shadow-sm">
                 <div className="flex items-center justify-between gap-3 border-b border-[#e3ebe8] px-4 py-3">
@@ -662,6 +778,46 @@ function firstDayOfCurrentMonth() {
   const date = new Date();
   date.setDate(1);
   return toDateInputValue(date);
+}
+
+function getWeekStartDate(value: string) {
+  const date = parseDateInputValue(value);
+  if (!date) return value;
+
+  const day = date.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + mondayOffset);
+
+  return toDateInputValue(date);
+}
+
+function addDaysToDateInput(value: string, days: number) {
+  const date = parseDateInputValue(value);
+  if (!date) return value;
+
+  date.setDate(date.getDate() + days);
+  return toDateInputValue(date);
+}
+
+function parseDateInputValue(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatWeekRange(weekStart: string) {
+  return `${formatDateWithYear(weekStart)} - ${formatDateWithYear(addDaysToDateInput(weekStart, 6))}`;
+}
+
+function formatDateWithYear(value: string) {
+  if (!value) return "未選択";
+
+  return new Date(`${value}T00:00:00`).toLocaleDateString("ja-JP", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  });
 }
 
 function formatDate(value: string) {
