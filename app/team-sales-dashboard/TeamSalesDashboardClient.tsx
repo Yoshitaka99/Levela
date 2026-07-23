@@ -20,14 +20,22 @@ type TabKey = "overview" | "appointments" | "members" | "reasons" | "alerts";
 type SortKey = "projectedRate" | "closeRate" | "seatRate" | "reservationSlots" | "seated" | "closed" | "projected" | "lost" | "hold";
 type ViewMode = "user" | "admin";
 type AdminSortKey = "appointmentDesc" | "appointmentAsc" | "memberAsc" | "memberDesc";
+type SeatCountFilter = "all" | "at_least_10" | "under_10";
 
 const ALL_ADMIN_MEMBERS = "all";
 const ALL_SEMINARS_LABEL = "全期間";
+const ALL_TEAMS_LABEL = "全チーム";
 const SEMINAR_SEPARATOR = ",";
 
 const dateBasisOptions: { key: DateBasis; label: string }[] = [
   { key: "seminar", label: "セミナー月基準" },
   { key: "appointment", label: "面談日月基準" },
+];
+
+const seatCountFilters: { key: SeatCountFilter; label: string }[] = [
+  { key: "all", label: "着座すべて" },
+  { key: "at_least_10", label: "着座10以上" },
+  { key: "under_10", label: "着座10未満" },
 ];
 
 const tabs: { key: TabKey; label: string }[] = [
@@ -876,6 +884,7 @@ export function TeamSalesDashboardClient({
   initialTraffic,
   initialAdSource,
   initialDateBasis,
+  initialSeatCountFilter = "all",
   initialOnlyAlerts,
   initialOnlyHold,
   initialView = "user",
@@ -891,6 +900,7 @@ export function TeamSalesDashboardClient({
   initialTraffic: TrafficFilter;
   initialAdSource: AdSourceFilter;
   initialDateBasis?: DateBasis;
+  initialSeatCountFilter?: SeatCountFilter;
   initialOnlyAlerts: boolean;
   initialOnlyHold: boolean;
   initialView?: ViewMode;
@@ -906,6 +916,7 @@ export function TeamSalesDashboardClient({
   const [selectedTraffic, setSelectedTraffic] = useState<TrafficFilter>(initialTraffic ?? initialData.selectedTraffic);
   const [selectedAdSource, setSelectedAdSource] = useState<AdSourceFilter>(initialAdSource ?? initialData.selectedAdSource);
   const [selectedDateBasis, setSelectedDateBasis] = useState<DateBasis>(initialDateBasis ?? initialData.selectedDateBasis ?? "seminar");
+  const [seatCountFilter, setSeatCountFilter] = useState<SeatCountFilter>(initialSeatCountFilter);
   const [onlyAlerts, setOnlyAlerts] = useState(initialOnlyAlerts);
   const [onlyHold, setOnlyHold] = useState(initialOnlyHold);
   const [selectedMember, setSelectedMember] = useState(
@@ -1005,11 +1016,16 @@ export function TeamSalesDashboardClient({
 
   const filteredMembers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
+    const canFilterSeatCount = selectedTeam === ALL_TEAMS_LABEL;
     const candidates = data.members.filter((member) => {
       const matchesQuery = !normalizedQuery || member.name.toLowerCase().includes(normalizedQuery);
       const matchesAlert = !onlyAlerts || member.alert > 0;
       const matchesHold = !onlyHold || member.hold > 0;
-      return matchesQuery && matchesAlert && matchesHold;
+      const matchesSeatCount =
+        !canFilterSeatCount ||
+        seatCountFilter === "all" ||
+        (seatCountFilter === "at_least_10" ? member.seated >= 10 : member.seated < 10);
+      return matchesQuery && matchesAlert && matchesHold && matchesSeatCount;
     });
 
     return [...candidates].sort((a, b) => {
@@ -1018,7 +1034,7 @@ export function TeamSalesDashboardClient({
       if (sortKey === "reservationSlots") return b.leads - a.leads;
       return b[sortKey] - a[sortKey];
     });
-  }, [data.members, onlyAlerts, onlyHold, query, sortKey]);
+  }, [data.members, onlyAlerts, onlyHold, query, seatCountFilter, selectedTeam, sortKey]);
 
   useEffect(() => {
     if (!filteredMembers.length) return;
@@ -1035,9 +1051,21 @@ export function TeamSalesDashboardClient({
     }
   }, [data.members, selectedWeeklyMember]);
 
+  useEffect(() => {
+    if (selectedTeam === ALL_TEAMS_LABEL || seatCountFilter === "all") return;
+    setSeatCountFilter("all");
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete("seatCount");
+    const nextSearch = nextUrl.searchParams.toString();
+    window.history.replaceState(null, "", `${nextUrl.pathname}${nextSearch ? `?${nextSearch}` : ""}`);
+  }, [seatCountFilter, selectedTeam]);
+
   const selected = findMemberBySelection(data.members, selectedMember) ?? data.members[0];
   const alertMembers = data.members.filter((member) => member.alert > 0 || member.hold > 0);
-  const activeFilterCount = Number(onlyAlerts) + Number(onlyHold) + Number(Boolean(query.trim())) + Number(selectedTraffic !== "all");
+  const activeSeatCountFilter = selectedTeam === ALL_TEAMS_LABEL && seatCountFilter !== "all";
+  const activeFilterCount =
+    Number(onlyAlerts) + Number(onlyHold) + Number(Boolean(query.trim())) + Number(selectedTraffic !== "all") + Number(activeSeatCountFilter);
   const selectedSeminarValues = useMemo(
     () => normalizeSeminarSelection(selectedSeminar, data.seminars),
     [data.seminars, selectedSeminar],
@@ -1061,6 +1089,7 @@ export function TeamSalesDashboardClient({
       traffic?: TrafficFilter;
       adSource?: AdSourceFilter;
       dateBasis?: DateBasis;
+      seatCount?: SeatCountFilter;
       alerts?: boolean;
       hold?: boolean;
     } = {},
@@ -1080,6 +1109,7 @@ export function TeamSalesDashboardClient({
     const nextTraffic = overrides.traffic ?? selectedTraffic;
     const nextAdSource = overrides.adSource ?? selectedAdSource;
     const nextDateBasis = overrides.dateBasis ?? selectedDateBasis;
+    const nextSeatCount = overrides.seatCount ?? seatCountFilter;
     const nextAlerts = overrides.alerts ?? onlyAlerts;
     const nextHold = overrides.hold ?? onlyHold;
 
@@ -1088,6 +1118,7 @@ export function TeamSalesDashboardClient({
     if (nextTraffic !== "all") params.set("traffic", nextTraffic);
     if (nextTraffic === "ad" && nextAdSource !== "all") params.set("adSource", nextAdSource);
     if (nextDateBasis !== "seminar") params.set("dateBasis", nextDateBasis);
+    if (nextTeam === ALL_TEAMS_LABEL && nextSeatCount !== "all") params.set("seatCount", nextSeatCount);
     if (nextMember) params.set("member", nextMember);
     if (nextQuery) params.set("q", nextQuery);
     if (nextAlerts) params.set("alerts", "1");
@@ -1147,8 +1178,15 @@ export function TeamSalesDashboardClient({
   function changeTeam(nextTeam: string) {
     refreshRequestRef.current += 1;
     setSelectedTeam(nextTeam);
+    if (nextTeam !== ALL_TEAMS_LABEL) setSeatCountFilter("all");
     setSelectedMember("");
-    window.history.replaceState(null, "", dashboardHref({ team: nextTeam, member: null }));
+    window.history.replaceState(null, "", dashboardHref({ team: nextTeam, seatCount: nextTeam === ALL_TEAMS_LABEL ? seatCountFilter : "all", member: null }));
+  }
+
+  function changeSeatCountFilter(nextSeatCountFilter: SeatCountFilter) {
+    setSeatCountFilter(nextSeatCountFilter);
+    setSelectedMember("");
+    window.history.replaceState(null, "", dashboardHref({ seatCount: nextSeatCountFilter, member: null }));
   }
 
   function changeDateBasis(nextDateBasis: DateBasis) {
@@ -1323,6 +1361,7 @@ export function TeamSalesDashboardClient({
               <input type="hidden" name="seminar" value={selectedSeminar} />
               <input type="hidden" name="team" value={selectedTeam} />
               {selectedDateBasis !== "seminar" ? <input type="hidden" name="dateBasis" value={selectedDateBasis} /> : null}
+              {selectedTeam === ALL_TEAMS_LABEL && seatCountFilter !== "all" ? <input type="hidden" name="seatCount" value={seatCountFilter} /> : null}
               {selectedTraffic !== "all" ? <input type="hidden" name="traffic" value={selectedTraffic} /> : null}
               {selectedTraffic === "ad" && selectedAdSource !== "all" ? <input type="hidden" name="adSource" value={selectedAdSource} /> : null}
               {onlyAlerts ? <input type="hidden" name="alerts" value="1" /> : null}
@@ -1353,6 +1392,22 @@ export function TeamSalesDashboardClient({
         </div>
 
         <div id="conditions" className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+          {selectedTeam === ALL_TEAMS_LABEL ? (
+            <div className="flex min-h-10 flex-wrap gap-1 rounded-md border border-white/10 bg-white/5 p-1">
+              {seatCountFilters.map((filter) => (
+                <button
+                  key={filter.key}
+                  type="button"
+                  onClick={() => changeSeatCountFilter(filter.key)}
+                  className={`rounded px-3 py-1.5 text-sm font-medium ${
+                    seatCountFilter === filter.key ? "bg-cyan-300 text-slate-950" : "text-slate-300 hover:bg-white/10"
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={() => {
@@ -1382,7 +1437,8 @@ export function TeamSalesDashboardClient({
               setOnlyHold(false);
               setSelectedTraffic("all");
               setSelectedAdSource("all");
-              window.history.replaceState(null, "", dashboardHref({ q: null, traffic: "all", adSource: "all", alerts: false, hold: false, member: null }));
+              setSeatCountFilter("all");
+              window.history.replaceState(null, "", dashboardHref({ q: null, traffic: "all", adSource: "all", seatCount: "all", alerts: false, hold: false, member: null }));
             }}
             className="inline-flex items-center gap-2 rounded-md bg-white/5 px-3 py-2 text-sm text-slate-300"
           >
