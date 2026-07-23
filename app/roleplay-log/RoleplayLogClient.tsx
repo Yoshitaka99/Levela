@@ -56,6 +56,12 @@ type WeeklySummaryRow = {
   uniqueParticipantCount: number;
 };
 
+type PersonWeeklySummaryRow = {
+  name: string;
+  total: number;
+  weeklyCounts: Record<string, number>;
+};
+
 const localRecordsKey = "levela-roleplay-log-local-records-v1";
 
 export function RoleplayLogClient() {
@@ -197,6 +203,22 @@ export function RoleplayLogClient() {
   }, [visibleRecords]);
 
   const weeklyMaxRecordCount = Math.max(1, ...weeklyRows.map((row) => row.recordCount));
+
+  const personWeeklyRows = useMemo(() => {
+    const rows = new Map<string, PersonWeeklySummaryRow>();
+
+    for (const record of visibleRecords) {
+      const weekStart = getWeekStartDate(record.sessionDate);
+      incrementPersonWeeklyCount(rows, record.sellerName, weekStart);
+      incrementPersonWeeklyCount(rows, record.customerName, weekStart);
+    }
+
+    return Array.from(rows.values()).sort((a, b) => {
+      if (a.total !== b.total) return b.total - a.total;
+      return a.name.localeCompare(b.name, "ja");
+    });
+  }, [visibleRecords]);
+
   const sellerEqualsCustomer = form.sellerName === form.customerName;
   const scopeMissing = form.scopes.length === 0;
   const submitCount = form.reciprocal ? 2 : 1;
@@ -594,6 +616,64 @@ export function RoleplayLogClient() {
               )}
             </section>
 
+            <section className="rounded-md border border-[#d9e2df] bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e3ebe8] px-4 py-3">
+                <div>
+                  <h2 className="font-bold">人別・週別件数</h2>
+                  <p className="mt-1 text-xs font-medium text-[#60736c]">営業役とお客さん役の合計 / 新しい週から表示</p>
+                </div>
+                <span className="rounded-md bg-[#eef6f4] px-2 py-1 text-xs font-semibold text-[#0f5f52]">
+                  {personWeeklyRows.length}名
+                </span>
+              </div>
+              {personWeeklyRows.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-[#60736c]">該当する人別週次データはありません。</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table
+                    className="w-full text-left text-sm"
+                    style={{ minWidth: `${320 + weeklyRows.length * 92}px` }}
+                  >
+                    <thead className="bg-[#f6f8fb] text-xs text-[#60736c]">
+                      <tr>
+                        <th className="sticky left-0 z-10 bg-[#f6f8fb] px-4 py-3">名前</th>
+                        <th className="px-4 py-3 text-right">合計</th>
+                        {weeklyRows.map((week) => (
+                          <th key={week.weekStart} className="px-3 py-3 text-right" title={week.label}>
+                            {formatWeekColumnLabel(week.weekStart)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {personWeeklyRows.map((row) => (
+                        <tr key={row.name} className="border-t border-[#edf1ef]">
+                          <td className="sticky left-0 z-10 bg-white px-4 py-3 font-medium shadow-[1px_0_0_#edf1ef]">
+                            {row.name}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold tabular-nums">{row.total}</td>
+                          {weeklyRows.map((week) => {
+                            const count = row.weeklyCounts[week.weekStart] ?? 0;
+
+                            return (
+                              <td
+                                key={week.weekStart}
+                                className={`px-3 py-3 text-right tabular-nums ${
+                                  count > 0 ? "font-bold text-[#0f5f52]" : "text-[#a0aaa6]"
+                                }`}
+                              >
+                                {count}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
             <div className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,0.55fr)]">
               <section className="rounded-md border border-[#d9e2df] bg-white shadow-sm">
                 <div className="flex items-center justify-between gap-3 border-b border-[#e3ebe8] px-4 py-3">
@@ -685,6 +765,18 @@ function toggleScope(form: FormState, scope: RoleplayScope): FormState {
     : [...form.scopes, scope];
 
   return { ...form, scopes };
+}
+
+function incrementPersonWeeklyCount(rows: Map<string, PersonWeeklySummaryRow>, name: string, weekStart: string) {
+  const row = rows.get(name) ?? {
+    name,
+    total: 0,
+    weeklyCounts: {},
+  };
+
+  row.total += 1;
+  row.weeklyCounts[weekStart] = (row.weeklyCounts[weekStart] ?? 0) + 1;
+  rows.set(name, row);
 }
 
 function Field({
@@ -808,6 +900,15 @@ function parseDateInputValue(value: string) {
 
 function formatWeekRange(weekStart: string) {
   return `${formatDateWithYear(weekStart)} - ${formatDateWithYear(addDaysToDateInput(weekStart, 6))}`;
+}
+
+function formatWeekColumnLabel(weekStart: string) {
+  if (!weekStart) return "";
+
+  return `${new Date(`${weekStart}T00:00:00`).toLocaleDateString("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+  })}週`;
 }
 
 function formatDateWithYear(value: string) {
