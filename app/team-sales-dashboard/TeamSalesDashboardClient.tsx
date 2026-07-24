@@ -1549,7 +1549,9 @@ export function TeamSalesDashboardClient({
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-semibold text-white">{member.name}</span>
-                      <span className="text-sm font-semibold text-cyan-100">{formatPercent(member.projectedRate)}</span>
+                      <span className="shrink-0 text-right text-xs font-semibold leading-5 text-cyan-100">
+                        実成約 {formatPercent(member.closeRate)} / 予定込 {formatPercent(member.projectedRate)}
+                      </span>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-400 sm:grid-cols-4">
                       <span>予約 {member.leads}</span>
@@ -2201,7 +2203,7 @@ function MemberTable({
                   <span className="rounded bg-cyan-300/15 px-1.5 py-0.5 text-xs font-semibold text-cyan-100">#{index + 1}</span>
                   <p className="truncate font-semibold text-white">{member.name}</p>
                 </div>
-                <p className="mt-1 text-xs text-slate-400">予約 {member.leads}件 / 着座 {member.seated}件</p>
+                <p className="mt-1 text-xs text-slate-400">着座 {member.seated}件 / 成約 {member.closed}件</p>
               </div>
               {member.alert > 0 ? (
                 <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-100">
@@ -2229,7 +2231,7 @@ function MemberTable({
               <th className="w-[5%] px-3 py-3 text-right">順位</th>
               <th className="w-[11%] px-3 py-3 text-left">メンバー</th>
               <th className="w-[9%] px-3 py-3 text-left">チーム</th>
-              <th className="w-[9%] px-3 py-3 text-right">予約/着座</th>
+              <th className="w-[9%] px-3 py-3 text-right">着座/成約数</th>
               <th className="w-[12%] px-3 py-3 text-left">着座率</th>
               <th className="w-[8%] px-3 py-3 text-right">成約/予定</th>
               <th className="w-[12%] px-3 py-3 text-right">成約内訳</th>
@@ -2252,7 +2254,7 @@ function MemberTable({
                 <td className="px-3 py-3 text-right font-semibold text-cyan-100">#{index + 1}</td>
                 <td className="truncate px-3 py-3 font-medium text-white" title={member.name}>{member.name}</td>
                 <td className="truncate px-3 py-3 text-slate-400" title={member.team}>{member.team}</td>
-                <td className="px-3 py-3 text-right text-slate-300">{member.leads}/{member.seated}</td>
+                <td className="px-3 py-3 text-right text-slate-300">{member.seated}/{member.closed}</td>
                 <td className="px-3 py-3">
                   <div className="flex items-center gap-2">
                     <span className="w-12 shrink-0 text-right text-slate-200">{formatPercent(member.seatRate)}</span>
