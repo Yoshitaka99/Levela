@@ -139,3 +139,82 @@ body {
     padding: 16px 24px;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* React Bits — animation keyframes                                    */
+/* ------------------------------------------------------------------ */
+
+.rb-shiny {
+  animation: rb-shine var(--rb-shiny-speed, 4s) linear infinite;
+}
+@keyframes rb-shine {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.rb-gradient-text {
+  animation: rb-gradient-move var(--rb-gradient-speed, 8s) linear infinite;
+}
+@keyframes rb-gradient-move {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 300% 50%;
+  }
+}
+
+.rb-aurora {
+  animation: rb-aurora-spin 18s linear infinite;
+  transform-origin: 50% 50%;
+}
+@keyframes rb-aurora-spin {
+  0% {
+    transform: translateX(-50%) rotate(0deg) scale(1.05);
+  }
+  50% {
+    transform: translateX(-50%) rotate(180deg) scale(1.2);
+  }
+  100% {
+    transform: translateX(-50%) rotate(360deg) scale(1.05);
+  }
+}
+
+.rb-star-orbit {
+  animation: rb-orbit-br var(--rb-star-speed, 5s) linear infinite alternate;
+  opacity: 0.7;
+}
+.rb-star-orbit-2 {
+  animation: rb-orbit-tl var(--rb-star-speed, 5s) linear infinite alternate;
+  opacity: 0.7;
+}
+@keyframes rb-orbit-br {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(-320%, -320%);
+  }
+}
+@keyframes rb-orbit-tl {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(320%, 320%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rb-shiny,
+  .rb-gradient-text,
+  .rb-aurora,
+  .rb-star-orbit,
+  .rb-star-orbit-2 {
+    animation: none;
+  }
+}
