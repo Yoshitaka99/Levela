@@ -1552,7 +1552,7 @@ export function TeamSalesDashboardClient({
             </div>
             <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
               <CalendarDays className="h-4 w-4" />
-              <span>{formatSelectedSeminars(selectedSeminar)}</span>
+              <span>{selectedPeriodLabel}</span>
               <span className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-2 py-0.5 text-xs text-cyan-100">
                 {dateBasisOptions.find((option) => option.key === selectedDateBasis)?.label}
                 {selectedDateBasis === "calendar" ? ` / ${formatShortDateRange(selectedStartDate, selectedEndDate)}` : ""}
