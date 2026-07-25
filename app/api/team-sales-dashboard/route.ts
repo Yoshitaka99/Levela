@@ -31,6 +31,7 @@ const AD_TRAFFIC: TrafficFilter = "ad";
 const EXCLUDE_AD_TRAFFIC: TrafficFilter = "exclude_ad";
 const SEMINAR_DATE_BASIS: DateBasis = "seminar";
 const APPOINTMENT_DATE_BASIS: DateBasis = "appointment";
+const CALENDAR_DATE_BASIS: DateBasis = "calendar";
 const ALL_AD_SOURCES: AdSourceFilter = "all";
 const AD_SOURCE_X = "x";
 const AD_SOURCE_META = "meta";
@@ -250,6 +251,22 @@ function parseSheetDate(value: string) {
   return null;
 }
 
+function toDateKey(date: { year: number; month: number; day: number }) {
+  return `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;
+}
+
+function isIsoDate(value?: string | null) {
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+}
+
+function matchesCalendarRange(row: SourceRow, startDate: string, endDate: string) {
+  if (!startDate && !endDate) return true;
+  const parsedDate = parseSheetDate(getAppointmentDate(row));
+  if (!parsedDate) return false;
+  const appointmentKey = toDateKey(parsedDate);
+  return (!startDate || appointmentKey >= startDate) && (!endDate || appointmentKey <= endDate);
+}
+
 function formatSeminarMonthLabel(year: number, month: number) {
   return `${String(year).slice(-2)}年${month}月セミナー`;
 }
@@ -261,7 +278,7 @@ function getAppointmentSeminar(row: SourceRow) {
 }
 
 function getEffectiveSeminar(row: SourceRow, dateBasis: DateBasis = SEMINAR_DATE_BASIS) {
-  if (dateBasis === APPOINTMENT_DATE_BASIS) {
+  if (dateBasis === APPOINTMENT_DATE_BASIS || dateBasis === CALENDAR_DATE_BASIS) {
     return getAppointmentSeminar(row) || getSeminar(row);
   }
   return getSeminar(row);
@@ -437,6 +454,7 @@ function resolveTrafficFilter(value?: string | null): TrafficFilter {
 }
 
 function resolveDateBasis(value?: string | null): DateBasis {
+  if (value === CALENDAR_DATE_BASIS) return CALENDAR_DATE_BASIS;
   return value === APPOINTMENT_DATE_BASIS ? APPOINTMENT_DATE_BASIS : SEMINAR_DATE_BASIS;
 }
 
@@ -699,8 +717,12 @@ function aggregateRows(
   requestedTraffic?: string | null,
   requestedAdSource?: string | null,
   requestedDateBasis?: string | null,
+  requestedStartDate?: string | null,
+  requestedEndDate?: string | null,
 ): TeamSalesDashboardData {
   const selectedDateBasis = resolveDateBasis(requestedDateBasis);
+  const selectedStartDate = selectedDateBasis === CALENDAR_DATE_BASIS && isIsoDate(requestedStartDate) ? requestedStartDate! : "";
+  const selectedEndDate = selectedDateBasis === CALENDAR_DATE_BASIS && isIsoDate(requestedEndDate) ? requestedEndDate! : "";
   const seminars = getSeminarOptions(rows, selectedDateBasis);
   const selectedSeminars = resolveSelectedSeminars(seminars, requestedSeminar);
   const selectedSeminar = selectedSeminars.join(SEMINAR_SEPARATOR);
@@ -712,11 +734,14 @@ function aggregateRows(
     const seminar = getEffectiveSeminar(row, selectedDateBasis);
     const seat = getSeat(row);
     const status = getStatus(row);
-    const matchesSeminar = selectedSeminars.includes(ALL_SEMINARS) || selectedSeminars.includes(seminar);
+    const matchesPeriod =
+      selectedDateBasis === CALENDAR_DATE_BASIS
+        ? matchesCalendarRange(row, selectedStartDate, selectedEndDate)
+        : selectedSeminars.includes(ALL_SEMINARS) || selectedSeminars.includes(seminar);
     return (
       member &&
       !isExcludedMember(member) &&
-      matchesSeminar &&
+      matchesPeriod &&
       matchesTrafficFilter(row, selectedTraffic, selectedAdSource) &&
       !isExcludedFromInterviewBase(seat, status) &&
       !isBlankReservationSlot(row)
@@ -728,11 +753,14 @@ function aggregateRows(
     const seminar = getEffectiveSeminar(row, selectedDateBasis);
     const seat = getSeat(row);
     const status = getStatus(row);
-    const matchesSeminar = selectedSeminars.includes(ALL_SEMINARS) || selectedSeminars.includes(seminar);
+    const matchesPeriod =
+      selectedDateBasis === CALENDAR_DATE_BASIS
+        ? matchesCalendarRange(row, selectedStartDate, selectedEndDate)
+        : selectedSeminars.includes(ALL_SEMINARS) || selectedSeminars.includes(seminar);
     return (
       member &&
       !isExcludedMember(member) &&
-      matchesSeminar &&
+      matchesPeriod &&
       matchesTrafficFilter(row, selectedTraffic, selectedAdSource) &&
       !isExcludedFromInterviewBase(seat, status) &&
       (!isBlankReservationSlot(row) || isTodayOrFutureAppointment(row))
@@ -746,6 +774,7 @@ function aggregateRows(
     return (
       member &&
       !isExcludedMember(member) &&
+      (selectedDateBasis !== CALENDAR_DATE_BASIS || matchesCalendarRange(row, selectedStartDate, selectedEndDate)) &&
       matchesTrafficFilter(row, selectedTraffic, selectedAdSource) &&
       !isExcludedFromInterviewBase(seat, status) &&
       (!isBlankReservationSlot(row) || isTodayOrFutureAppointment(row))
@@ -887,6 +916,8 @@ function aggregateRows(
     selectedTraffic,
     selectedAdSource,
     selectedDateBasis,
+    selectedStartDate,
+    selectedEndDate,
     seminars,
     teams,
     members,
@@ -907,8 +938,10 @@ export async function fetchTeamSalesData(
   requestedTraffic?: string | null,
   requestedAdSource?: string | null,
   requestedDateBasis?: string | null,
+  requestedStartDate?: string | null,
+  requestedEndDate?: string | null,
 ): Promise<TeamSalesDashboardData | null> {
-  const cacheKey = `${requestedSeminar ?? ""}::${requestedTeam ?? ""}::${requestedTraffic ?? ""}::${requestedAdSource ?? ""}::${requestedDateBasis ?? ""}`;
+  const cacheKey = `${requestedSeminar ?? ""}::${requestedTeam ?? ""}::${requestedTraffic ?? ""}::${requestedAdSource ?? ""}::${requestedDateBasis ?? ""}::${requestedStartDate ?? ""}::${requestedEndDate ?? ""}`;
   const cached = dataCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
@@ -944,7 +977,16 @@ export async function fetchTeamSalesData(
         (row) => getValue(row, 1, "担当者名").trim() && getValue(row, 2, "セミナー").trim(),
       );
       if (rows.length && hasExpectedHeaders) {
-        const data = aggregateRows(rows as SourceRow[], requestedSeminar, requestedTeam, requestedTraffic, requestedAdSource, requestedDateBasis);
+        const data = aggregateRows(
+          rows as SourceRow[],
+          requestedSeminar,
+          requestedTeam,
+          requestedTraffic,
+          requestedAdSource,
+          requestedDateBasis,
+          requestedStartDate,
+          requestedEndDate,
+        );
         dataCache.set(cacheKey, { data, expiresAt: Date.now() + DATA_CACHE_TTL_MS });
         return data;
       }
@@ -967,6 +1009,8 @@ export async function GET(request: Request) {
       searchParams.get("traffic"),
       searchParams.get("adSource"),
       searchParams.get("dateBasis"),
+      searchParams.get("startDate"),
+      searchParams.get("endDate"),
     );
 
     return NextResponse.json(liveData ?? defaultTeamSalesDashboardData, {

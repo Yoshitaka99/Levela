@@ -18,8 +18,8 @@ const validTabs = ["overview", "appointments", "members", "reasons", "alerts"] a
 const validSorts = ["projectedRate", "closeRate", "seatRate", "reservationSlots", "seated", "closed", "projected", "lost", "hold"] as const;
 const validTraffic = ["all", "ad", "exclude_ad"] as const;
 const validAdSources = ["all", "x", "meta", "meta_ad", "Meta_ad", "meta_ad_Suea_aw", "meta_ad_in-house_aw", "meta_ad_Suea", "Meta_ad_aw", "meta_ad_in-house"] as const;
-const validViews = ["user", "admin"] as const;
-const validDateBasis = ["seminar", "appointment"] as const;
+const validViews = ["user", "admin", "manager"] as const;
+const validDateBasis = ["seminar", "appointment", "calendar"] as const;
 const validSeatCountFilters = ["all", "at_least_10", "under_10"] as const;
 
 type PageSearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -52,9 +52,11 @@ async function getInitialTeamSalesData(
   traffic?: string,
   adSource?: string,
   dateBasis?: string,
+  startDate?: string,
+  endDate?: string,
 ) {
   try {
-    return (await fetchTeamSalesData(seminar, team, traffic, adSource, dateBasis)) ?? defaultTeamSalesDashboardData;
+    return (await fetchTeamSalesData(seminar, team, traffic, adSource, dateBasis, startDate, endDate)) ?? defaultTeamSalesDashboardData;
   } catch (error) {
     console.error("[team-sales-dashboard] failed to load team sales data", error);
     return defaultTeamSalesDashboardData;
@@ -77,10 +79,12 @@ export default async function TeamSalesDashboardPage({
   const initialTraffic = pickParam(params.traffic, validTraffic, "all");
   const initialAdSource = pickAdSourceParam(params.adSource);
   const initialDateBasis = pickParam(params.dateBasis, validDateBasis, "seminar");
+  const initialStartDate = Array.isArray(params.startDate) ? params.startDate[0] : params.startDate;
+  const initialEndDate = Array.isArray(params.endDate) ? params.endDate[0] : params.endDate;
   const initialSeatCountFilter = pickParam(params.seatCount, validSeatCountFilters, "all");
   const initialOnlyAlerts = (Array.isArray(params.alerts) ? params.alerts[0] : params.alerts) === "1";
   const initialOnlyHold = (Array.isArray(params.hold) ? params.hold[0] : params.hold) === "1";
-  const initialData = await getInitialTeamSalesData(initialSeminar, initialTeam, initialTraffic, initialAdSource, initialDateBasis);
+  const initialData = await getInitialTeamSalesData(initialSeminar, initialTeam, initialTraffic, initialAdSource, initialDateBasis, initialStartDate, initialEndDate);
 
   return (
     <TeamSalesDashboardClient
@@ -95,6 +99,8 @@ export default async function TeamSalesDashboardPage({
       initialTraffic={initialTraffic}
       initialAdSource={initialAdSource}
       initialDateBasis={initialDateBasis}
+      initialStartDate={initialStartDate}
+      initialEndDate={initialEndDate}
       initialSeatCountFilter={initialSeatCountFilter}
       initialOnlyAlerts={initialOnlyAlerts}
       initialOnlyHold={initialOnlyHold}

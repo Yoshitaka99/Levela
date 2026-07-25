@@ -18,18 +18,32 @@ import type { AdSourceFilter, CustomerManagementRow, DateBasis, MemberWeeklyKpis
 
 type TabKey = "overview" | "appointments" | "members" | "reasons" | "alerts";
 type SortKey = "projectedRate" | "closeRate" | "seatRate" | "reservationSlots" | "seated" | "closed" | "projected" | "lost" | "hold";
-type ViewMode = "user" | "admin";
+type ViewMode = "user" | "admin" | "manager";
 type AdminSortKey = "appointmentDesc" | "appointmentAsc" | "memberAsc" | "memberDesc";
 type SeatCountFilter = "all" | "at_least_10" | "under_10";
+type GoalMode = "perMember" | "teamClosed" | "closeRate";
 
 const ALL_ADMIN_MEMBERS = "all";
 const ALL_SEMINARS_LABEL = "全期間";
 const ALL_TEAMS_LABEL = "全チーム";
 const SEMINAR_SEPARATOR = ",";
 
+const viewModeOptions: { key: ViewMode; label: string }[] = [
+  { key: "user", label: "ユーザー画面" },
+  { key: "admin", label: "管理者画面" },
+  { key: "manager", label: "マネージャー用目標値" },
+];
+
 const dateBasisOptions: { key: DateBasis; label: string }[] = [
   { key: "seminar", label: "セミナー月基準" },
   { key: "appointment", label: "面談日月基準" },
+  { key: "calendar", label: "カレンダー指定" },
+];
+
+const goalModeOptions: { key: GoalMode; label: string; suffix: string }[] = [
+  { key: "perMember", label: "一人あたり成約数", suffix: "件" },
+  { key: "teamClosed", label: "チーム全体成約数", suffix: "件" },
+  { key: "closeRate", label: "目標成約率", suffix: "%" },
 ];
 
 const seatCountFilters: { key: SeatCountFilter; label: string }[] = [
@@ -138,8 +152,13 @@ function splitSeminars(value?: string) {
     .filter(Boolean);
 }
 
+function formatSeminarLabel(value: string) {
+  return value === ALL_SEMINARS_LABEL ? value : value.replace(/セミナー$/, "");
+}
+
 function formatSelectedSeminars(value: string) {
-  return splitSeminars(value).join(" / ") || value;
+  const labels = splitSeminars(value).map(formatSeminarLabel);
+  return labels.join(" / ") || formatSeminarLabel(value);
 }
 
 function normalizeSeminarSelection(value: string, options: string[]) {
@@ -208,6 +227,44 @@ function addDays(date: Date, days: number) {
 
 function formatDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function parseIsoDate(value?: string | null) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function getDefaultCalendarRange(seminar: string) {
+  const firstSeminar = splitSeminars(seminar).find((value) => value !== ALL_SEMINARS_LABEL) ?? "";
+  const match = firstSeminar.match(/(\d{2,4})年(\d{1,2})月/);
+  const today = new Date();
+  const year = match ? (Number(match[1]) < 100 ? 2000 + Number(match[1]) : Number(match[1])) : today.getFullYear();
+  const month = match ? Number(match[2]) : today.getMonth() + 1;
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 0);
+  return { startDate: formatDateKey(start), endDate: formatDateKey(end) };
+}
+
+function formatShortDateRange(startDate: string, endDate: string) {
+  const start = parseIsoDate(startDate);
+  const end = parseIsoDate(endDate);
+  if (!start || !end) return "日付未指定";
+  return `${start.getMonth() + 1}/${start.getDate()} - ${end.getMonth() + 1}/${end.getDate()}`;
+}
+
+function parsePeriodEndDate(dateBasis: DateBasis, seminar: string, selectedEndDate: string) {
+  if (dateBasis === "calendar") return parseIsoDate(selectedEndDate) ?? new Date();
+  const firstSeminar = splitSeminars(seminar).find((value) => value !== ALL_SEMINARS_LABEL) ?? "";
+  const match = firstSeminar.match(/(\d{2,4})年(\d{1,2})月/);
+  if (!match) return new Date();
+  const year = Number(match[1]) < 100 ? 2000 + Number(match[1]) : Number(match[1]);
+  return new Date(year, Number(match[2]), 0);
+}
+
+function isClosedStatusLabel(status: string) {
+  const normalized = status.trim();
+  return normalized.endsWith("成約") || normalized.includes("→成約");
 }
 
 function formatDayLabel(date: Date) {
@@ -292,6 +349,138 @@ function MetricTile({
       <p className="mt-3 text-3xl font-semibold tracking-normal">{value}</p>
       <p className="mt-1 text-xs leading-5 opacity-75">{sub}</p>
     </div>
+  );
+}
+
+type GoalProjection = {
+  memberCount: number;
+  targetClosed: number;
+  targetRate: number;
+  expectedSeated: number;
+  remainingClosed: number;
+  remainingDays: number;
+  todayClosed: number;
+  todayRequired: number;
+  todayGap: number;
+  progressRate: number;
+};
+
+function GoalProgressCard({
+  projection,
+  currentRate,
+  selectedTeam,
+}: {
+  projection: GoalProjection;
+  currentRate: number;
+  selectedTeam: string;
+}) {
+  const gapTone = projection.todayGap >= 0 ? "text-teal-100" : "text-rose-100";
+
+  return (
+    <section className="mt-5 rounded-lg border border-teal-300/20 bg-gradient-to-r from-teal-400/12 via-slate-950/60 to-cyan-400/10 p-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold text-teal-100">目標進捗 / {selectedTeam}</p>
+          <h2 className="mt-1 text-xl font-semibold text-white">
+            現在 {formatPercent(currentRate)} / 目標 {formatPercent(projection.targetRate)}
+          </h2>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4 lg:w-[560px]">
+          <SmallMetric label="残り成約" value={formatCount(projection.remainingClosed)} />
+          <SmallMetric label="今日必要" value={formatCount(projection.todayRequired)} />
+          <SmallMetric label="今日実績" value={formatCount(projection.todayClosed)} />
+          <div className="rounded-md border border-white/10 bg-slate-950/40 p-3">
+            <p className="text-xs text-slate-400">差分</p>
+            <p className={`mt-1 text-lg font-semibold ${gapTone}`}>{projection.todayGap >= 0 ? "+" : ""}{projection.todayGap}件</p>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4">
+        <ProgressBar value={projection.progressRate} tone={projection.todayGap >= 0 ? "teal" : "amber"} />
+        <p className="mt-2 text-xs text-slate-400">
+          目標成約 {formatCount(projection.targetClosed)} / 想定着座 {formatCount(projection.expectedSeated)} / 残り {projection.remainingDays}日
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function ManagerGoalPanel({
+  selectedTeam,
+  selectedPeriod,
+  goalMode,
+  goalValue,
+  onGoalModeChange,
+  onGoalValueChange,
+  projection,
+  currentRate,
+  totals,
+}: {
+  selectedTeam: string;
+  selectedPeriod: string;
+  goalMode: GoalMode;
+  goalValue: string;
+  onGoalModeChange: (mode: GoalMode) => void;
+  onGoalValueChange: (value: string) => void;
+  projection: GoalProjection;
+  currentRate: number;
+  totals: { leads: number; seated: number; closed: number; pending: number; hold: number; alert: number };
+}) {
+  const selectedGoalOption = goalModeOptions.find((option) => option.key === goalMode) ?? goalModeOptions[0];
+
+  return (
+    <section className="mt-5 grid gap-5 lg:grid-cols-[0.7fr_1.3fr]">
+      <div className="rounded-lg border border-cyan-300/20 bg-white/[0.03] p-4">
+        <p className="text-xs font-semibold text-cyan-100">マネージャー用目標値</p>
+        <h2 className="mt-1 text-2xl font-semibold text-white">{selectedTeam}</h2>
+        <p className="mt-1 text-sm text-slate-400">{selectedPeriod}</p>
+        <div className="mt-5 grid gap-3">
+          <label className="grid gap-1 text-sm text-slate-300">
+            逆算する目標
+            <select
+              value={goalMode}
+              onChange={(event) => onGoalModeChange(event.target.value as GoalMode)}
+              className="h-10 rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-white outline-none"
+            >
+              {goalModeOptions.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm text-slate-300">
+            目標値
+            <div className="flex h-10 items-center rounded-md border border-white/10 bg-slate-950">
+              <input
+                value={goalValue}
+                onChange={(event) => onGoalValueChange(event.target.value)}
+                inputMode="decimal"
+                className="min-w-0 flex-1 bg-transparent px-3 text-sm text-white outline-none"
+              />
+              <span className="px-3 text-sm text-slate-400">{selectedGoalOption.suffix}</span>
+            </div>
+          </label>
+        </div>
+      </div>
+      <div className="rounded-lg border border-teal-300/20 bg-slate-950/40 p-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <SmallMetric label="現在成約率" value={formatPercent(currentRate)} />
+          <SmallMetric label="必要成約率" value={formatPercent(projection.targetRate)} />
+          <SmallMetric label="残り成約" value={formatCount(projection.remainingClosed)} />
+          <SmallMetric label="今日必要/実績" value={`${projection.todayRequired} / ${projection.todayClosed}件`} />
+        </div>
+        <div className="mt-4">
+          <ProgressBar value={projection.progressRate} tone={projection.todayGap >= 0 ? "teal" : "amber"} />
+        </div>
+        <div className="mt-4 grid gap-2 text-xs text-slate-400 sm:grid-cols-2 lg:grid-cols-4">
+          <span>予約 {totals.leads}件</span>
+          <span>着座 {totals.seated}件</span>
+          <span>成約 {totals.closed}件</span>
+          <span>成約予定 {totals.pending}件</span>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -884,6 +1073,8 @@ export function TeamSalesDashboardClient({
   initialTraffic,
   initialAdSource,
   initialDateBasis,
+  initialStartDate,
+  initialEndDate,
   initialSeatCountFilter = "all",
   initialOnlyAlerts,
   initialOnlyHold,
@@ -900,12 +1091,15 @@ export function TeamSalesDashboardClient({
   initialTraffic: TrafficFilter;
   initialAdSource: AdSourceFilter;
   initialDateBasis?: DateBasis;
+  initialStartDate?: string;
+  initialEndDate?: string;
   initialSeatCountFilter?: SeatCountFilter;
   initialOnlyAlerts: boolean;
   initialOnlyHold: boolean;
   initialView?: ViewMode;
   basePath?: string;
 }) {
+  const initialRange = getDefaultCalendarRange(initialSeminar ?? initialData.selectedSeminar);
   const [data, setData] = useState(initialData);
   const [viewMode, setViewMode] = useState<ViewMode>(initialView);
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
@@ -916,6 +1110,8 @@ export function TeamSalesDashboardClient({
   const [selectedTraffic, setSelectedTraffic] = useState<TrafficFilter>(initialTraffic ?? initialData.selectedTraffic);
   const [selectedAdSource, setSelectedAdSource] = useState<AdSourceFilter>(initialAdSource ?? initialData.selectedAdSource);
   const [selectedDateBasis, setSelectedDateBasis] = useState<DateBasis>(initialDateBasis ?? initialData.selectedDateBasis ?? "seminar");
+  const [selectedStartDate, setSelectedStartDate] = useState(initialStartDate ?? initialData.selectedStartDate ?? initialRange.startDate);
+  const [selectedEndDate, setSelectedEndDate] = useState(initialEndDate ?? initialData.selectedEndDate ?? initialRange.endDate);
   const [seatCountFilter, setSeatCountFilter] = useState<SeatCountFilter>(initialSeatCountFilter);
   const [onlyAlerts, setOnlyAlerts] = useState(initialOnlyAlerts);
   const [onlyHold, setOnlyHold] = useState(initialOnlyHold);
@@ -930,6 +1126,9 @@ export function TeamSalesDashboardClient({
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showOpening, setShowOpening] = useState(false);
+  const [showWeeklyKpis, setShowWeeklyKpis] = useState(false);
+  const [goalMode, setGoalMode] = useState<GoalMode>("perMember");
+  const [goalValue, setGoalValue] = useState("4");
   const hasMountedRef = useRef(false);
   const refreshRequestRef = useRef(0);
 
@@ -951,6 +1150,8 @@ export function TeamSalesDashboardClient({
     const requestedTraffic = selectedTraffic;
     const requestedAdSource = selectedAdSource;
     const requestedDateBasis = selectedDateBasis;
+    const requestedStartDate = selectedStartDate;
+    const requestedEndDate = selectedEndDate;
 
     setIsRefreshing(true);
     try {
@@ -960,6 +1161,10 @@ export function TeamSalesDashboardClient({
       if (requestedTraffic !== "all") params.set("traffic", requestedTraffic);
       if (requestedTraffic === "ad" && requestedAdSource !== "all") params.set("adSource", requestedAdSource);
       params.set("dateBasis", requestedDateBasis);
+      if (requestedDateBasis === "calendar") {
+        if (requestedStartDate) params.set("startDate", requestedStartDate);
+        if (requestedEndDate) params.set("endDate", requestedEndDate);
+      }
       const response = await fetch(`/api/team-sales-dashboard?${params.toString()}`, { cache: "no-store" });
       const nextData = (await response.json()) as TeamSalesDashboardData;
 
@@ -971,6 +1176,10 @@ export function TeamSalesDashboardClient({
       setSelectedTraffic(nextData.selectedTraffic || requestedTraffic);
       setSelectedAdSource(nextData.selectedAdSource || requestedAdSource);
       setSelectedDateBasis(nextData.selectedDateBasis || requestedDateBasis);
+      if (requestedDateBasis === "calendar") {
+        setSelectedStartDate(nextData.selectedStartDate || requestedStartDate);
+        setSelectedEndDate(nextData.selectedEndDate || requestedEndDate);
+      }
       setLastSyncedAt(new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }));
       setSelectedMember((currentMember) =>
         currentMember === ALL_ADMIN_MEMBERS || Boolean(findMemberBySelection(nextData.members, currentMember))
@@ -980,7 +1189,7 @@ export function TeamSalesDashboardClient({
     } finally {
       if (requestId === refreshRequestRef.current) setIsRefreshing(false);
     }
-  }, [selectedAdSource, selectedDateBasis, selectedSeminar, selectedTeam, selectedTraffic]);
+  }, [selectedAdSource, selectedDateBasis, selectedEndDate, selectedSeminar, selectedStartDate, selectedTeam, selectedTraffic]);
 
   useEffect(() => {
     if (hasMountedRef.current) {
@@ -1013,6 +1222,75 @@ export function TeamSalesDashboardClient({
   const seatRate = totals.leads ? (totals.seated / totals.leads) * 100 : 0;
   const closeRate = totals.seated ? (totals.closed / totals.seated) * 100 : 0;
   const projectedRate = totals.seated ? ((totals.closed + totals.pending) / totals.seated) * 100 : 0;
+
+  const goalStorageKey = useMemo(() => {
+    const periodKey = selectedDateBasis === "calendar" ? `${selectedStartDate}:${selectedEndDate}` : selectedSeminar;
+    return `team-sales-goal:${selectedTeam}:${selectedDateBasis}:${periodKey}`;
+  }, [selectedDateBasis, selectedEndDate, selectedSeminar, selectedStartDate, selectedTeam]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(goalStorageKey);
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved) as { mode?: GoalMode; value?: string };
+      if (parsed.mode && goalModeOptions.some((option) => option.key === parsed.mode)) setGoalMode(parsed.mode);
+      if (parsed.value !== undefined) setGoalValue(parsed.value);
+    } catch {
+      // Ignore malformed local target values.
+    }
+  }, [goalStorageKey]);
+
+  useEffect(() => {
+    window.localStorage.setItem(goalStorageKey, JSON.stringify({ mode: goalMode, value: goalValue }));
+  }, [goalMode, goalStorageKey, goalValue]);
+
+  const goalProjection = useMemo(() => {
+    const memberCount = Math.max(data.members.length, 1);
+    const numericGoal = Number(goalValue);
+    const validGoal = Number.isFinite(numericGoal) && numericGoal > 0 ? numericGoal : 0;
+    const today = new Date();
+    const todayKey = formatDateKey(today);
+    const periodEnd = parsePeriodEndDate(selectedDateBasis, selectedSeminar, selectedEndDate);
+    const remainingDays = Math.max(1, Math.ceil((periodEnd.getTime() - today.getTime()) / 86_400_000) + 1);
+    const todayClosed = (data.customerRows ?? []).filter((row) => {
+      const startsAt = parseAppointmentDate(row.appointmentDate);
+      return startsAt && formatDateKey(startsAt) === todayKey && isClosedStatusLabel(row.status);
+    }).length;
+    const futureAppointments = (data.customerRows ?? []).filter((row) => {
+      const startsAt = parseAppointmentDate(row.appointmentDate);
+      if (!startsAt || startsAt < today) return false;
+      const status = row.status.trim();
+      return !isClosedStatusLabel(status) && !status.includes("失注");
+    }).length;
+    const averageAppointmentsPerMember = data.members.length ? totals.leads / data.members.length : 0;
+    const projectedLeadBase = Math.max(totals.leads + futureAppointments, Math.ceil(averageAppointmentsPerMember * memberCount), totals.leads);
+    const expectedSeatRate = totals.leads ? totals.seated / totals.leads : 0.65;
+    const expectedSeated = Math.max(totals.seated, Math.round(projectedLeadBase * expectedSeatRate));
+    const targetClosed =
+      goalMode === "perMember"
+        ? Math.ceil(validGoal * memberCount)
+        : goalMode === "teamClosed"
+          ? Math.ceil(validGoal)
+          : Math.ceil(expectedSeated * (validGoal / 100));
+    const targetRate = expectedSeated ? (targetClosed / expectedSeated) * 100 : 0;
+    const remainingClosed = Math.max(0, targetClosed - totals.closed);
+    const todayRequired = remainingClosed ? Math.ceil(remainingClosed / remainingDays) : 0;
+    const todayGap = todayClosed - todayRequired;
+    const progressRate = targetClosed ? (totals.closed / targetClosed) * 100 : 0;
+
+    return {
+      memberCount,
+      targetClosed,
+      targetRate,
+      expectedSeated,
+      remainingClosed,
+      remainingDays,
+      todayClosed,
+      todayRequired,
+      todayGap,
+      progressRate,
+    };
+  }, [data.customerRows, data.members.length, goalMode, goalValue, selectedDateBasis, selectedEndDate, selectedSeminar, totals.closed, totals.leads, totals.seated]);
 
   const filteredMembers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -1070,6 +1348,8 @@ export function TeamSalesDashboardClient({
     () => normalizeSeminarSelection(selectedSeminar, data.seminars),
     [data.seminars, selectedSeminar],
   );
+  const selectedPeriodLabel =
+    selectedDateBasis === "calendar" ? formatShortDateRange(selectedStartDate, selectedEndDate) : formatSelectedSeminars(selectedSeminar);
   const visibleSortButtons =
     activeTab === "appointments"
       ? []
@@ -1089,6 +1369,8 @@ export function TeamSalesDashboardClient({
       traffic?: TrafficFilter;
       adSource?: AdSourceFilter;
       dateBasis?: DateBasis;
+      startDate?: string | null;
+      endDate?: string | null;
       seatCount?: SeatCountFilter;
       alerts?: boolean;
       hold?: boolean;
@@ -1098,7 +1380,7 @@ export function TeamSalesDashboardClient({
     const nextView = overrides.view ?? viewMode;
     const nextTab = overrides.tab ?? activeTab;
     const nextSort = overrides.sort ?? sortKey;
-    if (nextView === "admin") params.set("view", "admin");
+    if (nextView !== "user") params.set("view", nextView);
     params.set("tab", nextTab);
     params.set("sort", nextSort);
 
@@ -1109,6 +1391,8 @@ export function TeamSalesDashboardClient({
     const nextTraffic = overrides.traffic ?? selectedTraffic;
     const nextAdSource = overrides.adSource ?? selectedAdSource;
     const nextDateBasis = overrides.dateBasis ?? selectedDateBasis;
+    const nextStartDate = overrides.startDate === undefined ? selectedStartDate : overrides.startDate;
+    const nextEndDate = overrides.endDate === undefined ? selectedEndDate : overrides.endDate;
     const nextSeatCount = overrides.seatCount ?? seatCountFilter;
     const nextAlerts = overrides.alerts ?? onlyAlerts;
     const nextHold = overrides.hold ?? onlyHold;
@@ -1118,6 +1402,10 @@ export function TeamSalesDashboardClient({
     if (nextTraffic !== "all") params.set("traffic", nextTraffic);
     if (nextTraffic === "ad" && nextAdSource !== "all") params.set("adSource", nextAdSource);
     if (nextDateBasis !== "seminar") params.set("dateBasis", nextDateBasis);
+    if (nextDateBasis === "calendar") {
+      if (nextStartDate) params.set("startDate", nextStartDate);
+      if (nextEndDate) params.set("endDate", nextEndDate);
+    }
     if (nextTeam === ALL_TEAMS_LABEL && nextSeatCount !== "all") params.set("seatCount", nextSeatCount);
     if (nextMember) params.set("member", nextMember);
     if (nextQuery) params.set("q", nextQuery);
@@ -1170,9 +1458,23 @@ export function TeamSalesDashboardClient({
     }
 
     const nextValue = nextSelection.join(SEMINAR_SEPARATOR);
+    const nextRange = getDefaultCalendarRange(nextValue);
     setSelectedSeminar(nextValue);
+    if (selectedDateBasis === "calendar") {
+      setSelectedStartDate(nextRange.startDate);
+      setSelectedEndDate(nextRange.endDate);
+    }
     setSelectedMember("");
-    window.history.replaceState(null, "", dashboardHref({ seminar: nextValue, member: null }));
+    window.history.replaceState(
+      null,
+      "",
+      dashboardHref({
+        seminar: nextValue,
+        startDate: selectedDateBasis === "calendar" ? nextRange.startDate : undefined,
+        endDate: selectedDateBasis === "calendar" ? nextRange.endDate : undefined,
+        member: null,
+      }),
+    );
   }
 
   function changeTeam(nextTeam: string) {
@@ -1191,10 +1493,25 @@ export function TeamSalesDashboardClient({
 
   function changeDateBasis(nextDateBasis: DateBasis) {
     refreshRequestRef.current += 1;
+    const nextRange = nextDateBasis === "calendar" ? getDefaultCalendarRange(selectedSeminar) : { startDate: selectedStartDate, endDate: selectedEndDate };
     setSelectedDateBasis(nextDateBasis);
+    if (nextDateBasis === "calendar") {
+      setSelectedStartDate(nextRange.startDate);
+      setSelectedEndDate(nextRange.endDate);
+    }
     setSelectedMember("");
     setSelectedWeeklyMember("");
-    window.history.replaceState(null, "", dashboardHref({ dateBasis: nextDateBasis, member: null }));
+    window.history.replaceState(null, "", dashboardHref({ dateBasis: nextDateBasis, startDate: nextRange.startDate, endDate: nextRange.endDate, member: null }));
+  }
+
+  function changeDateRange(nextStartDate: string, nextEndDate: string) {
+    refreshRequestRef.current += 1;
+    setSelectedDateBasis("calendar");
+    setSelectedStartDate(nextStartDate);
+    setSelectedEndDate(nextEndDate);
+    setSelectedMember("");
+    setSelectedWeeklyMember("");
+    window.history.replaceState(null, "", dashboardHref({ dateBasis: "calendar", startDate: nextStartDate, endDate: nextEndDate, member: null }));
   }
 
   function changeTraffic(nextTraffic: TrafficFilter) {
@@ -1238,6 +1555,7 @@ export function TeamSalesDashboardClient({
               <span>{formatSelectedSeminars(selectedSeminar)}</span>
               <span className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-2 py-0.5 text-xs text-cyan-100">
                 {dateBasisOptions.find((option) => option.key === selectedDateBasis)?.label}
+                {selectedDateBasis === "calendar" ? ` / ${formatShortDateRange(selectedStartDate, selectedEndDate)}` : ""}
               </span>
               <span className="rounded-full border border-slate-600 px-2 py-0.5 text-xs">{data.selectedTeam}</span>
               <span className="rounded-full border border-slate-600 px-2 py-0.5 text-xs">
@@ -1260,40 +1578,46 @@ export function TeamSalesDashboardClient({
           </div>
 
           <div className="flex w-full flex-wrap gap-2 lg:w-auto lg:justify-end">
-            <div className="flex h-10 rounded-md border border-white/10 bg-white/5 p-1">
-              <button
-                type="button"
-                onClick={() => changeView("user")}
-                className={`rounded px-3 text-sm font-medium ${
-                  viewMode === "user" ? "bg-teal-300 text-slate-950" : "text-slate-300 hover:bg-white/10"
-                }`}
-              >
-                ユーザー画面
-              </button>
-              <button
-                type="button"
-                onClick={() => changeView("admin")}
-                className={`rounded px-3 text-sm font-medium ${
-                  viewMode === "admin" ? "bg-cyan-300 text-slate-950" : "text-slate-300 hover:bg-white/10"
-                }`}
-              >
-                管理者画面
-              </button>
-            </div>
-            <div className="flex h-10 rounded-md border border-cyan-300/20 bg-white/5 p-1">
-              {dateBasisOptions.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => changeDateBasis(option.key)}
-                  className={`rounded px-3 text-sm font-medium ${
-                    selectedDateBasis === option.key ? "bg-cyan-300 text-slate-950" : "text-slate-300 hover:bg-white/10"
-                  }`}
-                >
+            <select
+              value={viewMode}
+              onChange={(event) => changeView(event.target.value as ViewMode)}
+              className="h-10 w-full rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-white outline-none sm:w-[190px]"
+            >
+              {viewModeOptions.map((option) => (
+                <option key={option.key} value={option.key}>
                   {option.label}
-                </button>
+                </option>
               ))}
-            </div>
+            </select>
+            <select
+              value={selectedDateBasis}
+              onChange={(event) => changeDateBasis(event.target.value as DateBasis)}
+              className="h-10 w-full rounded-md border border-cyan-300/20 bg-slate-950 px-3 text-sm text-white outline-none sm:w-[180px]"
+            >
+              {dateBasisOptions.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {selectedDateBasis === "calendar" ? (
+              <div className="grid w-full grid-cols-2 gap-2 sm:w-[270px]">
+                <input
+                  type="date"
+                  value={selectedStartDate}
+                  onChange={(event) => changeDateRange(event.target.value, selectedEndDate)}
+                  className="h-10 min-w-0 rounded-md border border-cyan-300/20 bg-slate-950 px-2 text-sm text-white outline-none"
+                  aria-label="開始日"
+                />
+                <input
+                  type="date"
+                  value={selectedEndDate}
+                  onChange={(event) => changeDateRange(selectedStartDate, event.target.value)}
+                  className="h-10 min-w-0 rounded-md border border-cyan-300/20 bg-slate-950 px-2 text-sm text-white outline-none"
+                  aria-label="終了日"
+                />
+              </div>
+            ) : null}
             <div className="flex min-h-10 w-full max-w-full flex-wrap gap-1.5 rounded-md border border-teal-300/25 bg-slate-950 p-1 sm:w-[360px]">
               {data.seminars.map((seminar) => {
                 const selected = selectedSeminarValues.includes(seminar);
@@ -1308,7 +1632,7 @@ export function TeamSalesDashboardClient({
                         : "bg-white/[0.03] text-slate-300 hover:bg-white/[0.08]"
                     }`}
                   >
-                    {seminar}
+                    {formatSeminarLabel(seminar)}
                   </button>
                 );
               })}
@@ -1324,20 +1648,17 @@ export function TeamSalesDashboardClient({
                 </option>
               ))}
             </select>
-            <div className="flex h-10 rounded-md border border-white/10 bg-white/5 p-1">
+            <select
+              value={selectedTraffic}
+              onChange={(event) => changeTraffic(event.target.value as TrafficFilter)}
+              className="h-10 w-full rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-white outline-none sm:w-[140px]"
+            >
               {trafficFilters.map((filter) => (
-                <button
-                  key={filter.key}
-                  type="button"
-                  onClick={() => changeTraffic(filter.key)}
-                  className={`rounded px-3 text-sm font-medium ${
-                    selectedTraffic === filter.key ? "bg-teal-300 text-slate-950" : "text-slate-300 hover:bg-white/10"
-                  }`}
-                >
+                <option key={filter.key} value={filter.key}>
                   {filter.label}
-                </button>
+                </option>
               ))}
-            </div>
+            </select>
             {selectedTraffic === "ad" ? (
               <div className="flex min-h-10 max-w-full flex-wrap gap-1 rounded-md border border-white/10 bg-white/5 p-1">
                 {adSourceFilters.map((filter) => (
@@ -1355,12 +1676,14 @@ export function TeamSalesDashboardClient({
               </div>
             ) : null}
             <form action={basePath} className="inline-flex h-10 w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 text-sm text-slate-200 sm:w-[260px]">
-              {viewMode === "admin" ? <input type="hidden" name="view" value="admin" /> : null}
+              {viewMode !== "user" ? <input type="hidden" name="view" value={viewMode} /> : null}
               <input type="hidden" name="tab" value={activeTab} />
               <input type="hidden" name="sort" value={sortKey} />
               <input type="hidden" name="seminar" value={selectedSeminar} />
               <input type="hidden" name="team" value={selectedTeam} />
               {selectedDateBasis !== "seminar" ? <input type="hidden" name="dateBasis" value={selectedDateBasis} /> : null}
+              {selectedDateBasis === "calendar" && selectedStartDate ? <input type="hidden" name="startDate" value={selectedStartDate} /> : null}
+              {selectedDateBasis === "calendar" && selectedEndDate ? <input type="hidden" name="endDate" value={selectedEndDate} /> : null}
               {selectedTeam === ALL_TEAMS_LABEL && seatCountFilter !== "all" ? <input type="hidden" name="seatCount" value={seatCountFilter} /> : null}
               {selectedTraffic !== "all" ? <input type="hidden" name="traffic" value={selectedTraffic} /> : null}
               {selectedTraffic === "ad" && selectedAdSource !== "all" ? <input type="hidden" name="adSource" value={selectedAdSource} /> : null}
@@ -1456,6 +1779,18 @@ export function TeamSalesDashboardClient({
             selectedMember={selectedMember}
             onSelectMember={selectAdminMember}
           />
+        ) : viewMode === "manager" ? (
+          <ManagerGoalPanel
+            selectedTeam={selectedTeam}
+            selectedPeriod={selectedPeriodLabel}
+            goalMode={goalMode}
+            goalValue={goalValue}
+            onGoalModeChange={setGoalMode}
+            onGoalValueChange={setGoalValue}
+            projection={goalProjection}
+            currentRate={closeRate}
+            totals={totals}
+          />
         ) : (
           <>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
@@ -1468,14 +1803,32 @@ export function TeamSalesDashboardClient({
           <MetricTile label="要確認" value={`${totals.alert}`} sub="成約済みで着金日未入力" tone="rose" icon={AlertTriangle} />
         </div>
 
-        <WeeklyKpiPanel
-          weeks={data.weeklyKpis}
-          appointmentWeeks={data.appointmentWeeklyKpis}
-          memberWeeklyKpis={data.memberWeeklyKpis}
-          members={data.members}
-          selectedComparisonMember={selectedWeeklyMember}
-          onComparisonMemberChange={setSelectedWeeklyMember}
-        />
+        <GoalProgressCard projection={goalProjection} currentRate={closeRate} selectedTeam={selectedTeam} />
+
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+          <div>
+            <p className="text-sm font-semibold text-white">週別推移</p>
+            <p className="mt-1 text-xs text-slate-400">必要な時だけ開いて、チームと個人の推移を重ねて確認できます。</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowWeeklyKpis((value) => !value)}
+            className="rounded-md border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-sm font-semibold text-cyan-100"
+          >
+            {showWeeklyKpis ? "閉じる" : "開く"}
+          </button>
+        </div>
+
+        {showWeeklyKpis ? (
+          <WeeklyKpiPanel
+            weeks={data.weeklyKpis}
+            appointmentWeeks={data.appointmentWeeklyKpis}
+            memberWeeklyKpis={data.memberWeeklyKpis}
+            members={data.members}
+            selectedComparisonMember={selectedWeeklyMember}
+            onComparisonMemberChange={setSelectedWeeklyMember}
+          />
+        ) : null}
 
         <div className="mt-5 flex flex-wrap gap-2">
           {tabs.map((tab) => (
@@ -1493,21 +1846,19 @@ export function TeamSalesDashboardClient({
         </div>
 
         {visibleSortButtons.length ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {visibleSortButtons.map((button) => (
-              <button
-                key={button.key}
-                type="button"
-                onClick={() => changeSort(button.key)}
-                className={`rounded-md border px-3 py-2 text-sm ${
-                  sortKey === button.key
-                    ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
-                    : "border-white/10 bg-white/[0.03] text-slate-300"
-                }`}
-              >
-                {button.label}
-              </button>
-            ))}
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-xs text-slate-400">並び替え</span>
+            <select
+              value={sortKey}
+              onChange={(event) => changeSort(event.target.value as SortKey)}
+              className="h-10 w-full rounded-md border border-cyan-300/20 bg-slate-950 px-3 text-sm text-white outline-none sm:w-[220px]"
+            >
+              {visibleSortButtons.map((button) => (
+                <option key={button.key} value={button.key}>
+                  {button.label}
+                </option>
+              ))}
+            </select>
           </div>
         ) : null}
 
