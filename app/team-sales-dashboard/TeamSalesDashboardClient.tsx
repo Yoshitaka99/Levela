@@ -22,6 +22,15 @@ type ViewMode = "user" | "admin" | "manager";
 type AdminSortKey = "appointmentDesc" | "appointmentAsc" | "memberAsc" | "memberDesc";
 type SeatCountFilter = "all" | "at_least_10" | "under_10";
 type GoalMode = "perMember" | "teamClosed" | "closeRate";
+type GoalSaveStatus = "idle" | "loading" | "dirty" | "saving" | "saved" | "error";
+
+type TeamSalesGoal = {
+  team: string;
+  period: string;
+  mode: GoalMode;
+  value: string;
+  updatedAt: string;
+};
 
 const ALL_ADMIN_MEMBERS = "all";
 const ALL_SEMINARS_LABEL = "全期間";
@@ -408,25 +417,50 @@ function GoalProgressCard({
 function ManagerGoalPanel({
   selectedTeam,
   selectedPeriod,
+  selectedGoalPeriod,
+  teams,
+  seminars,
   goalMode,
   goalValue,
+  goalSaveStatus,
+  goalUpdatedAt,
+  onTeamChange,
+  onPeriodChange,
   onGoalModeChange,
   onGoalValueChange,
+  onSaveGoal,
   projection,
   currentRate,
   totals,
 }: {
   selectedTeam: string;
   selectedPeriod: string;
+  selectedGoalPeriod: string;
+  teams: string[];
+  seminars: string[];
   goalMode: GoalMode;
   goalValue: string;
+  goalSaveStatus: GoalSaveStatus;
+  goalUpdatedAt: string;
+  onTeamChange: (team: string) => void;
+  onPeriodChange: (period: string) => void;
   onGoalModeChange: (mode: GoalMode) => void;
   onGoalValueChange: (value: string) => void;
+  onSaveGoal: () => void;
   projection: GoalProjection;
   currentRate: number;
   totals: { leads: number; seated: number; closed: number; pending: number; hold: number; alert: number };
 }) {
   const selectedGoalOption = goalModeOptions.find((option) => option.key === goalMode) ?? goalModeOptions[0];
+  const monthOptions = seminars.filter((seminar) => seminar !== ALL_SEMINARS_LABEL);
+  const statusLabel = {
+    idle: "",
+    loading: "目標読込中",
+    dirty: "未保存",
+    saving: "保存中",
+    saved: "保存済み",
+    error: "保存エラー",
+  }[goalSaveStatus];
 
   return (
     <section className="mt-5 grid gap-5 lg:grid-cols-[0.7fr_1.3fr]">
@@ -435,6 +469,36 @@ function ManagerGoalPanel({
         <h2 className="mt-1 text-2xl font-semibold text-white">{selectedTeam}</h2>
         <p className="mt-1 text-sm text-slate-400">{selectedPeriod}</p>
         <div className="mt-5 grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1 text-sm text-slate-300">
+              チーム
+              <select
+                value={selectedTeam}
+                onChange={(event) => onTeamChange(event.target.value)}
+                className="h-10 rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-white outline-none"
+              >
+                {teams.map((team) => (
+                  <option key={team} value={team}>
+                    {team}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-sm text-slate-300">
+              月
+              <select
+                value={selectedGoalPeriod}
+                onChange={(event) => onPeriodChange(event.target.value)}
+                className="h-10 rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-white outline-none"
+              >
+                {monthOptions.map((seminar) => (
+                  <option key={seminar} value={seminar}>
+                    {formatSeminarLabel(seminar)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <label className="grid gap-1 text-sm text-slate-300">
             逆算する目標
             <select
@@ -461,6 +525,22 @@ function ManagerGoalPanel({
               <span className="px-3 text-sm text-slate-400">{selectedGoalOption.suffix}</span>
             </div>
           </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={onSaveGoal}
+              disabled={goalSaveStatus === "saving" || goalSaveStatus === "loading"}
+              className="rounded-md bg-teal-300 px-4 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {goalSaveStatus === "saving" ? "保存中" : "この目標を保存"}
+            </button>
+            {statusLabel ? (
+              <span className={`text-xs ${goalSaveStatus === "error" ? "text-rose-200" : goalSaveStatus === "dirty" ? "text-amber-200" : "text-slate-400"}`}>
+                {statusLabel}
+                {goalUpdatedAt && goalSaveStatus === "saved" ? ` / ${new Date(goalUpdatedAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""}
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
       <div className="rounded-lg border border-teal-300/20 bg-slate-950/40 p-4">
@@ -1127,10 +1207,13 @@ export function TeamSalesDashboardClient({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showOpening, setShowOpening] = useState(false);
   const [showWeeklyKpis, setShowWeeklyKpis] = useState(false);
-  const [goalMode, setGoalMode] = useState<GoalMode>("perMember");
-  const [goalValue, setGoalValue] = useState("4");
+  const [goalMode, setGoalMode] = useState<GoalMode>("closeRate");
+  const [goalValue, setGoalValue] = useState("35");
+  const [goalSaveStatus, setGoalSaveStatus] = useState<GoalSaveStatus>("loading");
+  const [goalUpdatedAt, setGoalUpdatedAt] = useState("");
   const hasMountedRef = useRef(false);
   const refreshRequestRef = useRef(0);
+  const goalDirtyRef = useRef(false);
 
   useEffect(() => {
     const key = "levela-team-sales-opening-seen";
@@ -1223,26 +1306,75 @@ export function TeamSalesDashboardClient({
   const closeRate = totals.seated ? (totals.closed / totals.seated) * 100 : 0;
   const projectedRate = totals.seated ? ((totals.closed + totals.pending) / totals.seated) * 100 : 0;
 
-  const goalStorageKey = useMemo(() => {
-    const periodKey = selectedDateBasis === "calendar" ? `${selectedStartDate}:${selectedEndDate}` : selectedSeminar;
-    return `team-sales-goal:${selectedTeam}:${selectedDateBasis}:${periodKey}`;
-  }, [selectedDateBasis, selectedEndDate, selectedSeminar, selectedStartDate, selectedTeam]);
+  const selectedGoalPeriod = useMemo(() => {
+    const selectedMonthlySeminar = normalizeSeminarSelection(selectedSeminar, data.seminars).find((seminar) => seminar !== ALL_SEMINARS_LABEL);
+    return selectedMonthlySeminar ?? data.seminars.find((seminar) => seminar !== ALL_SEMINARS_LABEL) ?? "";
+  }, [data.seminars, selectedSeminar]);
 
-  useEffect(() => {
-    const saved = window.localStorage.getItem(goalStorageKey);
-    if (!saved) return;
+  const loadGoal = useCallback(async () => {
+    if (!selectedTeam || !selectedGoalPeriod) return;
+    if (goalDirtyRef.current) return;
+    setGoalSaveStatus("loading");
     try {
-      const parsed = JSON.parse(saved) as { mode?: GoalMode; value?: string };
-      if (parsed.mode && goalModeOptions.some((option) => option.key === parsed.mode)) setGoalMode(parsed.mode);
-      if (parsed.value !== undefined) setGoalValue(parsed.value);
-    } catch {
-      // Ignore malformed local target values.
+      const params = new URLSearchParams({ team: selectedTeam, period: selectedGoalPeriod });
+      const response = await fetch(`/api/team-sales-goals?${params.toString()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`goal load failed: ${response.status}`);
+      const payload = (await response.json()) as { goal?: TeamSalesGoal };
+      const goal = payload.goal;
+      if (goal?.mode && goalModeOptions.some((option) => option.key === goal.mode)) setGoalMode(goal.mode);
+      if (goal?.value !== undefined) setGoalValue(goal.value);
+      setGoalUpdatedAt(goal?.updatedAt ?? "");
+      goalDirtyRef.current = false;
+      setGoalSaveStatus("saved");
+    } catch (error) {
+      console.error("[team-sales-dashboard] failed to load goal", error);
+      setGoalSaveStatus("error");
     }
-  }, [goalStorageKey]);
+  }, [selectedGoalPeriod, selectedTeam]);
 
   useEffect(() => {
-    window.localStorage.setItem(goalStorageKey, JSON.stringify({ mode: goalMode, value: goalValue }));
-  }, [goalMode, goalStorageKey, goalValue]);
+    goalDirtyRef.current = false;
+    loadGoal();
+    const timer = window.setInterval(loadGoal, 30000);
+    return () => window.clearInterval(timer);
+  }, [loadGoal]);
+
+  const saveGoal = useCallback(async () => {
+    if (!selectedTeam || !selectedGoalPeriod) return;
+    setGoalSaveStatus("saving");
+    try {
+      const response = await fetch("/api/team-sales-goals", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          team: selectedTeam,
+          period: selectedGoalPeriod,
+          mode: goalMode,
+          value: goalValue,
+        }),
+      });
+      if (!response.ok) throw new Error(`goal save failed: ${response.status}`);
+      const payload = (await response.json()) as { goal?: TeamSalesGoal };
+      setGoalUpdatedAt(payload.goal?.updatedAt ?? new Date().toISOString());
+      goalDirtyRef.current = false;
+      setGoalSaveStatus("saved");
+    } catch (error) {
+      console.error("[team-sales-dashboard] failed to save goal", error);
+      setGoalSaveStatus("error");
+    }
+  }, [goalMode, goalValue, selectedGoalPeriod, selectedTeam]);
+
+  function changeGoalMode(nextGoalMode: GoalMode) {
+    goalDirtyRef.current = true;
+    setGoalMode(nextGoalMode);
+    setGoalSaveStatus("dirty");
+  }
+
+  function changeGoalValue(nextGoalValue: string) {
+    goalDirtyRef.current = true;
+    setGoalValue(nextGoalValue);
+    setGoalSaveStatus("dirty");
+  }
 
   const goalProjection = useMemo(() => {
     const memberCount = Math.max(data.members.length, 1);
@@ -1470,6 +1602,28 @@ export function TeamSalesDashboardClient({
       "",
       dashboardHref({
         seminar: nextValue,
+        startDate: selectedDateBasis === "calendar" ? nextRange.startDate : undefined,
+        endDate: selectedDateBasis === "calendar" ? nextRange.endDate : undefined,
+        member: null,
+      }),
+    );
+  }
+
+  function changeManagerPeriod(nextPeriod: string) {
+    refreshRequestRef.current += 1;
+    const nextRange = getDefaultCalendarRange(nextPeriod);
+    setSelectedSeminar(nextPeriod);
+    if (selectedDateBasis === "calendar") {
+      setSelectedStartDate(nextRange.startDate);
+      setSelectedEndDate(nextRange.endDate);
+    }
+    setSelectedMember("");
+    setSelectedWeeklyMember("");
+    window.history.replaceState(
+      null,
+      "",
+      dashboardHref({
+        seminar: nextPeriod,
         startDate: selectedDateBasis === "calendar" ? nextRange.startDate : undefined,
         endDate: selectedDateBasis === "calendar" ? nextRange.endDate : undefined,
         member: null,
@@ -1783,10 +1937,18 @@ export function TeamSalesDashboardClient({
           <ManagerGoalPanel
             selectedTeam={selectedTeam}
             selectedPeriod={selectedPeriodLabel}
+            selectedGoalPeriod={selectedGoalPeriod}
+            teams={data.teams}
+            seminars={data.seminars}
             goalMode={goalMode}
             goalValue={goalValue}
-            onGoalModeChange={setGoalMode}
-            onGoalValueChange={setGoalValue}
+            goalSaveStatus={goalSaveStatus}
+            goalUpdatedAt={goalUpdatedAt}
+            onTeamChange={changeTeam}
+            onPeriodChange={changeManagerPeriod}
+            onGoalModeChange={changeGoalMode}
+            onGoalValueChange={changeGoalValue}
+            onSaveGoal={saveGoal}
             projection={goalProjection}
             currentRate={closeRate}
             totals={totals}

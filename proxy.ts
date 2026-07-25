@@ -8,7 +8,8 @@ function isProtectedTeamPath(pathname: string) {
     pathname.startsWith("/team/") ||
     pathname === "/team-sales-dashboard" ||
     pathname.startsWith("/team-sales-dashboard/") ||
-    pathname === "/api/team-sales-dashboard"
+    pathname === "/api/team-sales-dashboard" ||
+    pathname === "/api/team-sales-goals"
   );
 }
 
@@ -30,5 +31,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/team/:path*", "/team-sales-dashboard/:path*", "/api/team-sales-dashboard"],
+  matcher: ["/team/:path*", "/team-sales-dashboard/:path*", "/api/team-sales-dashboard", "/api/team-sales-goals"],
 };
