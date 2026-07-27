@@ -271,11 +271,6 @@ function toDateKey(date: { year: number; month: number; day: number }) {
   return `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;
 }
 
-function getAppointmentDateKey(row: SourceRow) {
-  const parsedDate = parseSheetDate(getAppointmentDate(row));
-  return parsedDate ? toDateKey(parsedDate) : "";
-}
-
 function isIsoDate(value?: string | null) {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 }
@@ -326,10 +321,8 @@ function usesJulyLaunchTeam(row: SourceRow, dateBasis: DateBasis) {
 }
 
 function usesAugustLaunchTeam(row: SourceRow, dateBasis: DateBasis, calendarStartDate = "") {
-  if (dateBasis === APPOINTMENT_DATE_BASIS || dateBasis === CALENDAR_DATE_BASIS) {
-    const appointmentDateKey = getAppointmentDateKey(row);
-    if (appointmentDateKey) return appointmentDateKey >= CALENDAR_AUGUST_TEAM_CUTOFF;
-    if (dateBasis === CALENDAR_DATE_BASIS && calendarStartDate >= CALENDAR_AUGUST_TEAM_CUTOFF) return true;
+  if (dateBasis === CALENDAR_DATE_BASIS) {
+    return calendarStartDate >= CALENDAR_AUGUST_TEAM_CUTOFF;
   }
   const parsed = parseSeminarLaunchMonth(getEffectiveSeminar(row, dateBasis));
   if (!parsed) return false;
@@ -341,12 +334,9 @@ function getTeamDefinitionsForRow(row: SourceRow, dateBasis: DateBasis, calendar
   return usesJulyLaunchTeam(row, dateBasis) ? JULY_LAUNCH_TEAM_DEFINITIONS : LEGACY_TEAM_DEFINITIONS;
 }
 
-function getTeamDefinitionsForSelection(dateBasis: DateBasis, selectedSeminars: string[], startDate = "", endDate = "") {
+function getTeamDefinitionsForSelection(dateBasis: DateBasis, selectedSeminars: string[], startDate = "") {
   if (dateBasis === CALENDAR_DATE_BASIS) {
-    if ((startDate && startDate >= CALENDAR_AUGUST_TEAM_CUTOFF) || (endDate && endDate >= CALENDAR_AUGUST_TEAM_CUTOFF)) {
-      return AUGUST_LAUNCH_TEAM_DEFINITIONS;
-    }
-    return JULY_LAUNCH_TEAM_DEFINITIONS;
+    return startDate >= CALENDAR_AUGUST_TEAM_CUTOFF ? AUGUST_LAUNCH_TEAM_DEFINITIONS : JULY_LAUNCH_TEAM_DEFINITIONS;
   }
 
   const parsedSeminars = selectedSeminars
@@ -848,7 +838,7 @@ function aggregateRows(
     );
   });
 
-  const activeTeamDefinitions = getTeamDefinitionsForSelection(selectedDateBasis, selectedSeminars, selectedStartDate, selectedEndDate);
+  const activeTeamDefinitions = getTeamDefinitionsForSelection(selectedDateBasis, selectedSeminars, selectedStartDate);
   const optionRows = selectedSeminars.includes(ALL_SEMINARS) ? [...displayRows, ...calendarBaseRows] : displayRows;
   const teams = getTeamOptionsForRows(optionRows, selectedDateBasis, selectedStartDate, activeTeamDefinitions);
   const selectedTeam = resolveSelectedTeam(teams, requestedTeam);
