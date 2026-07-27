@@ -1,0 +1,270 @@
+/* ============================================================
+   Levela デザイントークン（確定値）
+   出典: public/levela-start-logo.png / app/globals.css の .levela-splash*
+   値の意味と使い分け: .claude/skills/levela-design/references/brand.md
+   ============================================================ */
+
+/* ---- 1. Tailwind v4 用（app/globals.css の @import "tailwindcss" の直後に置く）----
+   これで bg-paper-50 / text-ink-950 / border-ink-100 / text-brass などが使える。 */
+
+@theme inline {
+  /* 紙 */
+  --color-paper-0: #ffffff;
+  --color-paper-50: #fffdfa;
+  --color-paper-100: #f6f2ea;
+  --color-paper-200: #ece6dc;
+
+  /* 墨 */
+  --color-ink-950: #231815;
+  --color-ink-800: #3a2c27;
+  --color-ink-600: #5c4b44;
+  --color-ink-500: #6b5a52;
+  --color-ink-400: #8b7a72;
+  --color-ink-200: #c9bfb8;
+  --color-ink-100: #e7e1d8;
+
+  /* アクセント */
+  --color-accent: #e50012; /* 1画面に1箇所だけ */
+  --color-accent-text: #b3000e; /* 明背景の小さい赤文字 (7.18:1) */
+  --color-brass: #baa279; /* 暗背景専用 */
+
+  /* 意味 */
+  --color-success: #0f7b5a;
+  --color-warning: #8f5a00;
+  --color-danger: #e50012;
+
+  /* 暗モード面 */
+  --color-surface-base: #171010;
+  --color-surface: #231815;
+  --color-surface-raised: #3a2c27;
+  --color-on-surface: #f6f2ea;
+  --color-on-surface-muted: #b9aaa3;
+  --color-success-dark: #4cc79b;
+  --color-warning-dark: #e8b45c;
+  --color-danger-dark: #ff6b5e;
+
+  /* 書体 */
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI",
+    "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+}
+
+/* ---- 2. 素のCSS用（Artifact など Tailwind を使わない場所）---- */
+
+:root {
+  --lv-paper-0: #ffffff;
+  --lv-paper-50: #fffdfa;
+  --lv-paper-100: #f6f2ea;
+  --lv-paper-200: #ece6dc;
+
+  --lv-ink-950: #231815;
+  --lv-ink-800: #3a2c27;
+  --lv-ink-600: #5c4b44;
+  --lv-ink-500: #6b5a52;
+  --lv-ink-400: #8b7a72;
+  --lv-ink-200: #c9bfb8;
+  --lv-ink-100: #e7e1d8;
+
+  --lv-accent: #e50012;
+  --lv-accent-text: #b3000e;
+  --lv-brass: #baa279;
+
+  --lv-success: #0f7b5a;
+  --lv-warning: #8f5a00;
+  --lv-danger: #e50012;
+
+  /* 意味づけされた面（明モード既定） */
+  --lv-bg: var(--lv-paper-50);
+  --lv-bg-sunken: var(--lv-paper-100);
+  --lv-card: var(--lv-paper-0);
+  --lv-text: var(--lv-ink-950);
+  --lv-text-muted: var(--lv-ink-500);
+  --lv-rule: var(--lv-ink-100);
+  --lv-rule-interactive: #9c8d85; /* 操作可能な要素の境界 (3.20:1) */
+  --lv-button-bg: #231815; /* 主ボタンは墨。赤にしない */
+  --lv-button-bg-hover: #34251f;
+  --lv-button-fg: #ffffff;
+
+  /* 角丸 */
+  --lv-radius-pill: 999px;
+  --lv-radius-card: 12px;
+  --lv-radius-input: 10px;
+  --lv-radius-image: 8px;
+
+  /* 影（黒ではなく墨を透過させる） */
+  --lv-shadow-card: 0 18px 36px rgba(35, 24, 21, 0.1);
+  --lv-shadow-button: 0 18px 36px rgba(35, 24, 21, 0.18);
+  --lv-shadow-hover: 0 22px 42px rgba(35, 24, 21, 0.22);
+
+  /* モーション */
+  --lv-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --lv-dur-tap: 180ms;
+  --lv-dur-fade: 560ms;
+  --lv-dur-move: 900ms;
+
+  --lv-font-sans: system-ui, -apple-system, "Segoe UI", "Hiragino Sans",
+    "Yu Gothic", "Meiryo", sans-serif;
+  --lv-font-mono: ui-monospace, "SFMono-Regular", "Geist Mono", monospace;
+
+  color-scheme: light dark;
+}
+
+/* ---- 3. 暗モード ----
+   Artifact は閲覧者のテーマで表示されるので、両方を必ず定義する。
+   data-theme は閲覧者のトグルが立てるので、メディアクエリより後に書いて勝たせる。 */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --lv-bg: #171010;
+    --lv-bg-sunken: #100b0a;
+    --lv-card: #231815;
+    --lv-text: #f6f2ea;
+    --lv-text-muted: #b9aaa3;
+    --lv-rule: rgba(246, 242, 234, 0.12);
+    --lv-rule-interactive: rgba(246, 242, 234, 0.32);
+    --lv-accent: #ff6b5e;
+    --lv-accent-text: #ff6b5e;
+    --lv-success: #4cc79b;
+    --lv-warning: #e8b45c;
+    --lv-danger: #ff6b5e;
+    --lv-button-bg: #f6f2ea; /* 暗背景では紙を塗って反転させる */
+    --lv-button-bg-hover: #ffffff;
+    --lv-button-fg: #231815;
+  }
+}
+
+:root[data-theme="dark"] {
+  --lv-bg: #171010;
+  --lv-bg-sunken: #100b0a;
+  --lv-card: #231815;
+  --lv-text: #f6f2ea;
+  --lv-text-muted: #b9aaa3;
+  --lv-rule: rgba(246, 242, 234, 0.12);
+  --lv-rule-interactive: rgba(246, 242, 234, 0.32);
+  --lv-accent: #ff6b5e;
+  --lv-accent-text: #ff6b5e;
+  --lv-success: #4cc79b;
+  --lv-warning: #e8b45c;
+  --lv-danger: #ff6b5e;
+  --lv-button-bg: #f6f2ea; /* 暗背景では紙を塗って反転させる */
+  --lv-button-bg-hover: #ffffff;
+  --lv-button-fg: #231815;
+}
+
+:root[data-theme="light"] {
+  --lv-bg: #fffdfa;
+  --lv-bg-sunken: #f6f2ea;
+  --lv-card: #ffffff;
+  --lv-text: #231815;
+  --lv-text-muted: #6b5a52;
+  --lv-rule: #e7e1d8;
+  --lv-rule-interactive: #9c8d85;
+  --lv-accent: #e50012;
+  --lv-accent-text: #b3000e;
+  --lv-success: #0f7b5a;
+  --lv-warning: #8f5a00;
+  --lv-danger: #e50012;
+  --lv-button-bg: #231815;
+  --lv-button-bg-hover: #34251f;
+  --lv-button-fg: #ffffff;
+}
+
+/* ---- 4. 定番パーツ ---- */
+
+.lv-button {
+  border-radius: var(--lv-radius-pill);
+  background: var(--lv-button-bg);
+  color: var(--lv-button-fg);
+  border: 1px solid rgba(35, 24, 21, 0.12);
+  box-shadow: var(--lv-shadow-button);
+  font-weight: 800;
+  line-height: 1;
+  padding: 18px 28px;
+  transition: transform var(--lv-dur-tap) ease,
+    box-shadow var(--lv-dur-tap) ease, background var(--lv-dur-tap) ease;
+}
+.lv-button:hover {
+  background: var(--lv-button-bg-hover);
+  box-shadow: var(--lv-shadow-hover);
+  transform: translateY(-1px);
+}
+.lv-button:active {
+  transform: translateY(1px);
+}
+
+.lv-card {
+  background: var(--lv-card);
+  border: 1px solid var(--lv-rule);
+  border-radius: var(--lv-radius-card);
+  box-shadow: var(--lv-shadow-card);
+}
+
+/* 両端が消える罫。Levelaの区切りはベタ罫よりこちら */
+.lv-rule {
+  height: 1px;
+  border: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(35, 24, 21, 0.22),
+    transparent
+  );
+}
+@media (prefers-color-scheme: dark) {
+  .lv-rule {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(246, 242, 234, 0.28),
+      transparent
+    );
+  }
+}
+:root[data-theme="dark"] .lv-rule {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(246, 242, 234, 0.28),
+    transparent
+  );
+}
+:root[data-theme="light"] .lv-rule {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(35, 24, 21, 0.22),
+    transparent
+  );
+}
+
+/* 出現の定型 */
+.lv-enter {
+  opacity: 0;
+  transform: translateY(14px) scale(0.98);
+  transition: opacity var(--lv-dur-fade) ease,
+    transform var(--lv-dur-move) var(--lv-ease);
+}
+.lv-enter.is-ready {
+  opacity: 1;
+  transform: none;
+}
+
+/* 数値は桁を揃える。揃っていない表は信用されない */
+.lv-num {
+  font-family: var(--lv-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lv-enter {
+    transition: opacity 200ms ease;
+    transform: none;
+  }
+  .lv-button {
+    transition: background 200ms ease;
+  }
+  .lv-button:hover,
+  .lv-button:active {
+    transform: none;
+  }
+}
