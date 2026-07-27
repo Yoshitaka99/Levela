@@ -64,3 +64,6 @@ template_images/
 *.csv
 *.tsv
 *_preview.json
+
+# 動画（Remotion）で使うテクスチャは追跡する
+!video/public/textures/*.png
