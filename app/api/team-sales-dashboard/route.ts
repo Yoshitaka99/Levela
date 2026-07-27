@@ -271,6 +271,11 @@ function toDateKey(date: { year: number; month: number; day: number }) {
   return `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;
 }
 
+function getAppointmentDateKey(row: SourceRow) {
+  const parsedDate = parseSheetDate(getAppointmentDate(row));
+  return parsedDate ? toDateKey(parsedDate) : "";
+}
+
 function isIsoDate(value?: string | null) {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 }
@@ -321,7 +326,11 @@ function usesJulyLaunchTeam(row: SourceRow, dateBasis: DateBasis) {
 }
 
 function usesAugustLaunchTeam(row: SourceRow, dateBasis: DateBasis, calendarStartDate = "") {
-  if (dateBasis === CALENDAR_DATE_BASIS && calendarStartDate >= CALENDAR_AUGUST_TEAM_CUTOFF) return true;
+  if (dateBasis === APPOINTMENT_DATE_BASIS || dateBasis === CALENDAR_DATE_BASIS) {
+    const appointmentDateKey = getAppointmentDateKey(row);
+    if (appointmentDateKey) return appointmentDateKey >= CALENDAR_AUGUST_TEAM_CUTOFF;
+    if (dateBasis === CALENDAR_DATE_BASIS && calendarStartDate >= CALENDAR_AUGUST_TEAM_CUTOFF) return true;
+  }
   const parsed = parseSeminarLaunchMonth(getEffectiveSeminar(row, dateBasis));
   if (!parsed) return false;
   return parsed.year > AUGUST_LAUNCH_CUTOFF.year || (parsed.year === AUGUST_LAUNCH_CUTOFF.year && parsed.month >= AUGUST_LAUNCH_CUTOFF.month);
@@ -330,6 +339,29 @@ function usesAugustLaunchTeam(row: SourceRow, dateBasis: DateBasis, calendarStar
 function getTeamDefinitionsForRow(row: SourceRow, dateBasis: DateBasis, calendarStartDate = "") {
   if (usesAugustLaunchTeam(row, dateBasis, calendarStartDate)) return AUGUST_LAUNCH_TEAM_DEFINITIONS;
   return usesJulyLaunchTeam(row, dateBasis) ? JULY_LAUNCH_TEAM_DEFINITIONS : LEGACY_TEAM_DEFINITIONS;
+}
+
+function getTeamDefinitionsForSelection(dateBasis: DateBasis, selectedSeminars: string[], startDate = "", endDate = "") {
+  if (dateBasis === CALENDAR_DATE_BASIS) {
+    if ((startDate && startDate >= CALENDAR_AUGUST_TEAM_CUTOFF) || (endDate && endDate >= CALENDAR_AUGUST_TEAM_CUTOFF)) {
+      return AUGUST_LAUNCH_TEAM_DEFINITIONS;
+    }
+    return JULY_LAUNCH_TEAM_DEFINITIONS;
+  }
+
+  const parsedSeminars = selectedSeminars
+    .filter((seminar) => seminar !== ALL_SEMINARS)
+    .map(parseSeminarLaunchMonth)
+    .filter((seminar): seminar is { year: number; month: number } => Boolean(seminar));
+
+  if (!parsedSeminars.length) return AUGUST_LAUNCH_TEAM_DEFINITIONS;
+  if (parsedSeminars.some((seminar) => seminar.year > AUGUST_LAUNCH_CUTOFF.year || (seminar.year === AUGUST_LAUNCH_CUTOFF.year && seminar.month >= AUGUST_LAUNCH_CUTOFF.month))) {
+    return AUGUST_LAUNCH_TEAM_DEFINITIONS;
+  }
+  if (parsedSeminars.some((seminar) => seminar.year > JULY_LAUNCH_CUTOFF.year || (seminar.year === JULY_LAUNCH_CUTOFF.year && seminar.month >= JULY_LAUNCH_CUTOFF.month))) {
+    return JULY_LAUNCH_TEAM_DEFINITIONS;
+  }
+  return LEGACY_TEAM_DEFINITIONS;
 }
 
 function getTeamOrderIndex(team: string) {
@@ -624,9 +656,15 @@ function resolveTeamForMember(member: string, teamDefinitions: Record<string, st
   return match?.[0] ?? SALES_AGENCY_TEAM;
 }
 
-function getTeamOptionsForRows(rows: SourceRow[], dateBasis: DateBasis, calendarStartDate = "") {
+function getTeamOptionsForRows(
+  rows: SourceRow[],
+  dateBasis: DateBasis,
+  calendarStartDate = "",
+  activeTeamDefinitions: Record<string, string[]> = {},
+) {
   const rowTeams = new Set(rows.map((row) => resolveTeamForRow(row, dateBasis, calendarStartDate)));
-  const orderedTeams = TEAM_ORDER.filter((team) => team !== ALL_TEAMS && rowTeams.has(team));
+  const activeTeams = new Set(Object.keys(activeTeamDefinitions).filter((team) => team !== ALL_TEAMS));
+  const orderedTeams = TEAM_ORDER.filter((team) => team !== ALL_TEAMS && (rowTeams.has(team) || activeTeams.has(team)));
   return [ALL_TEAMS, ...orderedTeams, ...(rowTeams.has(SALES_AGENCY_TEAM) ? [SALES_AGENCY_TEAM] : [])];
 }
 
@@ -810,8 +848,9 @@ function aggregateRows(
     );
   });
 
+  const activeTeamDefinitions = getTeamDefinitionsForSelection(selectedDateBasis, selectedSeminars, selectedStartDate, selectedEndDate);
   const optionRows = selectedSeminars.includes(ALL_SEMINARS) ? [...displayRows, ...calendarBaseRows] : displayRows;
-  const teams = getTeamOptionsForRows(optionRows, selectedDateBasis, selectedStartDate);
+  const teams = getTeamOptionsForRows(optionRows, selectedDateBasis, selectedStartDate, activeTeamDefinitions);
   const selectedTeam = resolveSelectedTeam(teams, requestedTeam);
   const matchesSelectedTeam = (row: SourceRow) => selectedTeam === ALL_TEAMS || resolveTeamForRow(row, selectedDateBasis, selectedStartDate) === selectedTeam;
 
@@ -828,11 +867,20 @@ function aggregateRows(
     if (status) increment(statusCounts, status);
   });
 
-  const memberGroups = [...new Map([...scopedRows, ...scopedDisplayRows].map((row) => {
+  const rowMemberGroups = [...scopedRows, ...scopedDisplayRows].map((row) => {
     const member = getMember(row);
     const team = resolveTeamForRow(row, selectedDateBasis, selectedStartDate);
-    return [getMemberKey(team, member), { key: getMemberKey(team, member), name: member, team }];
-  })).values()].sort((a, b) => {
+    return { key: getMemberKey(team, member), name: member, team };
+  });
+  const rosterMemberGroups =
+    selectedTeam === ALL_TEAMS
+      ? []
+      : (activeTeamDefinitions[selectedTeam] ?? []).map((member) => ({
+          key: getMemberKey(selectedTeam, member),
+          name: member,
+          team: selectedTeam,
+        }));
+  const memberGroups = [...new Map([...rowMemberGroups, ...rosterMemberGroups].map((group) => [group.key, group])).values()].sort((a, b) => {
     const teamDiff = getTeamOrderIndex(a.team) - getTeamOrderIndex(b.team);
     if (teamDiff !== 0) return teamDiff;
     return a.name.localeCompare(b.name, "ja");
