@@ -1,0 +1,27 @@
+{
+  "name": "levela-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion videos for Levela (Orochi team)",
+  "scripts": {
+    "dev": "remotion studio",
+    "studio": "remotion studio",
+    "render": "remotion render OrochiMotivation out/orochi-motivation.mp4",
+    "render:short": "remotion render OrochiMotivationShort out/orochi-motivation-short.mp4",
+    "render:vertical": "remotion render OrochiMotivationVertical out/orochi-motivation-vertical.mp4",
+    "render:all": "npm run render && npm run render:short && npm run render:vertical",
+    "still": "remotion still OrochiMotivation out/thumbnail.png",
+    "upgrade": "remotion upgrade"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.398",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "4.0.398"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

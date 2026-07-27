@@ -256,6 +256,19 @@
 - CapCut / Premiere Pro どちらでも可。テロップ主体なので CapCut でも十分作れる。
 - キーとなるのは「無音の間」。1.5秒の沈黙を怖がらずに入れる。
 
+### この台本のRemotion実装
+`video/` にこの台本をそのまま動画にした Remotion プロジェクトがあります。
+映像素材ゼロでテロップだけで1本成立するので、まずはこれを叩き台にするのが早いです。
+
+```bash
+cd video && npm install
+npm run studio      # プレビュー（その場で文言・タイミングを触れる）
+npm run render:all  # 本編2:40 / ショート60秒 / 縦型60秒 を書き出し
+```
+
+シーン①〜⑥は `video/src/scenes/Scene1Question.tsx` 〜 `Scene6Team.tsx` に
+1対1で対応しています。詳細は `video/README.md`。
+
 ---
 
 ## 5. 差し替え用フレーズ集（好みに応じて）
