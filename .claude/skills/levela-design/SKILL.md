@@ -170,6 +170,8 @@ Web: 主要面の残り → 下層1ページ → 残り全ページ
 
 - `references/brand.md` — トークン全量、明/暗モード、コントラスト実測値、やってはいけない事、チャート配色
 - `references/workflow.md` — 上記手順の実務詳細（プロンプトの型、3案の振り分け方、修正の投げ方）
+- `references/toolchain.md` — **どのAI・ツールが何を担当するか**（Claude Design / Claude Code / 画像生成 /
+  プラグイン・MCP / デプロイ）。工程を実際のツールに割り当てるとき、詰まりどころを踏む前に読む
 - `references/media.md` — Web / pptx / Artifact / 画像 / Markdown 別の具体
 - `references/checklist.md` — 出荷前チェック（媒体別）
 - `assets/tokens.css` / `assets/tokens.py` — コピペ用の確定値
