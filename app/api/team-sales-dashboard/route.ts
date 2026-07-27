@@ -83,6 +83,8 @@ type TeamSalesDataCacheEntry = {
 const dataCache = new Map<string, TeamSalesDataCacheEntry>();
 
 const JULY_LAUNCH_CUTOFF = { year: 2026, month: 7 };
+const AUGUST_LAUNCH_CUTOFF = { year: 2026, month: 8 };
+const CALENDAR_AUGUST_TEAM_CUTOFF = "2026-07-27";
 
 const LEGACY_TEAM_DEFINITIONS: Record<string, string[]> = {
   [ALL_TEAMS]: [],
@@ -108,10 +110,24 @@ const JULY_LAUNCH_TEAM_DEFINITIONS: Record<string, string[]> = {
   "ひなたチーム": ["佐藤ひなた", "根本義暉"],
 };
 
+const AUGUST_LAUNCH_TEAM_DEFINITIONS: Record<string, string[]> = {
+  [ALL_TEAMS]: [],
+  "れいなチーム": ["高橋礼菜", "坂口武蔵", "田口亮太", "久田翔太", "稲波杏奈", "木村知代", "遠藤羽琉", "木原桃香", "大谷みくに", "杉井友紀", "小牟田早智"],
+  "おろチーム": ["苙隼人", "田仲由敬", "河上まちこ", "折原加純", "佐々木爽", "田中悠喜", "加藤陸", "星野譲治", "石田竜一", "高橋健太", "持木玲那"],
+  "こなつチーム": ["長谷川小夏", "関口愛里", "杉山ふうか", "五十嵐凌大", "三浦拓迪", "和佐田舞緒", "佐々木将城", "藤田吉陽", "小室瑠生", "鈴木里果"],
+  "ひかりチーム": ["橋口陽香里", "上村勇人", "佐藤ひなた", "須見浩人", "横山英輝", "西岡駿", "水野王羅", "深見美幸", "岡崎未来代", "仲戸茶子", "根本義暉"],
+};
+
 const TEAM_ORDER = [
   ALL_TEAMS,
   ...Object.keys(LEGACY_TEAM_DEFINITIONS).filter((team) => team !== ALL_TEAMS),
   ...Object.keys(JULY_LAUNCH_TEAM_DEFINITIONS).filter((team) => team !== ALL_TEAMS && !Object.prototype.hasOwnProperty.call(LEGACY_TEAM_DEFINITIONS, team)),
+  ...Object.keys(AUGUST_LAUNCH_TEAM_DEFINITIONS).filter(
+    (team) =>
+      team !== ALL_TEAMS &&
+      !Object.prototype.hasOwnProperty.call(LEGACY_TEAM_DEFINITIONS, team) &&
+      !Object.prototype.hasOwnProperty.call(JULY_LAUNCH_TEAM_DEFINITIONS, team),
+  ),
 ];
 
 type SourceRow = Record<string, string>;
@@ -286,7 +302,11 @@ function getEffectiveSeminar(row: SourceRow, dateBasis: DateBasis = SEMINAR_DATE
 
 function parseSeminarLaunchMonth(seminar: string) {
   const match = seminar.match(/(\d{2,4})\D+(\d{1,2})/);
-  if (!match) return null;
+  if (!match) {
+    const monthOnlyMatch = seminar.match(/(\d{1,2})\D*月/);
+    if (!monthOnlyMatch) return null;
+    return { year: 2026, month: Number(monthOnlyMatch[1]) };
+  }
   const rawYear = Number(match[1]);
   const year = rawYear < 100 ? 2000 + rawYear : rawYear;
   const month = Number(match[2]);
@@ -300,7 +320,15 @@ function usesJulyLaunchTeam(row: SourceRow, dateBasis: DateBasis) {
   return parsed.year > JULY_LAUNCH_CUTOFF.year || (parsed.year === JULY_LAUNCH_CUTOFF.year && parsed.month >= JULY_LAUNCH_CUTOFF.month);
 }
 
-function getTeamDefinitionsForRow(row: SourceRow, dateBasis: DateBasis) {
+function usesAugustLaunchTeam(row: SourceRow, dateBasis: DateBasis, calendarStartDate = "") {
+  if (dateBasis === CALENDAR_DATE_BASIS && calendarStartDate >= CALENDAR_AUGUST_TEAM_CUTOFF) return true;
+  const parsed = parseSeminarLaunchMonth(getEffectiveSeminar(row, dateBasis));
+  if (!parsed) return false;
+  return parsed.year > AUGUST_LAUNCH_CUTOFF.year || (parsed.year === AUGUST_LAUNCH_CUTOFF.year && parsed.month >= AUGUST_LAUNCH_CUTOFF.month);
+}
+
+function getTeamDefinitionsForRow(row: SourceRow, dateBasis: DateBasis, calendarStartDate = "") {
+  if (usesAugustLaunchTeam(row, dateBasis, calendarStartDate)) return AUGUST_LAUNCH_TEAM_DEFINITIONS;
   return usesJulyLaunchTeam(row, dateBasis) ? JULY_LAUNCH_TEAM_DEFINITIONS : LEGACY_TEAM_DEFINITIONS;
 }
 
@@ -310,16 +338,16 @@ function getTeamOrderIndex(team: string) {
   return team === SALES_AGENCY_TEAM ? TEAM_ORDER.length : TEAM_ORDER.length + 1;
 }
 
-function resolveTeamForRow(row: SourceRow, dateBasis: DateBasis = SEMINAR_DATE_BASIS) {
-  return resolveTeamForMember(getMember(row), getTeamDefinitionsForRow(row, dateBasis));
+function resolveTeamForRow(row: SourceRow, dateBasis: DateBasis = SEMINAR_DATE_BASIS, calendarStartDate = "") {
+  return resolveTeamForMember(getMember(row), getTeamDefinitionsForRow(row, dateBasis, calendarStartDate));
 }
 
 function getMemberKey(team: string, member: string) {
   return `${team}::${normalizeMemberName(member)}`;
 }
 
-function getMemberKeyForRow(row: SourceRow, dateBasis: DateBasis = SEMINAR_DATE_BASIS) {
-  return getMemberKey(resolveTeamForRow(row, dateBasis), getMember(row));
+function getMemberKeyForRow(row: SourceRow, dateBasis: DateBasis = SEMINAR_DATE_BASIS, calendarStartDate = "") {
+  return getMemberKey(resolveTeamForRow(row, dateBasis, calendarStartDate), getMember(row));
 }
 
 function getWeekLabel(row: SourceRow, dateBasis: DateBasis = SEMINAR_DATE_BASIS) {
@@ -596,8 +624,8 @@ function resolveTeamForMember(member: string, teamDefinitions: Record<string, st
   return match?.[0] ?? SALES_AGENCY_TEAM;
 }
 
-function getTeamOptionsForRows(rows: SourceRow[], dateBasis: DateBasis) {
-  const rowTeams = new Set(rows.map((row) => resolveTeamForRow(row, dateBasis)));
+function getTeamOptionsForRows(rows: SourceRow[], dateBasis: DateBasis, calendarStartDate = "") {
+  const rowTeams = new Set(rows.map((row) => resolveTeamForRow(row, dateBasis, calendarStartDate)));
   const orderedTeams = TEAM_ORDER.filter((team) => team !== ALL_TEAMS && rowTeams.has(team));
   return [ALL_TEAMS, ...orderedTeams, ...(rowTeams.has(SALES_AGENCY_TEAM) ? [SALES_AGENCY_TEAM] : [])];
 }
@@ -680,11 +708,12 @@ function resolveSelectedTeam(options: string[], requestedTeam?: string | null) {
 function buildCustomerRows(
   rows: SourceRow[],
   dateBasis: DateBasis,
+  calendarStartDate = "",
 ): CustomerManagementRow[] {
   return rows
     .map((row) => {
       const member = getMember(row);
-      const team = resolveTeamForRow(row, dateBasis);
+      const team = resolveTeamForRow(row, dateBasis, calendarStartDate);
       return {
         member,
         team,
@@ -782,9 +811,9 @@ function aggregateRows(
   });
 
   const optionRows = selectedSeminars.includes(ALL_SEMINARS) ? [...displayRows, ...calendarBaseRows] : displayRows;
-  const teams = getTeamOptionsForRows(optionRows, selectedDateBasis);
+  const teams = getTeamOptionsForRows(optionRows, selectedDateBasis, selectedStartDate);
   const selectedTeam = resolveSelectedTeam(teams, requestedTeam);
-  const matchesSelectedTeam = (row: SourceRow) => selectedTeam === ALL_TEAMS || resolveTeamForRow(row, selectedDateBasis) === selectedTeam;
+  const matchesSelectedTeam = (row: SourceRow) => selectedTeam === ALL_TEAMS || resolveTeamForRow(row, selectedDateBasis, selectedStartDate) === selectedTeam;
 
   const scopedRows = seminarRows.filter(matchesSelectedTeam);
   const scopedDisplayRows = displayRows.filter(matchesSelectedTeam);
@@ -801,7 +830,7 @@ function aggregateRows(
 
   const memberGroups = [...new Map([...scopedRows, ...scopedDisplayRows].map((row) => {
     const member = getMember(row);
-    const team = resolveTeamForRow(row, selectedDateBasis);
+    const team = resolveTeamForRow(row, selectedDateBasis, selectedStartDate);
     return [getMemberKey(team, member), { key: getMemberKey(team, member), name: member, team }];
   })).values()].sort((a, b) => {
     const teamDiff = getTeamOrderIndex(a.team) - getTeamOrderIndex(b.team);
@@ -810,7 +839,7 @@ function aggregateRows(
   });
 
   const members: TeamMemberKpi[] = memberGroups.map((group) => {
-    const memberRows = scopedRows.filter((row) => getMemberKeyForRow(row, selectedDateBasis) === group.key);
+    const memberRows = scopedRows.filter((row) => getMemberKeyForRow(row, selectedDateBasis, selectedStartDate) === group.key);
     const lostReasons = new Map<string, number>();
     const holdReasons = new Map<string, number>();
     const holdReasonDates = new Map<string, Set<string>>();
@@ -896,7 +925,7 @@ function aggregateRows(
   const weeklyKpis = buildWeeklyKpis(scopedRows, selectedDateBasis);
   const appointmentWeeklyKpis = buildAppointmentWeeklyKpis(scopedRows);
   const memberWeeklyKpis = memberGroups.map((group) => {
-    const memberRows = scopedRows.filter((row) => getMemberKeyForRow(row, selectedDateBasis) === group.key);
+    const memberRows = scopedRows.filter((row) => getMemberKeyForRow(row, selectedDateBasis, selectedStartDate) === group.key);
     return {
       memberKey: group.key,
       name: group.name,
@@ -905,8 +934,8 @@ function aggregateRows(
       appointmentWeeklyKpis: buildAppointmentWeeklyKpis(memberRows),
     };
   });
-  const customerRows = buildCustomerRows(scopedDisplayRows, selectedDateBasis);
-  const calendarRows = buildCustomerRows(scopedCalendarRows, selectedDateBasis);
+  const customerRows = buildCustomerRows(scopedDisplayRows, selectedDateBasis, selectedStartDate);
+  const calendarRows = buildCustomerRows(scopedCalendarRows, selectedDateBasis, selectedStartDate);
 
   return {
     updatedAt: new Date().toISOString(),
