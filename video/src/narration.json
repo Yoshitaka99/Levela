@@ -2,9 +2,9 @@
   "_comment": "ナレーションの唯一の正。scripts/build_narration.py がこれを読んで public/narration/*.mp3 を作り、durSec を実際の音声長で上書きする。fromSec はシーン先頭からの秒数。subtitle:false の行はテロップとして既に出ているので字幕は出さない。",
   "voice": "ja-JP-KeitaNeural",
   "defaults": {
-    "rate": "-10%",
-    "pitch": "-42Hz",
-    "volume": "+0%"
+    "rate": "+0%",
+    "pitch": "-6Hz",
+    "volume": "+15%"
   },
   "scenes": {
     "01-question": [
@@ -12,36 +12,41 @@
         "id": "q1",
         "text": "今日、あなたは何本、取ったか。",
         "fromSec": 1.6,
-        "durSec": 4.67,
+        "durSec": 3.8,
         "subtitle": false,
-        "rate": "-20%",
-        "pitch": "-48Hz"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "q2",
         "text": "数字は、覚えている。",
         "fromSec": 8.0,
-        "durSec": 3.32,
+        "durSec": 2.79,
         "subtitle": true,
-        "rate": "-18%",
-        "pitch": "-46Hz"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "q3",
         "text": "あなたが、あの日どれだけやったか。",
         "fromSec": 12.2,
-        "durSec": 3.99,
+        "durSec": 3.44,
         "subtitle": true,
-        "rate": "-15%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "q4",
         "text": "そして、どれだけ逃げたかも。",
         "fromSec": 17.2,
-        "durSec": 3.9,
+        "durSec": 3.18,
         "subtitle": true,
-        "rate": "-20%",
-        "pitch": "-48Hz"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       }
     ],
     "02-why": [
@@ -49,17 +54,21 @@
         "id": "w1",
         "text": "思い出せ。なぜ、レベラに来た。",
         "fromSec": 1.2,
-        "durSec": 4.95,
+        "durSec": 4.28,
         "subtitle": false,
-        "rate": "-14%",
-        "pitch": "-44Hz"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "w2",
         "text": "楽をするために、ここに来たのか。",
         "fromSec": 7.2,
-        "durSec": 3.78,
-        "subtitle": true
+        "durSec": 3.44,
+        "subtitle": true,
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "w3",
@@ -67,52 +76,59 @@
         "fromSec": 11.8,
         "durSec": 2.03,
         "subtitle": true,
-        "rate": "-4%",
-        "pitch": "-34Hz",
-        "volume": "+25%"
+        "rate": "+10%",
+        "pitch": "+2Hz",
+        "volume": "+45%"
       },
       {
         "id": "w4",
         "text": "変わりたかったんだろ。",
         "fromSec": 14.5,
-        "durSec": 2.43,
+        "durSec": 2.19,
         "subtitle": true,
-        "rate": "-6%",
-        "volume": "+15%"
+        "rate": "+6%",
+        "volume": "+35%",
+        "pitch": "-2Hz"
       },
       {
         "id": "w5",
         "text": "このままの自分で終わりたくない。",
         "fromSec": 17.7,
-        "durSec": 3.47,
+        "durSec": 2.96,
         "subtitle": true,
-        "rate": "-16%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "w6",
         "text": "そう思ったから、ここに来たんだろ。",
         "fromSec": 21.9,
-        "durSec": 3.63,
+        "durSec": 3.37,
         "subtitle": true,
-        "rate": "-8%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "w7",
         "text": "あの日のあなたは、今日のあなたを見て、何て言う。",
         "fromSec": 26.3,
-        "durSec": 5.34,
+        "durSec": 4.74,
         "subtitle": true,
-        "rate": "-12%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "w8",
         "text": "変わりたかった。勝ちたかった。稼ぎたかった。認められたかった。",
         "fromSec": 32.6,
-        "durSec": 7.04,
+        "durSec": 7.16,
         "subtitle": false,
-        "rate": "+2%",
-        "pitch": "-36Hz",
-        "volume": "+20%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       }
     ],
     "03-numbers": [
@@ -120,54 +136,61 @@
         "id": "n1",
         "text": "成約率に、こだわれ。成約数に、こだわれ。",
         "fromSec": 1.0,
-        "durSec": 5.96,
+        "durSec": 5.63,
         "subtitle": false,
-        "rate": "-6%",
-        "pitch": "-38Hz",
-        "volume": "+20%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "n2",
         "text": "頑張ってますは、数字じゃない。",
         "fromSec": 8.6,
-        "durSec": 3.61,
-        "subtitle": true
+        "durSec": 3.27,
+        "subtitle": true,
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "n3",
         "text": "忙しいですも、数字じゃない。",
         "fromSec": 12.9,
-        "durSec": 3.68,
-        "subtitle": true
+        "durSec": 3.35,
+        "subtitle": true,
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "n4",
         "text": "残るのは、成約率と、成約数だけだ。",
         "fromSec": 17.3,
-        "durSec": 4.86,
+        "durSec": 4.35,
         "subtitle": true,
-        "rate": "-6%",
-        "volume": "+15%"
+        "rate": "+6%",
+        "volume": "+35%",
+        "pitch": "-2Hz"
       },
       {
         "id": "n5",
         "text": "一パーセントの差は、才能じゃない。準備の差だ。ロープレの差だ。執念の差だ。",
         "fromSec": 23.0,
-        "durSec": 8.84,
+        "durSec": 8.67,
         "subtitle": false,
-        "rate": "-2%",
-        "pitch": "-36Hz",
-        "volume": "+20%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "n6",
         "text": "あと一本。",
         "fromSec": 32.6,
-        "durSec": 2.1,
+        "durSec": 2.03,
         "subtitle": false,
-        "rate": "-8%",
-        "pitch": "-34Hz",
-        "volume": "+30%"
+        "rate": "+10%",
+        "pitch": "+2Hz",
+        "volume": "+45%"
       }
     ],
     "04-regret": [
@@ -175,55 +198,61 @@
         "id": "r1",
         "text": "今日、もう一件かけない理由を、何個作った。",
         "fromSec": 0.7,
-        "durSec": 5.15,
+        "durSec": 4.76,
         "subtitle": true,
-        "rate": "-8%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "r2",
         "text": "疲れたから。今日はもういいか。明日やろう。",
         "fromSec": 6.4,
-        "durSec": 6.71,
+        "durSec": 5.41,
         "subtitle": false,
-        "rate": "-20%",
-        "pitch": "-48Hz"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "r3",
         "text": "その、今日はいいかを、何回繰り返してきた。",
         "fromSec": 13.9,
-        "durSec": 4.55,
+        "durSec": 4.16,
         "subtitle": true,
-        "rate": "-4%",
-        "volume": "+15%"
+        "rate": "+6%",
+        "volume": "+35%",
+        "pitch": "-2Hz"
       },
       {
         "id": "r4",
         "text": "このチャンスを、無下にするのか。",
         "fromSec": 19.2,
-        "durSec": 3.35,
+        "durSec": 3.03,
         "subtitle": false,
-        "rate": "-2%",
-        "pitch": "-34Hz",
-        "volume": "+30%"
+        "rate": "+10%",
+        "pitch": "+2Hz",
+        "volume": "+45%"
       },
       {
         "id": "r5",
         "text": "今の一瞬の楽のために、",
         "fromSec": 24.4,
-        "durSec": 3.32,
+        "durSec": 2.89,
         "subtitle": true,
-        "rate": "-14%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "r6",
         "text": "一生後悔する側に、回るのか。",
         "fromSec": 28.0,
-        "durSec": 3.8,
+        "durSec": 3.42,
         "subtitle": true,
-        "rate": "-2%",
-        "pitch": "-34Hz",
-        "volume": "+30%"
+        "rate": "+10%",
+        "pitch": "+2Hz",
+        "volume": "+45%"
       }
     ],
     "05-now": [
@@ -231,26 +260,31 @@
         "id": "p1",
         "text": "準備ができたら、じゃない。",
         "fromSec": 0.7,
-        "durSec": 3.2,
+        "durSec": 2.96,
         "subtitle": true,
-        "rate": "-8%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "p2",
         "text": "自信がついたら、でもない。",
         "fromSec": 4.3,
-        "durSec": 3.27,
+        "durSec": 3.11,
         "subtitle": true,
-        "rate": "-6%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "p3",
         "text": "環境が整ったら。一生整わない。",
         "fromSec": 8.0,
-        "durSec": 4.52,
+        "durSec": 4.43,
         "subtitle": true,
-        "rate": "-2%",
-        "volume": "+20%"
+        "rate": "+0%",
+        "volume": "+15%",
+        "pitch": "-6Hz"
       },
       {
         "id": "p4",
@@ -258,47 +292,49 @@
         "fromSec": 13.3,
         "durSec": 2.03,
         "subtitle": false,
-        "rate": "-4%",
-        "pitch": "-32Hz",
-        "volume": "+35%"
+        "rate": "+10%",
+        "pitch": "+2Hz",
+        "volume": "+45%"
       },
       {
         "id": "p5",
         "text": "今日の一本だ。今週の一件だ。今月の一位だ。",
         "fromSec": 15.9,
-        "durSec": 5.79,
+        "durSec": 5.51,
         "subtitle": false,
-        "rate": "+4%",
-        "pitch": "-34Hz",
-        "volume": "+30%"
+        "rate": "+10%",
+        "pitch": "+2Hz",
+        "volume": "+45%"
       },
       {
         "id": "p6",
         "text": "今、全力を出せずに、いつ出す。",
         "fromSec": 22.3,
-        "durSec": 4.02,
+        "durSec": 3.61,
         "subtitle": false,
-        "rate": "-2%",
-        "pitch": "-32Hz",
-        "volume": "+40%"
+        "rate": "+10%",
+        "pitch": "+2Hz",
+        "volume": "+45%"
       },
       {
         "id": "p7",
         "text": "ここで出せない全力に、",
         "fromSec": 27.0,
-        "durSec": 2.89,
+        "durSec": 2.67,
         "subtitle": true,
-        "rate": "-8%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "p8",
         "text": "出番なんて一生こない。",
         "fromSec": 30.0,
-        "durSec": 2.82,
+        "durSec": 2.41,
         "subtitle": true,
-        "rate": "-8%",
-        "pitch": "-36Hz",
-        "volume": "+25%"
+        "rate": "+10%",
+        "pitch": "+2Hz",
+        "volume": "+45%"
       }
     ],
     "06-team": [
@@ -306,144 +342,183 @@
         "id": "t1",
         "text": "一人なら、折れる日もある。",
         "fromSec": 1.0,
-        "durSec": 3.42,
+        "durSec": 2.99,
         "subtitle": true,
-        "rate": "-14%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "t2",
         "text": "だから、チームでやる。",
         "fromSec": 4.9,
-        "durSec": 2.99,
+        "durSec": 2.58,
         "subtitle": true,
-        "rate": "-10%",
-        "volume": "+15%"
+        "rate": "+6%",
+        "volume": "+35%",
+        "pitch": "-2Hz"
       },
       {
         "id": "t3",
         "text": "数字で語る。数字で守る。数字で、勝つ。",
         "fromSec": 8.8,
-        "durSec": 6.2,
+        "durSec": 5.46,
         "subtitle": false,
-        "rate": "-4%",
-        "pitch": "-36Hz",
-        "volume": "+25%"
+        "rate": "+10%",
+        "pitch": "+2Hz",
+        "volume": "+45%"
       },
       {
         "id": "t4",
         "text": "オロチーム。",
         "fromSec": 16.0,
-        "durSec": 2.12,
+        "durSec": 2.03,
         "subtitle": false,
-        "rate": "-14%",
-        "pitch": "-44Hz",
-        "volume": "+20%"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       }
     ],
     "short": [
       {
         "id": "s1",
         "text": "今日、あなたは何本、取ったか。",
-        "fromSec": 1.4,
-        "durSec": 4.67,
+        "fromSec": 0.9,
+        "durSec": 4.19,
         "subtitle": false,
-        "rate": "-20%",
-        "pitch": "-48Hz"
+        "rate": "-10%",
+        "pitch": "-12Hz",
+        "volume": "+5%"
       },
       {
         "id": "s2",
         "text": "数字は、覚えている。",
-        "fromSec": 6.2,
-        "durSec": 3.32,
+        "fromSec": 5.5,
+        "durSec": 3.06,
         "subtitle": true,
-        "rate": "-18%",
-        "pitch": "-46Hz"
+        "rate": "-10%",
+        "pitch": "-12Hz",
+        "volume": "+5%"
       },
       {
         "id": "s3",
         "text": "なぜ、レベラに来た。",
-        "fromSec": 10.2,
-        "durSec": 3.08,
+        "fromSec": 9.6,
+        "durSec": 2.77,
         "subtitle": false,
-        "rate": "-12%",
-        "pitch": "-44Hz"
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       },
       {
         "id": "s4",
-        "text": "楽をするために来たのか。違うだろ。",
-        "fromSec": 14.2,
-        "durSec": 4.45,
+        "text": "楽をするためか。違うだろ。",
+        "fromSec": 12.8,
+        "durSec": 3.56,
         "subtitle": true,
-        "rate": "-6%",
-        "volume": "+15%"
+        "rate": "+6%",
+        "pitch": "-2Hz",
+        "volume": "+35%"
       },
       {
         "id": "s5",
-        "text": "成約率に、こだわれ。成約数に、こだわれ。",
-        "fromSec": 20.6,
-        "durSec": 5.96,
-        "subtitle": false,
-        "rate": "-6%",
-        "pitch": "-38Hz",
-        "volume": "+20%"
+        "text": "変わりたかったんだろ。",
+        "fromSec": 16.8,
+        "durSec": 2.19,
+        "subtitle": true,
+        "rate": "+6%",
+        "pitch": "-2Hz",
+        "volume": "+35%"
       },
       {
         "id": "s6",
-        "text": "残るのは、成約率と、成約数だけだ。",
-        "fromSec": 27.2,
-        "durSec": 4.86,
-        "subtitle": true,
-        "rate": "-6%",
-        "volume": "+15%"
+        "text": "成約率に、こだわれ。成約数に、こだわれ。",
+        "fromSec": 20.0,
+        "durSec": 5.31,
+        "subtitle": false,
+        "rate": "+6%",
+        "pitch": "-2Hz",
+        "volume": "+35%"
       },
       {
         "id": "s7",
-        "text": "一瞬の楽か。一生の後悔か。",
-        "fromSec": 32.6,
-        "durSec": 4.4,
-        "subtitle": false,
-        "rate": "-4%",
-        "pitch": "-34Hz",
-        "volume": "+30%"
+        "text": "残るのは、成約率と、成約数だけだ。",
+        "fromSec": 25.8,
+        "durSec": 4.35,
+        "subtitle": true,
+        "rate": "+6%",
+        "pitch": "-2Hz",
+        "volume": "+35%"
       },
       {
         "id": "s8",
-        "text": "今日はいいかを、何回繰り返してきた。",
-        "fromSec": 38.4,
-        "durSec": 3.85,
-        "subtitle": true,
-        "rate": "-4%",
-        "volume": "+15%"
+        "text": "一瞬の楽か。一生の後悔か。",
+        "fromSec": 31.2,
+        "durSec": 3.87,
+        "subtitle": false,
+        "rate": "+10%",
+        "pitch": "+2Hz",
+        "volume": "+45%"
       },
       {
         "id": "s9",
-        "text": "今、全力を出せずに、いつ出す。",
-        "fromSec": 44.4,
-        "durSec": 4.02,
-        "subtitle": false,
-        "rate": "-2%",
-        "pitch": "-32Hz",
-        "volume": "+40%"
+        "text": "その一件を、何回あきらめてきた。",
+        "fromSec": 35.5,
+        "durSec": 3.54,
+        "subtitle": true,
+        "rate": "+6%",
+        "pitch": "-2Hz",
+        "volume": "+35%"
       },
       {
         "id": "s10",
-        "text": "今だ。今日の一本だ。",
-        "fromSec": 49.2,
-        "durSec": 3.32,
-        "subtitle": true,
-        "rate": "+2%",
-        "pitch": "-34Hz",
-        "volume": "+30%"
+        "text": "今、全力を出せずに、いつ出す。",
+        "fromSec": 40.0,
+        "durSec": 3.61,
+        "subtitle": false,
+        "rate": "+10%",
+        "pitch": "+2Hz",
+        "volume": "+45%"
       },
       {
         "id": "s11",
-        "text": "オロチーム。",
-        "fromSec": 55.2,
-        "durSec": 2.12,
+        "text": "今だ。今日の一本だ。",
+        "fromSec": 44.1,
+        "durSec": 3.11,
+        "subtitle": true,
+        "rate": "+10%",
+        "pitch": "+2Hz",
+        "volume": "+45%"
+      },
+      {
+        "id": "s12",
+        "text": "数字で、勝つ。",
+        "fromSec": 48.4,
+        "durSec": 2.29,
         "subtitle": false,
-        "rate": "-14%",
-        "pitch": "-44Hz",
-        "volume": "+20%"
+        "rate": "+10%",
+        "pitch": "+2Hz",
+        "volume": "+45%"
+      },
+      {
+        "id": "s13",
+        "text": "オロチーム。",
+        "fromSec": 52.0,
+        "durSec": 2.03,
+        "subtitle": false,
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
+      },
+      {
+        "id": "s14",
+        "text": "成約率にこだわる。成約数にこだわる。",
+        "fromSec": 55.4,
+        "durSec": 4.69,
+        "subtitle": false,
+        "rate": "+0%",
+        "pitch": "-6Hz",
+        "volume": "+15%"
       }
     ]
   }

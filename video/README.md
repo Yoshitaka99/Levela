@@ -7,9 +7,13 @@
 
 | ID | 尺 | 解像度 | 用途 |
 |---|---|---|---|
-| `OrochiMotivation` | 3:11 | 1920x1080 | 本編。朝礼・月初キックオフ |
-| `OrochiMotivationShort` | 1:00 | 1920x1080 | ショート版。Slack共有 |
-| `OrochiMotivationVertical` | 1:00 | 1080x1920 | 縦型。スマホ／ストーリーズ |
+| `OrochiMotivation` | 1:03 | 1920x1080 | 本編。朝礼・キックオフ・Slack共有 |
+| `OrochiMotivationVertical` | 1:03 | 1080x1920 | 縦型。スマホ／ストーリーズ |
+| `OrochiMotivationLong` | 3:11 | 1920x1080 | 長尺。台本①〜⑥を全部読む版。研修・オンボーディング |
+
+本編は BGM の尺（66秒）と、その曲が盛り上がる位置に合わせて組んであります。
+曲を差し替えるなら、`src/OrochiMinute.tsx` の `MINUTE_DURATION` と `BGM_PLAN`、
+それに `src/narration.json` の `fromSec` を新しい曲の山に合わせ直してください。
 
 ## セットアップ
 
@@ -26,16 +30,23 @@ npm run studio                      # プレビュー
 npm run render:all                  # 3本まとめて書き出し
 ```
 
-個別に書き出す場合は `npm run render` / `render:short` / `render:vertical`。
+個別に書き出す場合は `npm run render` / `render:vertical` / `render:long`。
+
+### BGM は別途置く
+
+本編で使っている曲はリポジトリに入っていません。`public/music/main.mp3` に置いてください。
+差し替えたい場合も同じ場所に同じ名前で置けば、コードは触らずに切り替わります。
+（尺が変わるときは上の「本編は BGM の尺に合わせてある」を参照）
 
 ## 素材とライセンス
 
 | 種類 | 出どころ | ライセンス |
 |---|---|---|
 | 映像 17本 | [Mixkit](https://mixkit.co/free-stock-video/) | Mixkit Free License（商用可・クレジット不要・素材の再配布は不可） |
-| BGM 2曲 | [Mixkit](https://mixkit.co/free-stock-music/) | 同上 |
+| BGM（本編） | 別途用意して `public/music/main.mp3` に置く | 用意した音源に従う |
+| BGM（長尺版） | [Mixkit](https://mixkit.co/free-stock-music/) | 同上 |
 | フォント | Noto Sans JP | SIL Open Font License 1.1 |
-| ナレーション | Microsoft Edge の読み上げ音声（`ja-JP-KeitaNeural`）をピッチを下げて使用 | **下記の注意を参照** |
+| ナレーション | Microsoft Edge の読み上げ音声（`ja-JP-KeitaNeural`） | **下記の注意を参照** |
 
 ### ナレーションについて
 
@@ -55,15 +66,18 @@ npm run render:all                  # 3本まとめて書き出し
 - **セリフ・字幕** → `src/narration.json`。ここが音声と字幕の唯一の正。
   書き換えたら `python3 scripts/build_narration.py` を実行する。
   `subtitle: false` の行は大きいテロップとして別に出ているので字幕を出さない。
-- **テロップの文言・タイミング** → `src/scenes/Scene*.tsx`。
+- **テロップの文言・タイミング** → 本編は `src/OrochiMinute.tsx`、長尺版は `src/scenes/Scene*.tsx`。
   `from` / `duration` は `s(秒)` ヘルパーで秒指定。
+- **声の高さ・速さ** → `src/narration.json`。行ごとの `pitch` / `rate` / `volume` で
+  静かな行と山の行を作り分けている。書き換えたら `npm run narration`。
 - **使う映像の差し替え** → `scripts/fetch_assets.py` の `FOOTAGE` に
-  Mixkit の動画IDを足して取得し、`src/scenes/Scene*.tsx` の `FootageTrack` で指すだけ。
+  Mixkit の動画IDを足して取得し、`FootageTrack` の `clips` で指すだけ。
   素材の明るさは `grade: { mono, brightness, contrast }` で調整する。
-- **BGMの盛り上がり方** → `src/OrochiMotivation.tsx` の `BGM_PLAN`。
+- **BGMの盛り上がり方** → `src/OrochiMinute.tsx`（長尺版は `src/OrochiMotivation.tsx`）の `BGM_PLAN`。
   `[秒, 音量]` のキーポイントを並べたカーブなので、ここを触ると
   「どこからテンションを上げるか」が変わる。
-- **シーンの尺** → 各 `Scene*.tsx` が `SCENE?_DURATION` を持っていて、
+- **ブロックの尺（本編）** → `src/OrochiMinute.tsx` の各 `<Sequence>` の `from` / `durationInFrames`。
+- **シーンの尺（長尺版）** → 各 `Scene*.tsx` が `SCENE?_DURATION` を持っていて、
   `src/OrochiMotivation.tsx` の `SCENES` がそれを合計して全体の長さになる。
 - **実績値の差し替え** → `src/scenes/Scene3Numbers.tsx` の `KpiBoard` に
   `rate` / `count` を渡すと、実際の成約率・成約数でカウントアップする。
@@ -74,8 +88,8 @@ npm run render:all                  # 3本まとめて書き出し
 ```
 src/
   Root.tsx                コンポジションの定義
-  OrochiMotivation.tsx    本編。シーンの並びとBGMプラン
-  OrochiMotivationShort.tsx  ショート版（縦型と共用）
+  OrochiMinute.tsx        本編1分。6ブロックの並びとBGMプラン（縦型と共用）
+  OrochiMotivation.tsx    長尺版。シーンの並びとBGMプラン
   narration.json          セリフ・タイミング（音声と字幕の元データ）
   narration.tsx           narration.json を音声と字幕に展開する
   theme.ts                色・フォント・解像度スケール
