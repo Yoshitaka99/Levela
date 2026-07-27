@@ -4,6 +4,11 @@ node_modules/
 .vercel/
 *.log
 
+# Remotion video project and agent skills (not part of the Next.js deploy)
+video/
+.agents/
+.claude/
+
 outputs/
 tmp_*/
 tmp-*/

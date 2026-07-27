@@ -11,7 +11,11 @@
     "chatbot:rag:eval": "node scripts/evaluate-chatbot-rag.mjs",
     "automation:secret": "node tools/generate-automation-secret.mjs",
     "automation:trigger": "node tools/automation-trigger.mjs",
-    "discord:register-command": "node tools/register-discord-command.mjs"
+    "discord:register-command": "node tools/register-discord-command.mjs",
+    "video:install": "npm --prefix video install",
+    "video:dev": "npm --prefix video run dev",
+    "video:render": "npm --prefix video run render",
+    "video:lint": "npm --prefix video run lint"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.74",

@@ -17,6 +17,11 @@ const eslintConfig = defineConfig([
     "generated_*/**",
     "outputs/**",
     "public/sw.js",
+    // Remotion video project has its own eslint config (video/eslint.config.mjs).
+    "video/**",
+    // Agent skills bundled from remotion-dev/skills (reference code, not app code).
+    ".agents/**",
+    ".claude/**",
   ]),
 ]);
 
