@@ -25,7 +25,14 @@ export const EndCard: React.FC<{ from: number }> = ({ from }) => {
         paddingRight: 80 * scale,
       }}
     >
-      <div style={{ fontSize: 172 * scale, fontWeight: 900, letterSpacing: "0.1em" }}>
+      <div
+        style={{
+          fontSize: 172 * scale,
+          fontWeight: 900,
+          letterSpacing: "0.1em",
+          textShadow: "0 0.04em 0.3em rgba(0,0,0,0.9)",
+        }}
+      >
         オロチーム
       </div>
       <div style={{ width: rule, height: 3, backgroundColor: COLOR.accent }} />

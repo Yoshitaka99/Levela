@@ -10,7 +10,7 @@ import { OrochiMotivationShort, SHORT_DURATION } from "./OrochiMotivationShort";
 
 export const RemotionRoot: React.FC = () => (
   <>
-    {/* 本編 2:40 — 朝礼・月初キックオフ用 */}
+    {/* 本編 3:11 — 朝礼・月初キックオフ用 */}
     <Composition
       id="OrochiMotivation"
       component={OrochiMotivation}

@@ -82,6 +82,8 @@ export const TelopLine: React.FC<TelopProps> = ({
         clipPath: `inset(-0.3em ${wipeAmount}% -0.3em 0)`,
         whiteSpace: isPortrait ? "normal" : "pre",
         wordBreak: "keep-all",
+        // 映像の上に乗るので、地の明るさに負けないよう影を敷く
+        textShadow: "0 0.04em 0.3em rgba(0,0,0,0.9), 0 0 0.9em rgba(0,0,0,0.65)",
       }}
     >
       {text}
@@ -166,6 +168,7 @@ export const RapidWords: React.FC<{
           transform: `scale(${zoom})`,
           letterSpacing: "0.04em",
           textAlign: "center",
+          textShadow: "0 0.04em 0.3em rgba(0,0,0,0.9), 0 0 0.9em rgba(0,0,0,0.65)",
         }}
       >
         {word}
@@ -227,6 +230,7 @@ export const Narration: React.FC<{
           textAlign: "center",
           lineHeight: 1.5,
           letterSpacing: "0.03em",
+          textShadow: "0 0.05em 0.4em rgba(0,0,0,0.95)",
         }}
       >
         {text}

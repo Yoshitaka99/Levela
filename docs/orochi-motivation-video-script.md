@@ -258,16 +258,21 @@
 
 ### この台本のRemotion実装
 `video/` にこの台本をそのまま動画にした Remotion プロジェクトがあります。
-映像素材ゼロでテロップだけで1本成立するので、まずはこれを叩き台にするのが早いです。
+実写映像（Mixkit）・劇伴・日本語ナレーションまで入った状態で書き出せます。
 
 ```bash
 cd video && npm install
+npm run setup       # 映像・BGMの取得 + ナレーション音声の生成
 npm run studio      # プレビュー（その場で文言・タイミングを触れる）
-npm run render:all  # 本編2:40 / ショート60秒 / 縦型60秒 を書き出し
+npm run render:all  # 本編3:11 / ショート60秒 / 縦型60秒 を書き出し
 ```
 
 シーン①〜⑥は `video/src/scenes/Scene1Question.tsx` 〜 `Scene6Team.tsx` に
-1対1で対応しています。詳細は `video/README.md`。
+1対1で対応しています。ナレーションの原稿とタイミングは
+`video/src/narration.json` が唯一の正で、音声と字幕の両方がここから出ています。
+
+ナレーションは機械音声の仮ナレです。公開するなら人の声で録り直して
+`video/public/narration/` の同名ファイルに差し替えてください。詳細は `video/README.md`。
 
 ---
 

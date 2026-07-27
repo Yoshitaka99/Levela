@@ -44,6 +44,7 @@ const Tile: React.FC<{
           lineHeight: 1,
           color: COLOR.fg,
           fontVariantNumeric: "tabular-nums",
+          textShadow: "0 0.03em 0.25em rgba(0,0,0,0.9)",
         }}
       >
         {value}

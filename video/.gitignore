@@ -1,3 +1,6 @@
 node_modules
 out
 .remotion
+public/footage/
+public/music/
+public/narration/

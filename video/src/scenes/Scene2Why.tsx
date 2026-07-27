@@ -2,46 +2,78 @@ import React from "react";
 import { AbsoluteFill } from "remotion";
 import { COLOR, s } from "../theme";
 import { Flash, Grain, Vignette } from "../components/Atmosphere";
-import { NarrationTrack, RapidWords, TelopStack } from "../components/Telop";
+import { FootageTrack } from "../components/Footage";
+import { RapidWords, TelopStack } from "../components/Telop";
+import { NarrationTrackFor } from "../narration";
+
+export const SCENE2_DURATION = s(41);
 
 /**
- * ② なぜLevelaに来たのか（0:20 - 0:55 / 35秒）
- * 原点回帰。最後に4語で畳みかける。
+ * ② なぜLevelaに来たのか（0:23 - 1:04）
+ * ジムに入る、階段を駆け上がる、夜の街を走る。原点の画。
+ * 最後の4語で初めてテンポが上がる。
  */
 export const Scene2Why: React.FC = () => (
   <AbsoluteFill style={{ backgroundColor: COLOR.bg }}>
-    <TelopStack
-      lines={[
-        { text: "思い出せ。", from: s(0.7), duration: s(7), size: 104 },
-        { text: "なぜ、Levelaに来た。", from: s(2), duration: s(5.7), size: 140 },
-      ]}
-    />
-
-    <NarrationTrack
-      lines={[
-        { text: "楽をするために、ここに来たのか。", from: s(8.7), duration: s(4) },
-        { text: "違うだろ。", from: s(13), duration: s(2.4), color: COLOR.fg, size: 54 },
-        { text: "変わりたかったんだろ。", from: s(15.7), duration: s(3), color: COLOR.fg },
-        { text: "「このままの自分で終わりたくない」", from: s(19.3), duration: s(3.4) },
-        { text: "そう思ったから、ここに来たんだろ。", from: s(22.7), duration: s(3.4) },
+    <FootageTrack
+      clips={[
         {
-          text: "あの日のあなたは、今日のあなたを見て、何て言う。",
-          from: s(26.7),
-          duration: s(4.4),
-          color: COLOR.fg,
+          id: "23193",
+          from: 0,
+          durationInFrames: s(13),
+          startFromSec: 4,
+          zoom: [1.04, 1.14],
+          grade: { mono: 1, brightness: 0.82, contrast: 1.121 },
+          fade: 16,
+        },
+        {
+          id: "40758",
+          from: s(12.4),
+          durationInFrames: s(7.6),
+          startFromSec: 0.3,
+          zoom: [1.1, 1.02],
+          grade: { mono: 1, brightness: 0.9, contrast: 1.132 },
+          fade: 14,
+        },
+        {
+          id: "608",
+          from: s(19.6),
+          durationInFrames: s(12),
+          startFromSec: 2,
+          zoom: [1.06, 1.16],
+          grade: { mono: 1, brightness: 0.86, contrast: 1.132 },
+          fade: 14,
+        },
+        {
+          id: "32804",
+          from: s(31.2),
+          durationInFrames: s(9.8),
+          startFromSec: 1,
+          zoom: [1.14, 1.04],
+          grade: { mono: 0.85, brightness: 0.98, contrast: 1.137 },
+          fade: 12,
         },
       ]}
     />
 
-    <Flash at={s(31)} length={5} max={0.6} />
+    <TelopStack
+      lines={[
+        { text: "思い出せ。", from: s(0.9), duration: s(5.6), size: 104 },
+        { text: "なぜ、Levelaに来た。", from: s(2.1), duration: s(4.4), size: 140 },
+      ]}
+    />
+
+    <NarrationTrackFor scene="02-why" highlight={["w3", "w4", "w7"]} />
+
+    <Flash at={s(32.6)} length={5} max={0.6} />
     <RapidWords
       words={["変わりたかった", "勝ちたかった", "稼ぎたかった", "認められたかった"]}
-      from={s(31)}
-      hold={28}
+      from={s(32.7)}
+      hold={52}
       size={104}
     />
 
-    <Vignette />
+    <Vignette strength={0.72} />
     <Grain />
   </AbsoluteFill>
 );

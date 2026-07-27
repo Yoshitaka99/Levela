@@ -11,7 +11,10 @@
     "render:vertical": "remotion render OrochiMotivationVertical out/orochi-motivation-vertical.mp4",
     "render:all": "npm run render && npm run render:short && npm run render:vertical",
     "still": "remotion still OrochiMotivation out/thumbnail.png",
-    "upgrade": "remotion upgrade"
+    "upgrade": "remotion upgrade",
+    "assets": "python3 scripts/fetch_assets.py",
+    "narration": "python3 scripts/build_narration.py",
+    "setup": "python3 scripts/fetch_assets.py && python3 scripts/build_narration.py"
   },
   "dependencies": {
     "@remotion/cli": "4.0.398",
