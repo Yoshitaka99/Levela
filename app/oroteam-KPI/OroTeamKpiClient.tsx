@@ -16,6 +16,7 @@ import {
 import type { OroTeamKpiData, OroTeamMemberKpi } from "../api/oroteam-kpi/route";
 
 const seatRateOptions = [60, 65, 70, 75];
+type GoalDraft = OroTeamKpiData["editableGoals"];
 
 const nf = new Intl.NumberFormat("ja-JP");
 
@@ -147,12 +148,30 @@ function Pace({ label, value }: { label: string; value: number }) {
   );
 }
 
+function GoalInput({ label, value, onChange }: { label: string; value: number; onChange: (value: string) => void }) {
+  return (
+    <label className="block rounded-xl border border-white/10 bg-black/25 p-3">
+      <span className="block text-[11px] font-bold uppercase tracking-[0.16em] text-white/40">{label}</span>
+      <input
+        type="number"
+        min={0}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 h-11 w-full rounded-xl border border-orange-300/20 bg-black/40 px-3 text-xl font-black text-white outline-none focus:border-orange-200"
+      />
+    </label>
+  );
+}
+
 export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData }) {
   const [data, setData] = useState(initialData);
   const [month, setMonth] = useState(initialData.selectedMonth);
   const [seatRate, setSeatRate] = useState(initialData.seatRate);
+  const [goalDraft, setGoalDraft] = useState<GoalDraft>(initialData.editableGoals);
   const [loading, setLoading] = useState(false);
+  const [savingGoals, setSavingGoals] = useState(false);
   const [lastError, setLastError] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -165,7 +184,10 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
         const response = await fetch(`/api/oroteam-kpi?${params.toString()}`, { cache: "no-store" });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const nextData = (await response.json()) as OroTeamKpiData;
-        if (!cancelled) setData(nextData);
+        if (!cancelled) {
+          setData(nextData);
+          setGoalDraft(nextData.editableGoals);
+        }
       } catch (error) {
         if (!cancelled) setLastError(error instanceof Error ? error.message : "更新に失敗しました");
       } finally {
@@ -180,6 +202,56 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
       window.clearInterval(timer);
     };
   }, [month, seatRate]);
+
+  const updateTeamGoal = (key: keyof GoalDraft["teamTargets"], value: string) => {
+    const numeric = Number(value);
+    setGoalDraft((current) => ({
+      ...current,
+      teamTargets: {
+        ...current.teamTargets,
+        [key]: Number.isFinite(numeric) ? numeric : 0,
+      },
+    }));
+  };
+
+  const updateMemberGoal = (name: string, key: "targetAppointments" | "minCloseRate", value: string) => {
+    const numeric = Number(value);
+    setGoalDraft((current) => ({
+      ...current,
+      members: current.members.map((member) =>
+        member.name === name
+          ? {
+              ...member,
+              [key]: Number.isFinite(numeric) ? numeric : 0,
+            }
+          : member,
+      ),
+    }));
+  };
+
+  const saveGoals = async () => {
+    setSavingGoals(true);
+    setSaveMessage("");
+    setLastError("");
+    try {
+      const response = await fetch("/api/oroteam-kpi", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...goalDraft, month }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = (await response.json()) as { data?: OroTeamKpiData };
+      if (payload.data) {
+        setData(payload.data);
+        setGoalDraft(payload.data.editableGoals);
+      }
+      setSaveMessage("保存しました");
+    } catch (error) {
+      setLastError(error instanceof Error ? error.message : "保存に失敗しました");
+    } finally {
+      setSavingGoals(false);
+    }
+  };
 
   const maxRemaining = useMemo(() => Math.max(1, ...data.members.map((member) => member.remainingClosed)), [data.members]);
   const targetProgress = Math.min(100, data.totals.targetAchievementRate);
@@ -284,6 +356,64 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
             sub={`メンバー最低ライン合算 / 現在差分 ${signed(data.totals.actualClosed - data.totals.requiredClosedAtMemberRates)}`}
             tone="slate"
           />
+        </section>
+
+        <section className="rounded-2xl border border-orange-300/20 bg-[#120705] p-5 shadow-xl shadow-red-950/20">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-orange-200/50">Goal control</p>
+              <h2 className="mt-1 text-2xl font-black">目標値編集</h2>
+              <p className="mt-2 text-sm text-white/50">対象月ごとに保存されます。保存後、全員の画面に最新値が反映されます。</p>
+            </div>
+            <button
+              type="button"
+              onClick={saveGoals}
+              disabled={savingGoals}
+              className="h-11 rounded-xl border border-orange-200/30 bg-gradient-to-r from-red-600 to-orange-500 px-5 text-sm font-black text-white shadow-lg shadow-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {savingGoals ? "保存中" : "目標値を保存"}
+            </button>
+          </div>
+          {saveMessage ? <p className="mt-3 text-sm font-bold text-amber-100">{saveMessage}</p> : null}
+
+          <div className="mt-5 grid gap-3 md:grid-cols-4">
+            <GoalInput label="目標アポ" value={goalDraft.teamTargets.appointments} onChange={(value) => updateTeamGoal("appointments", value)} />
+            <GoalInput label="目標着座" value={goalDraft.teamTargets.seated} onChange={(value) => updateTeamGoal("seated", value)} />
+            <GoalInput label="目標成約" value={goalDraft.teamTargets.closed} onChange={(value) => updateTeamGoal("closed", value)} />
+            <GoalInput label="全体成約率%" value={goalDraft.teamTargets.closeRate} onChange={(value) => updateTeamGoal("closeRate", value)} />
+          </div>
+
+          <div className="mt-5 overflow-x-auto">
+            <div className="min-w-[760px] rounded-2xl border border-white/10">
+              <div className="grid grid-cols-[1.2fr_1fr_140px_140px] border-b border-white/10 bg-black/25 px-4 py-3 text-xs font-bold uppercase tracking-[0.16em] text-white/40">
+                <span>メンバー</span>
+                <span>表示名</span>
+                <span>配分アポ</span>
+                <span>最低成約率%</span>
+              </div>
+              {goalDraft.members.map((member) => (
+                <div key={member.name} className="grid grid-cols-[1.2fr_1fr_140px_140px] items-center gap-3 border-b border-white/5 px-4 py-3 last:border-b-0">
+                  <span className="font-bold text-white">{member.name}</span>
+                  <span className="text-sm text-orange-100/55">{member.alias}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={member.targetAppointments}
+                    onChange={(event) => updateMemberGoal(member.name, "targetAppointments", event.target.value)}
+                    className="h-10 rounded-xl border border-white/10 bg-black/35 px-3 text-sm font-bold text-white outline-none focus:border-orange-200"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={member.minCloseRate}
+                    onChange={(event) => updateMemberGoal(member.name, "minCloseRate", event.target.value)}
+                    className="h-10 rounded-xl border border-white/10 bg-black/35 px-3 text-sm font-bold text-white outline-none focus:border-orange-200"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
 
         <section className="rounded-2xl border border-orange-300/20 bg-[#100908] p-5">

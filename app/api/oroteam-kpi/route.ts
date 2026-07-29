@@ -8,14 +8,39 @@ const SANITIZED_SOURCE_QUERY =
   "select B,C,D,E,F,G,H,I,N,O,Q,R,T where B is not null label D '流入経路', E '面談日', F '流入', H 'ステータス', I '保留回答予定日', N '決着日(着金日)', T '保留理由2'";
 const SANITIZED_SOURCE_CSV_URL = `https://docs.google.com/spreadsheets/d/1kkL_gysoXKq0Kh8ttFeMmG6pljzv1iwum2k2DxvJ96s/gviz/tq?tqx=out:csv&gid=2051214579&tq=${encodeURIComponent(SANITIZED_SOURCE_QUERY)}`;
 
-const TEAM_TARGETS = {
+type TeamTargets = {
+  appointments: number;
+  seated: number;
+  closed: number;
+  closeRate: number;
+};
+
+type MemberGoal = {
+  name: string;
+  alias: string;
+  targetAppointments: number;
+  minCloseRate: number;
+};
+
+type OroGoalConfig = {
+  month: string;
+  teamTargets: TeamTargets;
+  members: MemberGoal[];
+  updatedAt: string;
+};
+
+type OroGoalStore = {
+  goals: Record<string, OroGoalConfig>;
+};
+
+const DEFAULT_TEAM_TARGETS: TeamTargets = {
   appointments: 1050,
   seated: 561,
   closed: 180,
   closeRate: 35,
 };
 
-const ORO_MEMBERS = [
+const DEFAULT_ORO_MEMBERS: MemberGoal[] = [
   { name: "苙隼人", alias: "オロハヤト", targetAppointments: 144, minCloseRate: 45 },
   { name: "田仲由敬", alias: "タナカヨシタカ", targetAppointments: 129, minCloseRate: 45 },
   { name: "河上まちこ", alias: "カワカマチコ", targetAppointments: 112, minCloseRate: 30 },
@@ -27,16 +52,21 @@ const ORO_MEMBERS = [
   { name: "高橋健太", alias: "タカハシケンタ", targetAppointments: 140, minCloseRate: 35 },
   { name: "持木玲那", alias: "モチキレナ", targetAppointments: 81, minCloseRate: 30 },
   { name: "横山英輝", alias: "ヨコヤマヒデキ", targetAppointments: 5, minCloseRate: 30 },
-] as const;
+] as const satisfies MemberGoal[];
 
 const EXCLUDED_SEAT_STATUSES = new Set(["担当者変更", "重複予約", "無効アポ"]);
 const DEFAULT_MONTH = "2026-08";
 const DATA_CACHE_TTL_MS = 60_000;
+const GOAL_STORE_KEY = "oroteam-kpi-goals:v1";
 
 type SourceRow = Record<string, string>;
 type ParsedDate = { year: number; month: number; day: number };
 type CacheEntry = { expiresAt: number; rows: SourceRow[] };
 type Pace = { today: number; thisWeek: number; month: number; remainingDays: number; thisWeekDays: number };
+
+declare global {
+  var __oroTeamKpiGoalStore: OroGoalStore | undefined;
+}
 
 export type OroTeamMemberKpi = {
   name: string;
@@ -64,7 +94,8 @@ export type OroTeamKpiData = {
   selectedMonthLabel: string;
   availableMonths: { value: string; label: string }[];
   seatRate: number;
-  teamTargets: typeof TEAM_TARGETS;
+  teamTargets: TeamTargets;
+  editableGoals: OroGoalConfig;
   totals: {
     targetAppointments: number;
     currentAppointments: number;
@@ -96,6 +127,87 @@ export type OroTeamKpiData = {
 };
 
 const dataCache = new Map<string, CacheEntry>();
+
+function getMemoryGoalStore() {
+  globalThis.__oroTeamKpiGoalStore ??= { goals: {} };
+  return globalThis.__oroTeamKpiGoalStore;
+}
+
+function getKvConfig() {
+  const url = process.env.OROTEAM_KPI_KV_REST_API_URL || process.env.TEAM_SALES_GOALS_KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const token = process.env.OROTEAM_KPI_KV_REST_API_TOKEN || process.env.TEAM_SALES_GOALS_KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+  return url && token ? { url, token } : null;
+}
+
+function shouldUseMemoryFallback() {
+  return !process.env.VERCEL;
+}
+
+async function readGoalStore(): Promise<{ store: OroGoalStore; source: "kv" | "memory" }> {
+  const kv = getKvConfig();
+  if (!kv) {
+    if (shouldUseMemoryFallback()) return { store: getMemoryGoalStore(), source: "memory" };
+    throw new Error("shared oro KPI goal storage is not configured");
+  }
+
+  const response = await fetch(kv.url, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${kv.token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(["GET", GOAL_STORE_KEY]),
+    cache: "no-store",
+  });
+
+  if (!response.ok) throw new Error(`KV read failed: ${response.status}`);
+  const payload = (await response.json()) as { result?: string | null };
+  if (!payload.result) return { store: { goals: {} }, source: "kv" };
+
+  const parsed = JSON.parse(payload.result) as OroGoalStore;
+  return { store: { goals: parsed.goals ?? {} }, source: "kv" };
+}
+
+async function writeGoalStore(store: OroGoalStore) {
+  const kv = getKvConfig();
+  if (!kv) {
+    if (!shouldUseMemoryFallback()) throw new Error("shared oro KPI goal storage is not configured");
+    globalThis.__oroTeamKpiGoalStore = store;
+    return "memory" as const;
+  }
+
+  const response = await fetch(kv.url, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${kv.token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(["SET", GOAL_STORE_KEY, JSON.stringify(store)]),
+    cache: "no-store",
+  });
+
+  if (!response.ok) throw new Error(`KV write failed: ${response.status}`);
+  return "kv" as const;
+}
+
+function getDefaultGoalConfig(month: string): OroGoalConfig {
+  return {
+    month,
+    teamTargets: { ...DEFAULT_TEAM_TARGETS },
+    members: DEFAULT_ORO_MEMBERS.map((member) => ({ ...member })),
+    updatedAt: "",
+  };
+}
+
+async function readGoalConfig(month: string) {
+  try {
+    const { store } = await readGoalStore();
+    return store.goals[month] ?? getDefaultGoalConfig(month);
+  } catch (error) {
+    console.error("[oroteam-kpi] failed to read saved goals", error);
+    return getDefaultGoalConfig(month);
+  }
+}
 
 function parseCsv(text: string) {
   const rows: string[][] = [];
@@ -215,9 +327,9 @@ function isHoldStatus(status: string) {
   return status.trim() === "保留";
 }
 
-function isValidAppointmentRow(row: SourceRow) {
+function isValidAppointmentRow(row: SourceRow, memberGoals = DEFAULT_ORO_MEMBERS) {
   const member = normalizeName(getMember(row));
-  const targetMembers = new Set(ORO_MEMBERS.map((plan) => normalizeName(plan.name)));
+  const targetMembers = new Set(memberGoals.map((plan) => normalizeName(plan.name)));
   if (!targetMembers.has(member)) return false;
   return !EXCLUDED_SEAT_STATUSES.has(getSeat(row));
 }
@@ -308,6 +420,37 @@ function resolveMonth(value: string | null, availableMonths: string[]) {
   return availableMonths[0] ?? DEFAULT_MONTH;
 }
 
+function toBoundedNumber(value: unknown, fallback: number, min: number, max: number) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(numeric)));
+}
+
+function normalizeGoalPayload(body: Partial<OroGoalConfig>, month: string): OroGoalConfig {
+  const defaultConfig = getDefaultGoalConfig(month);
+  const incomingTargets = (body.teamTargets ?? {}) as Partial<TeamTargets>;
+  const incomingMembers = new Map((body.members ?? []).map((member) => [normalizeName(member.name ?? ""), member]));
+
+  return {
+    month,
+    teamTargets: {
+      appointments: toBoundedNumber(incomingTargets.appointments, defaultConfig.teamTargets.appointments, 0, 9999),
+      seated: toBoundedNumber(incomingTargets.seated, defaultConfig.teamTargets.seated, 0, 9999),
+      closed: toBoundedNumber(incomingTargets.closed, defaultConfig.teamTargets.closed, 0, 9999),
+      closeRate: toBoundedNumber(incomingTargets.closeRate, defaultConfig.teamTargets.closeRate, 0, 100),
+    },
+    members: defaultConfig.members.map((member) => {
+      const incoming = incomingMembers.get(normalizeName(member.name));
+      return {
+        ...member,
+        targetAppointments: toBoundedNumber(incoming?.targetAppointments, member.targetAppointments, 0, 9999),
+        minCloseRate: toBoundedNumber(incoming?.minCloseRate, member.minCloseRate, 0, 100),
+      };
+    }),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function buildSlideSuggestions(members: OroTeamMemberKpi[], seatRate: number) {
   const rankedReceivers = members
     .filter((member) => member.actualSeated >= 3 && member.currentCloseRate >= member.minCloseRate)
@@ -342,7 +485,7 @@ function buildAnalysis(members: OroTeamMemberKpi[], data: Pick<OroTeamKpiData, "
   const appointmentShortage = members.filter((member) => member.targetAppointmentGap < 0).sort((a, b) => a.targetAppointmentGap - b.targetAppointmentGap)[0];
   const analysis: string[] = [];
 
-  analysis.push(`チーム成約目標180件に対して、現時点の残り必要成約は${data.totals.remainingClosedToTarget}件です。`);
+  analysis.push(`チーム成約目標${data.totals.targetClosed}件に対して、現時点の残り必要成約は${data.totals.remainingClosedToTarget}件です。`);
   if (largestGap) analysis.push(`最も成約残数が大きいのは${largestGap.name}で、月末までにあと${largestGap.remainingClosed}件が必要です。`);
   if (underLine.length) analysis.push(`最低成約率を下回っているメンバーは${underLine.map((member) => member.name).join("、")}です。フィードバック優先候補です。`);
   if (strongest) analysis.push(`${strongest.name}は現在${strongest.actualClosed}成約で、チームへの実績貢献が最大です。`);
@@ -360,10 +503,10 @@ export async function getOroTeamKpiData({
   seatRate?: string | null;
 } = {}): Promise<OroTeamKpiData> {
   const rows = await loadRows();
-  const validRows = rows.filter(isValidAppointmentRow);
+  const defaultValidRows = rows.filter((row) => isValidAppointmentRow(row));
   const availableMonthValues = [
     ...new Set(
-      validRows
+      defaultValidRows
         .map((row) => parseSheetDate(getAppointmentDate(row)))
         .filter((date): date is ParsedDate => Boolean(date))
         .map(monthKey)
@@ -371,13 +514,17 @@ export async function getOroTeamKpiData({
     ),
   ].sort();
   const selectedMonth = resolveMonth(month ?? null, availableMonthValues);
+  const goalConfig = await readGoalConfig(selectedMonth);
+  const teamTargets = goalConfig.teamTargets;
+  const memberGoals = goalConfig.members;
   const seatRate = resolveSeatRate(requestedSeatRate);
+  const validRows = rows.filter((row) => isValidAppointmentRow(row, memberGoals));
   const monthRows = validRows.filter((row) => {
     const parsed = parseSheetDate(getAppointmentDate(row));
     return parsed && monthKey(parsed) === selectedMonth;
   });
 
-  const members = ORO_MEMBERS.map((plan): OroTeamMemberKpi => {
+  const members = memberGoals.map((plan): OroTeamMemberKpi => {
     const memberRows = monthRows.filter((row) => normalizeName(getMember(row)) === normalizeName(plan.name));
     const actualSeated = memberRows.filter((row) => isSeated(getSeat(row))).length;
     const actualClosed = memberRows.filter((row) => isClosedStatus(getStatus(row))).length;
@@ -413,26 +560,26 @@ export async function getOroTeamKpiData({
   const actualSeated = members.reduce((sum, member) => sum + member.actualSeated, 0);
   const actualClosed = members.reduce((sum, member) => sum + member.actualClosed, 0);
   const projectedSeated = Math.round(currentAppointments * (seatRate / 100));
-  const requiredClosedAtTeamRate = Math.ceil(projectedSeated * (TEAM_TARGETS.closeRate / 100));
+  const requiredClosedAtTeamRate = Math.ceil(projectedSeated * (teamTargets.closeRate / 100));
   const requiredClosedAtMemberRates = members.reduce((sum, member) => sum + member.requiredClosed, 0);
   const projectedClosedAtTeamRate = requiredClosedAtTeamRate;
   const totals = {
-    targetAppointments: TEAM_TARGETS.appointments,
+    targetAppointments: teamTargets.appointments,
     currentAppointments,
-    targetSeated: TEAM_TARGETS.seated,
+    targetSeated: teamTargets.seated,
     projectedSeated,
     actualSeated,
-    targetClosed: TEAM_TARGETS.closed,
+    targetClosed: teamTargets.closed,
     actualClosed,
     requiredClosedAtTeamRate,
     requiredClosedAtMemberRates,
-    remainingClosedToTarget: Math.max(0, TEAM_TARGETS.closed - actualClosed),
+    remainingClosedToTarget: Math.max(0, teamTargets.closed - actualClosed),
     remainingClosedToMemberRates: Math.max(0, requiredClosedAtMemberRates - actualClosed),
     projectedClosedAtTeamRate,
-    appointmentGap: currentAppointments - TEAM_TARGETS.appointments,
-    seatedGap: projectedSeated - TEAM_TARGETS.seated,
-    closedGap: actualClosed - TEAM_TARGETS.closed,
-    targetAchievementRate: TEAM_TARGETS.closed ? (actualClosed / TEAM_TARGETS.closed) * 100 : 0,
+    appointmentGap: currentAppointments - teamTargets.appointments,
+    seatedGap: projectedSeated - teamTargets.seated,
+    closedGap: actualClosed - teamTargets.closed,
+    targetAchievementRate: teamTargets.closed ? (actualClosed / teamTargets.closed) * 100 : 0,
   };
 
   const data = {
@@ -445,13 +592,14 @@ export async function getOroTeamKpiData({
       label: monthLabel(value),
     })),
     seatRate,
-    teamTargets: TEAM_TARGETS,
+    teamTargets,
+    editableGoals: goalConfig,
     totals,
     members,
     slideSuggestions: buildSlideSuggestions(members, seatRate),
     analysis: [] as string[],
     assumptions: [
-      "横山英輝は追加メンバーとして、差分5アポ・最低成約率30%で仮置きしています。",
+      "目標値はこの画面から月ごとに保存できます。横山英輝の初期値は5アポ・最低成約率30%です。",
       "集計基準は面談日です。選択月の面談日を持つ有効アポのみを対象にしています。",
       "担当者変更・重複予約・無効アポは予約母数から除外しています。",
     ],
@@ -473,4 +621,26 @@ export async function GET(request: Request) {
       "Cache-Control": "no-store",
     },
   });
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = (await request.json().catch(() => ({}))) as Partial<OroGoalConfig>;
+    const month = typeof body.month === "string" && /^\d{4}-\d{2}$/.test(body.month) ? body.month : DEFAULT_MONTH;
+    const goal = normalizeGoalPayload(body, month);
+    const { store } = await readGoalStore();
+    const nextStore: OroGoalStore = {
+      goals: {
+        ...store.goals,
+        [month]: goal,
+      },
+    };
+    const source = await writeGoalStore(nextStore);
+    const data = await getOroTeamKpiData({ month });
+
+    return NextResponse.json({ goal, data, source }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    console.error("[oroteam-kpi] POST failed", error);
+    return NextResponse.json({ error: "Failed to save ORO KPI goals" }, { status: 500 });
+  }
 }
