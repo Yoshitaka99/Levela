@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity,
   AlertTriangle,
   ArrowRight,
   CalendarDays,
   Flame,
   Gauge,
+  Lock,
+  LockOpen,
   RefreshCw,
+  Save,
   Target,
   TrendingUp,
   Users,
@@ -17,6 +19,7 @@ import type { OroTeamKpiData, OroTeamMemberKpi } from "../api/oroteam-kpi/route"
 
 const seatRateOptions = [60, 65, 70, 75];
 type GoalDraft = OroTeamKpiData["editableGoals"];
+type GoalMember = GoalDraft["members"][number];
 
 const nf = new Intl.NumberFormat("ja-JP");
 
@@ -31,6 +34,74 @@ function formatPercent(value: number) {
 function signed(value: number) {
   if (value > 0) return `+${formatNumber(value)}`;
   return formatNumber(value);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function numberFromInput(value: string, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function plannedSeats(member: GoalMember, seatRate: number) {
+  return Math.round(member.targetAppointments * (seatRate / 100));
+}
+
+function expectedClosed(member: GoalMember, seatRate: number) {
+  return Math.round(plannedSeats(member, seatRate) * (member.minCloseRate / 100));
+}
+
+function withBalancedRates(draft: GoalDraft, seatRate: number, protectedName?: string): GoalDraft {
+  const targetClosed = draft.teamTargets.closed;
+  const fixedMembers = draft.members.filter((member) => member.lockedCloseRate || member.name === protectedName);
+  const adjustableMembers = draft.members.filter((member) => !member.lockedCloseRate && member.name !== protectedName);
+  const fixedExpected = fixedMembers.reduce((sum, member) => sum + plannedSeats(member, seatRate) * (member.minCloseRate / 100), 0);
+  const adjustableSeats = adjustableMembers.reduce((sum, member) => sum + plannedSeats(member, seatRate), 0);
+
+  if (!adjustableMembers.length || adjustableSeats <= 0) return draft;
+
+  const nextRate = Math.round(clamp(((targetClosed - fixedExpected) / adjustableSeats) * 100, 0, 100));
+  return {
+    ...draft,
+    members: draft.members.map((member) =>
+      member.lockedCloseRate || member.name === protectedName
+        ? member
+        : {
+            ...member,
+            minCloseRate: nextRate,
+          },
+    ),
+  };
+}
+
+function goalPreview(draft: GoalDraft, seatRate: number) {
+  const targetAppointments = draft.members.reduce((sum, member) => sum + member.targetAppointments, 0);
+  const projectedSeated = draft.members.reduce((sum, member) => sum + plannedSeats(member, seatRate), 0);
+  const projectedClosed = draft.members.reduce((sum, member) => sum + expectedClosed(member, seatRate), 0);
+  const overallRate = projectedSeated ? (projectedClosed / projectedSeated) * 100 : 0;
+
+  return {
+    targetAppointments,
+    projectedSeated,
+    projectedClosed,
+    overallRate,
+    closedGap: projectedClosed - draft.teamTargets.closed,
+  };
+}
+
+function withMemberPlanTotals(draft: GoalDraft, seatRate: number): GoalDraft {
+  const preview = goalPreview(draft, seatRate);
+  return {
+    ...draft,
+    teamTargets: {
+      ...draft.teamTargets,
+      appointments: preview.targetAppointments,
+      seated: preview.projectedSeated,
+      closeRate: preview.projectedSeated ? Math.round((draft.teamTargets.closed / preview.projectedSeated) * 100) : draft.teamTargets.closeRate,
+    },
+  };
 }
 
 function statusLabel(member: OroTeamMemberKpi) {
@@ -63,103 +134,151 @@ function SummaryCard({
   }[tone];
 
   return (
-    <section className={`rounded-2xl border p-4 shadow-2xl shadow-black/30 ${toneClass}`}>
+    <section className={`rounded-2xl border p-4 shadow-xl shadow-black/25 ${toneClass}`}>
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/45">{label}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">{label}</p>
         <div className="text-white/70">{icon}</div>
       </div>
-      <p className="mt-4 text-3xl font-black tracking-tight sm:text-4xl">{value}</p>
+      <p className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">{value}</p>
       <p className="mt-2 text-sm text-white/55">{sub}</p>
     </section>
   );
 }
 
-function Meter({ value, max, danger = false }: { value: number; max: number; danger?: boolean }) {
-  const width = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
+function MiniStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="h-2 overflow-hidden rounded-full bg-white/10">
-      <div
-        className={`h-full rounded-full ${danger ? "bg-gradient-to-r from-red-500 to-orange-300" : "bg-gradient-to-r from-orange-400 to-amber-200"}`}
-        style={{ width: `${width}%` }}
-      />
+    <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">{label}</p>
+      <p className="mt-1 text-2xl font-black text-white">{value}</p>
+      {sub ? <p className="mt-1 text-xs text-white/45">{sub}</p> : null}
     </div>
   );
 }
 
-function MemberCard({ member, maxRemaining }: { member: OroTeamMemberKpi; maxRemaining: number }) {
-  const state = statusLabel(member);
-
+function NumberInput({
+  label,
+  value,
+  suffix,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  suffix?: string;
+  onChange: (value: string) => void;
+}) {
   return (
-    <article className="rounded-2xl border border-white/10 bg-[#130d0b]/90 p-4 shadow-xl shadow-black/30">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${state.className}`}>{state.label}</span>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-200/55">{member.alias}</p>
-          </div>
-          <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-1">
-            <h2 className="text-2xl font-black text-white">{member.name}</h2>
-            <p className="text-sm text-white/45">最低成約率 {member.minCloseRate}%</p>
-          </div>
-        </div>
+    <label className="block rounded-xl border border-white/10 bg-black/25 p-3">
+      <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">{label}</span>
+      <div className="mt-2 flex items-center gap-2 rounded-xl border border-orange-300/20 bg-black/40 px-3 focus-within:border-orange-200">
+        <input
+          type="number"
+          min={0}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-11 min-w-0 flex-1 bg-transparent text-xl font-black text-white outline-none"
+        />
+        {suffix ? <span className="text-sm font-bold text-orange-100/70">{suffix}</span> : null}
+      </div>
+    </label>
+  );
+}
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:w-[580px]">
-          <Metric label="予約" value={formatNumber(member.currentAppointments)} sub={`配分 ${formatNumber(member.targetAppointments)}`} />
-          <Metric label="予測着座" value={formatNumber(member.projectedSeated)} sub={`実着座 ${formatNumber(member.actualSeated)}`} />
-          <Metric label="必要成約" value={formatNumber(member.requiredClosed)} sub={`現在 ${formatNumber(member.actualClosed)}`} />
-          <Metric label="残り" value={formatNumber(member.remainingClosed)} sub={`${formatPercent(member.currentCloseRate)}`} alert={member.remainingClosed > 0} />
-        </div>
+function SelectBox({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string | number;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block rounded-xl border border-white/10 bg-black/25 p-3">
+      <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 h-11 w-full rounded-xl border border-orange-300/20 bg-black/40 px-3 text-base font-black text-white outline-none focus:border-orange-200"
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
+function MemberGoalCard({
+  member,
+  seatRate,
+  onAppointmentChange,
+  onRateChange,
+  onToggleLock,
+}: {
+  member: GoalMember;
+  seatRate: number;
+  onAppointmentChange: (value: string) => void;
+  onRateChange: (value: string) => void;
+  onToggleLock: () => void;
+}) {
+  return (
+    <article className="rounded-2xl border border-white/10 bg-[#110806] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-xl font-black text-white">{member.name}</h3>
+        <button
+          type="button"
+          onClick={onToggleLock}
+          className={`inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-black ${
+            member.lockedCloseRate
+              ? "border-amber-300/40 bg-amber-300/15 text-amber-100"
+              : "border-white/10 bg-white/[0.04] text-white/65"
+          }`}
+        >
+          {member.lockedCloseRate ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
+          {member.lockedCloseRate ? "固定中" : "自動"}
+        </button>
       </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_320px]">
-        <div>
-          <div className="mb-2 flex items-center justify-between text-xs text-white/45">
-            <span>残り成約インパクト</span>
-            <span>{formatNumber(member.remainingClosed)} / {formatNumber(maxRemaining || 1)}</span>
-          </div>
-          <Meter value={member.remainingClosed} max={maxRemaining} danger={member.remainingClosed >= 10} />
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          <Pace label="今日" value={member.pace.today} />
-          <Pace label="今週" value={member.pace.thisWeek} />
-          <Pace label="月末" value={member.pace.month} />
-        </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <NumberInput label="配分アポ" value={member.targetAppointments} onChange={onAppointmentChange} />
+        <NumberInput label="成約率" value={member.minCloseRate} suffix="%" onChange={onRateChange} />
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <MiniStat label="予測着座" value={formatNumber(plannedSeats(member, seatRate))} />
+        <MiniStat label="必要成約" value={formatNumber(expectedClosed(member, seatRate))} />
       </div>
     </article>
   );
 }
 
-function Metric({ label, value, sub, alert = false }: { label: string; value: string; sub: string; alert?: boolean }) {
-  return (
-    <div className={`rounded-xl border p-3 ${alert ? "border-orange-400/25 bg-orange-500/10" : "border-white/10 bg-white/[0.04]"}`}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40">{label}</p>
-      <p className="mt-1 text-2xl font-black text-white">{value}</p>
-      <p className="mt-1 text-xs text-white/45">{sub}</p>
-    </div>
-  );
-}
+function MemberResultCard({ member, maxRemaining }: { member: OroTeamMemberKpi; maxRemaining: number }) {
+  const state = statusLabel(member);
+  const width = maxRemaining > 0 ? Math.min(100, Math.max(0, (member.remainingClosed / maxRemaining) * 100)) : 0;
 
-function Pace({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-center">
-      <p className="text-[11px] font-semibold text-white/45">{label}</p>
-      <p className="mt-1 text-xl font-black text-orange-100">{formatNumber(value)}</p>
-    </div>
-  );
-}
-
-function GoalInput({ label, value, onChange }: { label: string; value: number; onChange: (value: string) => void }) {
-  return (
-    <label className="block rounded-xl border border-white/10 bg-black/25 p-3">
-      <span className="block text-[11px] font-bold uppercase tracking-[0.16em] text-white/40">{label}</span>
-      <input
-        type="number"
-        min={0}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-2 h-11 w-full rounded-xl border border-orange-300/20 bg-black/40 px-3 text-xl font-black text-white outline-none focus:border-orange-200"
-      />
-    </label>
+    <article className="rounded-2xl border border-white/10 bg-[#130d0b]/90 p-4 shadow-xl shadow-black/25">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${state.className}`}>{state.label}</span>
+          <h2 className="mt-2 text-2xl font-black text-white">{member.name}</h2>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:min-w-[520px]">
+          <MiniStat label="予約" value={formatNumber(member.currentAppointments)} sub={`配分 ${formatNumber(member.targetAppointments)}`} />
+          <MiniStat label="着座" value={formatNumber(member.actualSeated)} sub={`予測 ${formatNumber(member.projectedSeated)}`} />
+          <MiniStat label="成約" value={formatNumber(member.actualClosed)} sub={`必要 ${formatNumber(member.requiredClosed)}`} />
+          <MiniStat label="残り" value={formatNumber(member.remainingClosed)} sub={formatPercent(member.currentCloseRate)} />
+        </div>
+      </div>
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+        <div className="h-full rounded-full bg-gradient-to-r from-red-500 to-orange-300" style={{ width: `${width}%` }} />
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <MiniStat label="今日" value={formatNumber(member.pace.today)} />
+        <MiniStat label="今週" value={formatNumber(member.pace.thisWeek)} />
+        <MiniStat label="月末まで" value={formatNumber(member.pace.month)} />
+      </div>
+    </article>
   );
 }
 
@@ -168,6 +287,7 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
   const [month, setMonth] = useState(initialData.selectedMonth);
   const [seatRate, setSeatRate] = useState(initialData.seatRate);
   const [goalDraft, setGoalDraft] = useState<GoalDraft>(initialData.editableGoals);
+  const [goalDirty, setGoalDirty] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingGoals, setSavingGoals] = useState(false);
   const [lastError, setLastError] = useState("");
@@ -186,7 +306,7 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
         const nextData = (await response.json()) as OroTeamKpiData;
         if (!cancelled) {
           setData(nextData);
-          setGoalDraft(nextData.editableGoals);
+          if (!goalDirty) setGoalDraft(nextData.editableGoals);
         }
       } catch (error) {
         if (!cancelled) setLastError(error instanceof Error ? error.message : "更新に失敗しました");
@@ -201,32 +321,88 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [month, seatRate]);
+  }, [month, seatRate, goalDirty]);
+
+  const preview = useMemo(() => goalPreview(goalDraft, seatRate), [goalDraft, seatRate]);
+  const maxRemaining = useMemo(() => Math.max(1, ...data.members.map((member) => member.remainingClosed)), [data.members]);
+  const sortedMembers = useMemo(
+    () => [...data.members].sort((a, b) => b.remainingClosed - a.remainingClosed || b.requiredClosed - a.requiredClosed),
+    [data.members],
+  );
+  const targetProgress = Math.min(100, data.totals.targetAchievementRate);
 
   const updateTeamGoal = (key: keyof GoalDraft["teamTargets"], value: string) => {
-    const numeric = Number(value);
-    setGoalDraft((current) => ({
-      ...current,
-      teamTargets: {
-        ...current.teamTargets,
-        [key]: Number.isFinite(numeric) ? numeric : 0,
-      },
-    }));
+    const numeric = numberFromInput(value);
+    setGoalDirty(true);
+    setSaveMessage("");
+    setGoalDraft((current) => {
+      const nextTargets = { ...current.teamTargets, [key]: numeric };
+      if (key === "closed" && nextTargets.seated > 0) {
+        nextTargets.closeRate = Math.round((numeric / nextTargets.seated) * 100);
+      }
+      if (key === "closeRate") {
+        nextTargets.closed = Math.round(nextTargets.seated * (numeric / 100));
+      }
+      return withBalancedRates({ ...current, teamTargets: nextTargets }, seatRate);
+    });
   };
 
-  const updateMemberGoal = (name: string, key: "targetAppointments" | "minCloseRate", value: string) => {
-    const numeric = Number(value);
-    setGoalDraft((current) => ({
-      ...current,
-      members: current.members.map((member) =>
-        member.name === name
-          ? {
-              ...member,
-              [key]: Number.isFinite(numeric) ? numeric : 0,
-            }
-          : member,
+  const updateMemberAppointment = (name: string, value: string) => {
+    const numeric = numberFromInput(value);
+    setGoalDirty(true);
+    setSaveMessage("");
+    setGoalDraft((current) =>
+      withBalancedRates(
+        withMemberPlanTotals(
+          {
+            ...current,
+            members: current.members.map((member) => (member.name === name ? { ...member, targetAppointments: numeric } : member)),
+          },
+          seatRate,
+        ),
+        seatRate,
       ),
-    }));
+    );
+  };
+
+  const updateMemberRate = (name: string, value: string) => {
+    const numeric = clamp(Math.round(numberFromInput(value)), 0, 100);
+    setGoalDirty(true);
+    setSaveMessage("");
+    setGoalDraft((current) =>
+      withBalancedRates(
+        {
+          ...current,
+          members: current.members.map((member) => (member.name === name ? { ...member, minCloseRate: numeric } : member)),
+        },
+        seatRate,
+        name,
+      ),
+    );
+  };
+
+  const toggleMemberLock = (name: string) => {
+    setGoalDirty(true);
+    setSaveMessage("");
+    setGoalDraft((current) =>
+      withBalancedRates(
+        {
+          ...current,
+          members: current.members.map((member) =>
+            member.name === name ? { ...member, lockedCloseRate: !member.lockedCloseRate } : member,
+          ),
+        },
+        seatRate,
+      ),
+    );
+  };
+
+  const updateSeatRate = (value: string) => {
+    const nextSeatRate = Number(value);
+    setGoalDirty(true);
+    setSaveMessage("");
+    setSeatRate(nextSeatRate);
+    setGoalDraft((current) => withBalancedRates(withMemberPlanTotals(current, nextSeatRate), nextSeatRate));
   };
 
   const saveGoals = async () => {
@@ -245,6 +421,7 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
         setData(payload.data);
         setGoalDraft(payload.data.editableGoals);
       }
+      setGoalDirty(false);
       setSaveMessage("保存しました");
     } catch (error) {
       setLastError(error instanceof Error ? error.message : "保存に失敗しました");
@@ -253,73 +430,24 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
     }
   };
 
-  const maxRemaining = useMemo(() => Math.max(1, ...data.members.map((member) => member.remainingClosed)), [data.members]);
-  const targetProgress = Math.min(100, data.totals.targetAchievementRate);
-  const sortedMembers = useMemo(
-    () => [...data.members].sort((a, b) => b.remainingClosed - a.remainingClosed || b.requiredClosed - a.requiredClosed),
-    [data.members],
-  );
-
   return (
     <main className="min-h-screen bg-[#080403] text-white">
       <div className="absolute inset-x-0 top-0 -z-0 h-[420px] bg-[radial-gradient(ellipse_at_top,#7f1d1d_0%,#2a0904_42%,transparent_72%)] opacity-80" />
-      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-5 sm:px-6 lg:px-8">
-        <header className="overflow-hidden rounded-[2rem] border border-orange-300/20 bg-[#120805]/95 p-5 shadow-2xl shadow-red-950/40 sm:p-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-orange-400/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.22em] text-orange-100">
-                <Flame className="h-4 w-4" />
-                ORO TEAM KPI
-              </div>
-              <h1 className="mt-5 max-w-4xl text-4xl font-black tracking-tight text-white sm:text-6xl">
-                8月オロチーム
-                <span className="block bg-gradient-to-r from-red-300 via-orange-200 to-amber-100 bg-clip-text text-transparent">
-                  目標達成ボード
-                </span>
-              </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-orange-100/60 sm:text-base">
-                面談日基準で予約、着座、成約を集計。必要成約数とアポ配分のズレを即時に確認します。
-              </p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3 lg:w-[460px]">
-              <label className="block">
-                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-white/45">対象月</span>
-                <select
-                  value={month}
-                  onChange={(event) => setMonth(event.target.value)}
-                  className="h-12 w-full rounded-xl border border-orange-300/25 bg-black/45 px-3 text-sm font-bold text-white outline-none focus:border-orange-200"
-                >
-                  {data.availableMonths.map((option) => (
-                    <option key={option.value} value={option.value} className="bg-black">
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-white/45">着座率</span>
-                <select
-                  value={seatRate}
-                  onChange={(event) => setSeatRate(Number(event.target.value))}
-                  className="h-12 w-full rounded-xl border border-orange-300/25 bg-black/45 px-3 text-sm font-bold text-white outline-none focus:border-orange-200"
-                >
-                  {seatRateOptions.map((rate) => (
-                    <option key={rate} value={rate} className="bg-black">
-                      {rate}%
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
-                <span className="block text-xs font-bold uppercase tracking-[0.18em] text-white/45">更新</span>
-                <div className="mt-1 flex items-center gap-2 text-sm font-bold text-orange-100">
-                  <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                  {new Date(data.updatedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
-                </div>
-              </div>
-            </div>
+      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-5 px-3 py-4 sm:gap-8 sm:px-6 lg:px-8">
+        <header className="overflow-hidden rounded-3xl border border-orange-300/20 bg-[#120805]/95 p-5 shadow-2xl shadow-red-950/40 sm:p-8">
+          <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-orange-400/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-orange-100">
+            <Flame className="h-4 w-4" />
+            ORO TEAM KPI
           </div>
+          <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-6xl">
+            8月オロチーム
+            <span className="block bg-gradient-to-r from-red-300 via-orange-200 to-amber-100 bg-clip-text text-transparent">
+              目標達成ボード
+            </span>
+          </h1>
+          <p className="mt-4 max-w-2xl text-sm leading-6 text-orange-100/60 sm:text-base">
+            面談日ベースで予約、着座、成約を集計。目標値を動かすと必要成約数と不足分を即時に確認できます。
+          </p>
           {lastError ? (
             <div className="mt-5 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
               {lastError}
@@ -353,76 +481,94 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
             icon={<Gauge className="h-5 w-5" />}
             label="必要成約"
             value={formatNumber(data.totals.requiredClosedAtMemberRates)}
-            sub={`メンバー最低ライン合算 / 現在差分 ${signed(data.totals.actualClosed - data.totals.requiredClosedAtMemberRates)}`}
+            sub={`メンバー最低ライン合算 / 差分 ${signed(data.totals.actualClosed - data.totals.requiredClosedAtMemberRates)}`}
             tone="slate"
           />
         </section>
 
-        <section className="rounded-2xl border border-orange-300/20 bg-[#120705] p-5 shadow-xl shadow-red-950/20">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <section className="rounded-3xl border border-orange-300/20 bg-[#120705] p-4 shadow-xl shadow-red-950/20 sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-orange-200/50">Goal control</p>
-              <h2 className="mt-1 text-2xl font-black">目標値編集</h2>
-              <p className="mt-2 text-sm text-white/50">対象月ごとに保存されます。保存後、全員の画面に最新値が反映されます。</p>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-200/50">Goal control</p>
+              <h2 className="mt-1 text-2xl font-black">操作・目標値設定</h2>
+              <p className="mt-2 text-sm leading-6 text-white/50">
+                成約率を入力すると、固定していないメンバーの成約率を自動調整し、チーム目標成約数に寄せます。
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={saveGoals}
-              disabled={savingGoals}
-              className="h-11 rounded-xl border border-orange-200/30 bg-gradient-to-r from-red-600 to-orange-500 px-5 text-sm font-black text-white shadow-lg shadow-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {savingGoals ? "保存中" : "目標値を保存"}
-            </button>
+            <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+              <button
+                type="button"
+                onClick={saveGoals}
+                disabled={savingGoals}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-orange-200/30 bg-gradient-to-r from-red-600 to-orange-500 px-5 text-sm font-black text-white shadow-lg shadow-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Save className="h-4 w-4" />
+                {savingGoals ? "保存中" : "保存"}
+              </button>
+              <div className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-sm font-bold text-orange-100">
+                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                {new Date(data.updatedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
+              </div>
+            </div>
           </div>
           {saveMessage ? <p className="mt-3 text-sm font-bold text-amber-100">{saveMessage}</p> : null}
 
-          <div className="mt-5 grid gap-3 md:grid-cols-4">
-            <GoalInput label="目標アポ" value={goalDraft.teamTargets.appointments} onChange={(value) => updateTeamGoal("appointments", value)} />
-            <GoalInput label="目標着座" value={goalDraft.teamTargets.seated} onChange={(value) => updateTeamGoal("seated", value)} />
-            <GoalInput label="目標成約" value={goalDraft.teamTargets.closed} onChange={(value) => updateTeamGoal("closed", value)} />
-            <GoalInput label="全体成約率%" value={goalDraft.teamTargets.closeRate} onChange={(value) => updateTeamGoal("closeRate", value)} />
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            <SelectBox
+              label="対象月"
+              value={month}
+              onChange={(value) => {
+                setGoalDirty(false);
+                setMonth(value);
+              }}
+            >
+              {data.availableMonths.map((option) => (
+                <option key={option.value} value={option.value} className="bg-black">
+                  {option.label}
+                </option>
+              ))}
+            </SelectBox>
+            <SelectBox label="着座率" value={seatRate} onChange={updateSeatRate}>
+              {seatRateOptions.map((rate) => (
+                <option key={rate} value={rate} className="bg-black">
+                  {rate}%
+                </option>
+              ))}
+            </SelectBox>
+            <NumberInput label="目標アポ" value={goalDraft.teamTargets.appointments} onChange={(value) => updateTeamGoal("appointments", value)} />
+            <NumberInput label="目標着座" value={goalDraft.teamTargets.seated} onChange={(value) => updateTeamGoal("seated", value)} />
+            <NumberInput label="目標成約" value={goalDraft.teamTargets.closed} onChange={(value) => updateTeamGoal("closed", value)} />
+            <NumberInput label="全体成約率" value={goalDraft.teamTargets.closeRate} suffix="%" onChange={(value) => updateTeamGoal("closeRate", value)} />
           </div>
 
-          <div className="mt-5 overflow-x-auto">
-            <div className="min-w-[760px] rounded-2xl border border-white/10">
-              <div className="grid grid-cols-[1.2fr_1fr_140px_140px] border-b border-white/10 bg-black/25 px-4 py-3 text-xs font-bold uppercase tracking-[0.16em] text-white/40">
-                <span>メンバー</span>
-                <span>表示名</span>
-                <span>配分アポ</span>
-                <span>最低成約率%</span>
-              </div>
-              {goalDraft.members.map((member) => (
-                <div key={member.name} className="grid grid-cols-[1.2fr_1fr_140px_140px] items-center gap-3 border-b border-white/5 px-4 py-3 last:border-b-0">
-                  <span className="font-bold text-white">{member.name}</span>
-                  <span className="text-sm text-orange-100/55">{member.alias}</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={member.targetAppointments}
-                    onChange={(event) => updateMemberGoal(member.name, "targetAppointments", event.target.value)}
-                    className="h-10 rounded-xl border border-white/10 bg-black/35 px-3 text-sm font-bold text-white outline-none focus:border-orange-200"
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={member.minCloseRate}
-                    onChange={(event) => updateMemberGoal(member.name, "minCloseRate", event.target.value)}
-                    className="h-10 rounded-xl border border-white/10 bg-black/35 px-3 text-sm font-bold text-white outline-none focus:border-orange-200"
-                  />
-                </div>
-              ))}
-            </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-4">
+            <MiniStat label="配分アポ合計" value={formatNumber(preview.targetAppointments)} sub={`全体目標 ${formatNumber(goalDraft.teamTargets.appointments)}`} />
+            <MiniStat label="計画着座" value={formatNumber(preview.projectedSeated)} sub={`${seatRate}%想定`} />
+            <MiniStat label="計画成約" value={formatNumber(preview.projectedClosed)} sub={`目標差分 ${signed(preview.closedGap)}`} />
+            <MiniStat label="計画成約率" value={formatPercent(preview.overallRate)} sub="メンバー設定合算" />
+          </div>
+
+          <div className="mt-5 grid gap-3 lg:grid-cols-2">
+            {goalDraft.members.map((member) => (
+              <MemberGoalCard
+                key={member.name}
+                member={member}
+                seatRate={seatRate}
+                onAppointmentChange={(value) => updateMemberAppointment(member.name, value)}
+                onRateChange={(value) => updateMemberRate(member.name, value)}
+                onToggleLock={() => toggleMemberLock(member.name)}
+              />
+            ))}
           </div>
         </section>
 
         <section className="rounded-2xl border border-orange-300/20 bg-[#100908] p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-orange-200/50">Target heat</p>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-200/50">Target heat</p>
               <h2 className="mt-1 text-2xl font-black">チーム進捗</h2>
             </div>
-            <div className="text-sm text-white/55">35%基準必要成約 {formatNumber(data.totals.requiredClosedAtTeamRate)}件</div>
+            <div className="text-sm text-white/55">全体成約率基準の必要成約 {formatNumber(data.totals.requiredClosedAtTeamRate)}件</div>
           </div>
           <div className="mt-5">
             <div className="mb-2 flex justify-between text-xs text-white/45">
@@ -442,13 +588,13 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
           <div className="space-y-3">
             <div className="flex items-end justify-between gap-3">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.22em] text-orange-200/50">Member pressure</p>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-200/50">Member pressure</p>
                 <h2 className="mt-1 text-2xl font-black">メンバー別 必要成約数</h2>
               </div>
               <p className="text-sm text-white/45">{data.members.length}名</p>
             </div>
             {sortedMembers.map((member) => (
-              <MemberCard key={member.name} member={member} maxRemaining={maxRemaining} />
+              <MemberResultCard key={member.name} member={member} maxRemaining={maxRemaining} />
             ))}
           </div>
 
@@ -490,18 +636,6 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
                   <p key={item} className="rounded-xl border border-white/10 bg-black/25 p-3 text-sm leading-6 text-white/70">
                     {item}
                   </p>
-                ))}
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-              <div className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-white/60" />
-                <h2 className="text-xl font-black">前提</h2>
-              </div>
-              <div className="mt-4 space-y-2">
-                {data.assumptions.map((item) => (
-                  <p key={item} className="text-xs leading-5 text-white/45">{item}</p>
                 ))}
               </div>
             </section>

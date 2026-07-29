@@ -20,6 +20,7 @@ type MemberGoal = {
   alias: string;
   targetAppointments: number;
   minCloseRate: number;
+  lockedCloseRate?: boolean;
 };
 
 type OroGoalConfig = {
@@ -445,6 +446,7 @@ function normalizeGoalPayload(body: Partial<OroGoalConfig>, month: string): OroG
         ...member,
         targetAppointments: toBoundedNumber(incoming?.targetAppointments, member.targetAppointments, 0, 9999),
         minCloseRate: toBoundedNumber(incoming?.minCloseRate, member.minCloseRate, 0, 100),
+        lockedCloseRate: Boolean(incoming?.lockedCloseRate),
       };
     }),
     updatedAt: new Date().toISOString(),
