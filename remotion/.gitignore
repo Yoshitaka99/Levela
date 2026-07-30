@@ -1,0 +1,9 @@
+node_modules/
+out/
+
+# Generated once by `npm run bgm` – deterministic, so no need to version it.
+public/audio/
+
+# Raw camera original. Only the normalised H.264 render is committed.
+public/media/*.mov
+public/media/*.MOV

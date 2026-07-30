@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     "generated_*/**",
     "outputs/**",
     "public/sw.js",
+    // Standalone Remotion workspace with its own tsconfig/deps.
+    "remotion/**",
   ]),
 ]);
 

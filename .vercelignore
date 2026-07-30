@@ -4,6 +4,8 @@ node_modules/
 .vercel/
 *.log
 
+remotion/
+
 outputs/
 tmp_*/
 tmp-*/
