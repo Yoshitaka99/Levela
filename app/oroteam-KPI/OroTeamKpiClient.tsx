@@ -246,13 +246,13 @@ function MemberGoalCard({
   const changeRateBy = (delta: number) => onRateChange(String(clamp(member.minCloseRate + delta, 0, 100)));
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-[#100806] p-3 shadow-lg shadow-black/20">
+    <article className="rounded-2xl border border-white/10 bg-[#100806] px-3 py-2.5 shadow-lg shadow-black/20">
       <div className="flex items-center justify-between gap-2">
         <h3 className="min-w-0 truncate text-lg font-black text-white">{member.name}</h3>
         <button
           type="button"
           onClick={onToggleLock}
-          className={`inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-xs font-black ${
+          className={`inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-[11px] font-black ${
             member.lockedCloseRate
               ? "border-amber-300/45 bg-amber-300/16 text-amber-100"
               : "border-white/12 bg-white/[0.05] text-white/68"
@@ -263,7 +263,7 @@ function MemberGoalCard({
         </button>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-[112px_1fr_112px_112px] sm:items-end">
+      <div className="mt-2 grid gap-2 sm:grid-cols-[96px_148px_86px_86px] sm:items-end lg:grid-cols-[96px_148px_86px_86px]">
         <label className="block">
           <span className="mb-1 block text-[10px] font-black text-orange-100/55">配分アポ</span>
           <input
@@ -277,30 +277,30 @@ function MemberGoalCard({
 
         <div>
           <span className="mb-1 block text-[10px] font-black text-orange-100/55">成約率</span>
-          <div className="grid grid-cols-[38px_1fr_38px] gap-2">
+          <div className="grid grid-cols-[34px_72px_34px] gap-1.5">
             <button
               type="button"
               onClick={() => changeRateBy(-1)}
-              className="h-10 rounded-xl border border-white/10 bg-white/[0.05] text-lg font-black text-white/80"
+              className="h-10 rounded-lg border border-white/10 bg-white/[0.05] text-lg font-black text-white/80"
               aria-label={`${member.name}の成約率を下げる`}
             >
               -
             </button>
-            <div className="flex h-10 items-center rounded-xl border border-orange-300/24 bg-black/42 px-2 focus-within:border-orange-200">
+            <div className="flex h-10 items-center rounded-lg border border-orange-300/24 bg-black/42 px-1.5 focus-within:border-orange-200">
               <input
                 type="number"
                 min={0}
                 max={100}
                 value={member.minCloseRate}
                 onChange={(event) => onRateChange(event.target.value)}
-                className="min-w-0 flex-1 bg-transparent text-center text-xl font-black text-white outline-none"
+                className="min-w-0 flex-1 bg-transparent text-center text-lg font-black text-white outline-none"
               />
               <span className="text-xs font-black text-orange-100/70">%</span>
             </div>
             <button
               type="button"
               onClick={() => changeRateBy(1)}
-              className="h-10 rounded-xl border border-white/10 bg-white/[0.05] text-lg font-black text-white/80"
+              className="h-10 rounded-lg border border-white/10 bg-white/[0.05] text-lg font-black text-white/80"
               aria-label={`${member.name}の成約率を上げる`}
             >
               +
@@ -308,13 +308,13 @@ function MemberGoalCard({
           </div>
         </div>
 
-        <div className="rounded-xl border border-cyan-300/16 bg-cyan-400/6 px-3 py-2">
+        <div className="rounded-xl border border-cyan-300/16 bg-cyan-400/6 px-2.5 py-2">
           <p className="text-[10px] font-black text-cyan-100/55">予測着座</p>
-          <p className="mt-0.5 text-lg font-black text-white">{formatNumber(plannedSeatCount)}</p>
+          <p className="mt-0.5 text-base font-black text-white">{formatNumber(plannedSeatCount)}</p>
         </div>
-        <div className="rounded-xl border border-cyan-300/16 bg-cyan-400/6 px-3 py-2">
+        <div className="rounded-xl border border-cyan-300/16 bg-cyan-400/6 px-2.5 py-2">
           <p className="text-[10px] font-black text-cyan-100/55">必要成約</p>
-          <p className="mt-0.5 text-lg font-black text-white">{formatNumber(expectedClosedCount)}</p>
+          <p className="mt-0.5 text-base font-black text-white">{formatNumber(expectedClosedCount)}</p>
         </div>
       </div>
     </article>
