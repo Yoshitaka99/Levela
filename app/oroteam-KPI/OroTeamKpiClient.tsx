@@ -105,12 +105,26 @@ function withMemberPlanTotals(draft: GoalDraft, seatRate: number): GoalDraft {
 }
 
 function statusLabel(member: OroTeamMemberKpi) {
-  if (member.remainingClosed <= 0) return { label: "達成圏", className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" };
+  if (member.remainingClosed <= 0) return { label: "達成圏", className: "border-emerald-300/40 bg-emerald-400/10 text-emerald-100" };
   if (member.currentCloseRate && member.currentCloseRate < member.minCloseRate) {
-    return { label: "要改善", className: "border-red-400/40 bg-red-500/15 text-red-100" };
+    return { label: "要改善", className: "border-red-300/45 bg-red-500/15 text-red-100" };
   }
-  if (member.remainingClosed >= 10) return { label: "不足大", className: "border-orange-300/40 bg-orange-400/15 text-orange-100" };
-  return { label: "追撃", className: "border-amber-300/40 bg-amber-300/15 text-amber-100" };
+  if (member.remainingClosed >= 10) return { label: "不足大", className: "border-orange-300/45 bg-orange-400/15 text-orange-100" };
+  return { label: "追撃", className: "border-amber-300/45 bg-amber-300/15 text-amber-100" };
+}
+
+function PanelTitle({ step, title, note }: { step: string; title: string; note?: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-orange-400 text-xs font-black text-black">
+          {step}
+        </span>
+        <h3 className="text-lg font-black text-white">{title}</h3>
+      </div>
+      {note ? <p className="text-sm leading-5 text-white/48">{note}</p> : null}
+    </div>
+  );
 }
 
 function SummaryCard({
@@ -124,33 +138,55 @@ function SummaryCard({
   label: string;
   value: string;
   sub: string;
-  tone?: "orange" | "red" | "amber" | "slate";
+  tone?: "orange" | "red" | "amber" | "cyan";
 }) {
   const toneClass = {
-    orange: "border-orange-400/30 bg-orange-500/10 text-orange-100",
-    red: "border-red-400/30 bg-red-500/10 text-red-100",
-    amber: "border-amber-300/30 bg-amber-300/10 text-amber-100",
-    slate: "border-white/10 bg-white/[0.04] text-slate-100",
+    orange: "border-orange-300/30 bg-orange-500/10 text-orange-100",
+    red: "border-red-300/35 bg-red-500/12 text-red-100",
+    amber: "border-amber-300/35 bg-amber-300/10 text-amber-100",
+    cyan: "border-cyan-300/25 bg-cyan-400/8 text-cyan-100",
   }[tone];
 
   return (
     <section className={`rounded-2xl border p-4 shadow-xl shadow-black/25 ${toneClass}`}>
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">{label}</p>
+        <p className="text-[11px] font-black uppercase text-white/48">{label}</p>
         <div className="text-white/70">{icon}</div>
       </div>
-      <p className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">{value}</p>
-      <p className="mt-2 text-sm text-white/55">{sub}</p>
+      <p className="mt-3 text-3xl font-black text-white sm:text-4xl">{value}</p>
+      <p className="mt-2 text-sm leading-5 text-white/58">{sub}</p>
     </section>
   );
 }
 
-function MiniStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function StatPill({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "good" | "warn" | "bad" }) {
+  const toneClass = {
+    neutral: "border-white/10 bg-white/[0.04] text-white",
+    good: "border-emerald-300/25 bg-emerald-400/10 text-emerald-100",
+    warn: "border-amber-300/30 bg-amber-300/10 text-amber-100",
+    bad: "border-red-300/30 bg-red-500/12 text-red-100",
+  }[tone];
+
   return (
-    <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">{label}</p>
+    <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
+      <p className="text-[11px] font-bold text-white/45">{label}</p>
+      <p className="mt-1 text-xl font-black">{value}</p>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, sub, tone = "neutral" }: { label: string; value: string; sub?: string; tone?: "neutral" | "calc" | "alert" }) {
+  const toneClass = {
+    neutral: "border-white/10 bg-black/25",
+    calc: "border-cyan-300/20 bg-cyan-400/8",
+    alert: "border-orange-300/25 bg-orange-400/10",
+  }[tone];
+
+  return (
+    <div className={`rounded-xl border p-3 ${toneClass}`}>
+      <p className="text-[11px] font-black uppercase text-white/42">{label}</p>
       <p className="mt-1 text-2xl font-black text-white">{value}</p>
-      {sub ? <p className="mt-1 text-xs text-white/45">{sub}</p> : null}
+      {sub ? <p className="mt-1 text-xs leading-4 text-white/48">{sub}</p> : null}
     </div>
   );
 }
@@ -167,17 +203,17 @@ function NumberInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block rounded-xl border border-white/10 bg-black/25 p-3">
-      <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">{label}</span>
-      <div className="mt-2 flex items-center gap-2 rounded-xl border border-orange-300/20 bg-black/40 px-3 focus-within:border-orange-200">
+    <label className="block rounded-xl border border-orange-300/18 bg-[#160b07] p-3">
+      <span className="block text-[11px] font-black uppercase text-orange-100/58">{label}</span>
+      <div className="mt-2 flex items-center gap-2 rounded-xl border border-orange-300/28 bg-black/48 px-3 focus-within:border-orange-200">
         <input
           type="number"
           min={0}
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="h-11 min-w-0 flex-1 bg-transparent text-xl font-black text-white outline-none"
+          className="h-11 min-w-0 flex-1 bg-transparent text-2xl font-black text-white outline-none"
         />
-        {suffix ? <span className="text-sm font-bold text-orange-100/70">{suffix}</span> : null}
+        {suffix ? <span className="text-sm font-black text-orange-100/78">{suffix}</span> : null}
       </div>
     </label>
   );
@@ -195,12 +231,12 @@ function SelectBox({
   children: React.ReactNode;
 }) {
   return (
-    <label className="block rounded-xl border border-white/10 bg-black/25 p-3">
-      <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">{label}</span>
+    <label className="block rounded-xl border border-cyan-300/14 bg-[#071415] p-3">
+      <span className="block text-[11px] font-black uppercase text-cyan-100/58">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 h-11 w-full rounded-xl border border-orange-300/20 bg-black/40 px-3 text-base font-black text-white outline-none focus:border-orange-200"
+        className="mt-2 h-11 w-full rounded-xl border border-cyan-300/24 bg-black/45 px-3 text-base font-black text-white outline-none focus:border-cyan-100"
       >
         {children}
       </select>
@@ -222,16 +258,16 @@ function MemberGoalCard({
   onToggleLock: () => void;
 }) {
   return (
-    <article className="rounded-2xl border border-white/10 bg-[#110806] p-4">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-xl font-black text-white">{member.name}</h3>
+    <article className="rounded-2xl border border-white/10 bg-[#100806] p-4 shadow-lg shadow-black/20">
+      <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
+        <h3 className="text-2xl font-black text-white">{member.name}</h3>
         <button
           type="button"
           onClick={onToggleLock}
           className={`inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-black ${
             member.lockedCloseRate
-              ? "border-amber-300/40 bg-amber-300/15 text-amber-100"
-              : "border-white/10 bg-white/[0.04] text-white/65"
+              ? "border-amber-300/45 bg-amber-300/16 text-amber-100"
+              : "border-white/12 bg-white/[0.05] text-white/68"
           }`}
         >
           {member.lockedCloseRate ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
@@ -244,9 +280,12 @@ function MemberGoalCard({
         <NumberInput label="成約率" value={member.minCloseRate} suffix="%" onChange={onRateChange} />
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <MiniStat label="予測着座" value={formatNumber(plannedSeats(member, seatRate))} />
-        <MiniStat label="必要成約" value={formatNumber(expectedClosed(member, seatRate))} />
+      <div className="mt-3 rounded-2xl border border-cyan-300/16 bg-cyan-400/6 p-3">
+        <p className="mb-2 text-[11px] font-black uppercase text-cyan-100/58">自動計算</p>
+        <div className="grid grid-cols-2 gap-2">
+          <MiniStat label="予測着座" value={formatNumber(plannedSeats(member, seatRate))} tone="calc" />
+          <MiniStat label="必要成約" value={formatNumber(expectedClosed(member, seatRate))} tone="calc" />
+        </div>
       </div>
     </article>
   );
@@ -265,9 +304,9 @@ function MemberResultCard({ member, maxRemaining }: { member: OroTeamMemberKpi; 
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:min-w-[520px]">
           <MiniStat label="予約" value={formatNumber(member.currentAppointments)} sub={`配分 ${formatNumber(member.targetAppointments)}`} />
-          <MiniStat label="着座" value={formatNumber(member.actualSeated)} sub={`予測 ${formatNumber(member.projectedSeated)}`} />
+          <MiniStat label="着座" value={formatNumber(member.actualSeated)} sub={`予測 ${formatNumber(member.projectedSeated)}`} tone="calc" />
           <MiniStat label="成約" value={formatNumber(member.actualClosed)} sub={`必要 ${formatNumber(member.requiredClosed)}`} />
-          <MiniStat label="残り" value={formatNumber(member.remainingClosed)} sub={formatPercent(member.currentCloseRate)} />
+          <MiniStat label="残り" value={formatNumber(member.remainingClosed)} sub={formatPercent(member.currentCloseRate)} tone={member.remainingClosed > 0 ? "alert" : "calc"} />
         </div>
       </div>
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
@@ -330,6 +369,7 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
     [data.members],
   );
   const targetProgress = Math.min(100, data.totals.targetAchievementRate);
+  const planTone = preview.closedGap >= 0 ? "good" : preview.closedGap >= -3 ? "warn" : "bad";
 
   const updateTeamGoal = (key: keyof GoalDraft["teamTargets"], value: string) => {
     const numeric = numberFromInput(value);
@@ -435,18 +475,18 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
       <div className="absolute inset-x-0 top-0 -z-0 h-[420px] bg-[radial-gradient(ellipse_at_top,#7f1d1d_0%,#2a0904_42%,transparent_72%)] opacity-80" />
       <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-5 px-3 py-4 sm:gap-8 sm:px-6 lg:px-8">
         <header className="overflow-hidden rounded-3xl border border-orange-300/20 bg-[#120805]/95 p-5 shadow-2xl shadow-red-950/40 sm:p-8">
-          <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-orange-400/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-orange-100">
+          <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-orange-400/10 px-3 py-1 text-xs font-bold uppercase text-orange-100">
             <Flame className="h-4 w-4" />
             ORO TEAM KPI
           </div>
-          <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-6xl">
+          <h1 className="mt-4 text-4xl font-black text-white sm:text-6xl">
             8月オロチーム
             <span className="block bg-gradient-to-r from-red-300 via-orange-200 to-amber-100 bg-clip-text text-transparent">
               目標達成ボード
             </span>
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-orange-100/60 sm:text-base">
-            面談日ベースで予約、着座、成約を集計。目標値を動かすと必要成約数と不足分を即時に確認できます。
+            面談日ベースで予約、着座、成約を集計。目標値を動かすと、必要成約数と不足分を即時に確認できます。
           </p>
           {lastError ? (
             <div className="mt-5 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
@@ -458,41 +498,41 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
             icon={<Target className="h-5 w-5" />}
-            label="成約目標"
+            label="実績 / 成約目標"
             value={`${formatNumber(data.totals.actualClosed)} / ${formatNumber(data.totals.targetClosed)}`}
             sub={`残り ${formatNumber(data.totals.remainingClosedToTarget)}件 / 達成率 ${formatPercent(data.totals.targetAchievementRate)}`}
             tone="red"
           />
           <SummaryCard
             icon={<CalendarDays className="h-5 w-5" />}
-            label="予約"
+            label="実績 / 予約"
             value={formatNumber(data.totals.currentAppointments)}
             sub={`配分 ${formatNumber(data.totals.targetAppointments)} / 差分 ${signed(data.totals.appointmentGap)}`}
             tone="orange"
           />
           <SummaryCard
             icon={<Users className="h-5 w-5" />}
-            label="予測着座"
+            label="予測 / 着座"
             value={formatNumber(data.totals.projectedSeated)}
             sub={`目標 ${formatNumber(data.totals.targetSeated)} / 差分 ${signed(data.totals.seatedGap)}`}
             tone="amber"
           />
           <SummaryCard
             icon={<Gauge className="h-5 w-5" />}
-            label="必要成約"
+            label="計画 / 必要成約"
             value={formatNumber(data.totals.requiredClosedAtMemberRates)}
             sub={`メンバー最低ライン合算 / 差分 ${signed(data.totals.actualClosed - data.totals.requiredClosedAtMemberRates)}`}
-            tone="slate"
+            tone="cyan"
           />
         </section>
 
         <section className="rounded-3xl border border-orange-300/20 bg-[#120705] p-4 shadow-xl shadow-red-950/20 sm:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-200/50">Goal control</p>
+              <p className="text-xs font-bold uppercase text-orange-200/50">Goal control</p>
               <h2 className="mt-1 text-2xl font-black">操作・目標値設定</h2>
               <p className="mt-2 text-sm leading-6 text-white/50">
-                成約率を入力すると、固定していないメンバーの成約率を自動調整し、チーム目標成約数に寄せます。
+                オレンジ枠は手入力、青枠は自動計算です。成約率を触ると、固定していないメンバーを自動調整します。
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
@@ -513,59 +553,76 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
           </div>
           {saveMessage ? <p className="mt-3 text-sm font-bold text-amber-100">{saveMessage}</p> : null}
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-            <SelectBox
-              label="対象月"
-              value={month}
-              onChange={(value) => {
-                setGoalDirty(false);
-                setMonth(value);
-              }}
-            >
-              {data.availableMonths.map((option) => (
-                <option key={option.value} value={option.value} className="bg-black">
-                  {option.label}
-                </option>
-              ))}
-            </SelectBox>
-            <SelectBox label="着座率" value={seatRate} onChange={updateSeatRate}>
-              {seatRateOptions.map((rate) => (
-                <option key={rate} value={rate} className="bg-black">
-                  {rate}%
-                </option>
-              ))}
-            </SelectBox>
-            <NumberInput label="目標アポ" value={goalDraft.teamTargets.appointments} onChange={(value) => updateTeamGoal("appointments", value)} />
-            <NumberInput label="目標着座" value={goalDraft.teamTargets.seated} onChange={(value) => updateTeamGoal("seated", value)} />
-            <NumberInput label="目標成約" value={goalDraft.teamTargets.closed} onChange={(value) => updateTeamGoal("closed", value)} />
-            <NumberInput label="全体成約率" value={goalDraft.teamTargets.closeRate} suffix="%" onChange={(value) => updateTeamGoal("closeRate", value)} />
+          <div className="mt-5 grid gap-4 xl:grid-cols-[360px_1fr]">
+            <div className="rounded-2xl border border-cyan-300/18 bg-[#071113] p-4">
+              <PanelTitle step="1" title="表示条件" note="どの月を、何%着座想定で見るか。" />
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                <SelectBox
+                  label="対象月"
+                  value={month}
+                  onChange={(value) => {
+                    setGoalDirty(false);
+                    setMonth(value);
+                  }}
+                >
+                  {data.availableMonths.map((option) => (
+                    <option key={option.value} value={option.value} className="bg-black">
+                      {option.label}
+                    </option>
+                  ))}
+                </SelectBox>
+                <SelectBox label="着座率" value={seatRate} onChange={updateSeatRate}>
+                  {seatRateOptions.map((rate) => (
+                    <option key={rate} value={rate} className="bg-black">
+                      {rate}%
+                    </option>
+                  ))}
+                </SelectBox>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-orange-300/18 bg-[#160905] p-4">
+              <PanelTitle step="2" title="チーム目標" note="チーム全体で達成したいゴール。ここが逆算の基準です。" />
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <NumberInput label="目標アポ" value={goalDraft.teamTargets.appointments} onChange={(value) => updateTeamGoal("appointments", value)} />
+                <NumberInput label="目標着座" value={goalDraft.teamTargets.seated} onChange={(value) => updateTeamGoal("seated", value)} />
+                <NumberInput label="目標成約" value={goalDraft.teamTargets.closed} onChange={(value) => updateTeamGoal("closed", value)} />
+                <NumberInput label="全体成約率" value={goalDraft.teamTargets.closeRate} suffix="%" onChange={(value) => updateTeamGoal("closeRate", value)} />
+              </div>
+            </div>
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-4">
-            <MiniStat label="配分アポ合計" value={formatNumber(preview.targetAppointments)} sub={`全体目標 ${formatNumber(goalDraft.teamTargets.appointments)}`} />
-            <MiniStat label="計画着座" value={formatNumber(preview.projectedSeated)} sub={`${seatRate}%想定`} />
-            <MiniStat label="計画成約" value={formatNumber(preview.projectedClosed)} sub={`目標差分 ${signed(preview.closedGap)}`} />
-            <MiniStat label="計画成約率" value={formatPercent(preview.overallRate)} sub="メンバー設定合算" />
+          <div className="mt-4 rounded-2xl border border-white/10 bg-black/22 p-4">
+            <PanelTitle step="3" title="計画サマリー" note="今の入力値から見た、月末の計画値です。" />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <StatPill label="配分アポ合計" value={formatNumber(preview.targetAppointments)} />
+              <StatPill label="計画着座" value={formatNumber(preview.projectedSeated)} />
+              <StatPill label="計画成約" value={formatNumber(preview.projectedClosed)} tone={planTone} />
+              <StatPill label="目標差分" value={signed(preview.closedGap)} tone={planTone} />
+            </div>
           </div>
 
-          <div className="mt-5 grid gap-3 lg:grid-cols-2">
-            {goalDraft.members.map((member) => (
-              <MemberGoalCard
-                key={member.name}
-                member={member}
-                seatRate={seatRate}
-                onAppointmentChange={(value) => updateMemberAppointment(member.name, value)}
-                onRateChange={(value) => updateMemberRate(member.name, value)}
-                onToggleLock={() => toggleMemberLock(member.name)}
-              />
-            ))}
+          <div className="mt-4 rounded-2xl border border-white/10 bg-black/16 p-4">
+            <PanelTitle step="4" title="メンバー調整" note="主に成約率を触る場所。固定中の人は自動調整されません。" />
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              {goalDraft.members.map((member) => (
+                <MemberGoalCard
+                  key={member.name}
+                  member={member}
+                  seatRate={seatRate}
+                  onAppointmentChange={(value) => updateMemberAppointment(member.name, value)}
+                  onRateChange={(value) => updateMemberRate(member.name, value)}
+                  onToggleLock={() => toggleMemberLock(member.name)}
+                />
+              ))}
+            </div>
           </div>
         </section>
 
         <section className="rounded-2xl border border-orange-300/20 bg-[#100908] p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-200/50">Target heat</p>
+              <p className="text-xs font-bold uppercase text-orange-200/50">Target heat</p>
               <h2 className="mt-1 text-2xl font-black">チーム進捗</h2>
             </div>
             <div className="text-sm text-white/55">全体成約率基準の必要成約 {formatNumber(data.totals.requiredClosedAtTeamRate)}件</div>
@@ -588,7 +645,7 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
           <div className="space-y-3">
             <div className="flex items-end justify-between gap-3">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-200/50">Member pressure</p>
+                <p className="text-xs font-bold uppercase text-orange-200/50">Member pressure</p>
                 <h2 className="mt-1 text-2xl font-black">メンバー別 必要成約数</h2>
               </div>
               <p className="text-sm text-white/45">{data.members.length}名</p>
