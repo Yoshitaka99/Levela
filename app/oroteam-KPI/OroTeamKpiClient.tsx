@@ -407,7 +407,16 @@ function MemberGoalCard({
   );
 }
 
-function DesktopMemberGoalTable({
+function CompactMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-cyan-300/14 bg-cyan-400/6 px-2.5 py-2">
+      <p className="truncate text-[10px] font-black text-cyan-100/55">{label}</p>
+      <p className="mt-0.5 truncate text-lg font-black text-white">{value}</p>
+    </div>
+  );
+}
+
+function DesktopMemberGoalGrid({
   members,
   seatRate,
   onAppointmentChange,
@@ -421,53 +430,52 @@ function DesktopMemberGoalTable({
   onToggleLock: (name: string) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0d0705]/80">
-      <div className="grid grid-cols-[1.2fr_110px_140px_92px_92px_96px] items-center gap-3 border-b border-white/10 bg-white/[0.035] px-4 py-3 text-[11px] font-black uppercase text-white/42">
-        <span>メンバー</span>
-        <span>配分アポ</span>
-        <span>成約率</span>
-        <span>予測着座</span>
-        <span>必要成約</span>
-        <span className="text-right">固定</span>
-      </div>
+    <div className="grid gap-3 xl:grid-cols-2">
       {members.map((member) => {
         const plannedSeatCount = plannedSeats(member, seatRate);
         const expectedClosedCount = expectedClosed(member, seatRate);
         return (
-          <div
+          <article
             key={member.name}
-            className="grid grid-cols-[1.2fr_110px_140px_92px_92px_96px] items-center gap-3 border-b border-white/[0.06] px-4 py-2.5 last:border-b-0 hover:bg-orange-400/[0.045]"
+            className="rounded-2xl border border-white/10 bg-[#0d0705]/82 p-3 shadow-lg shadow-black/18 transition hover:border-orange-300/24 hover:bg-orange-400/[0.045]"
           >
-            <div className="min-w-0">
-              <p className="truncate text-lg font-black text-white">{member.name}</p>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="min-w-0 truncate text-xl font-black text-white">{member.name}</h3>
+              <button
+                type="button"
+                onClick={() => onToggleLock(member.name)}
+                className={`inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-[11px] font-black ${
+                  member.lockedCloseRate
+                    ? "border-amber-300/45 bg-amber-300/16 text-amber-100"
+                    : "border-white/12 bg-white/[0.05] text-white/68"
+                }`}
+              >
+                {member.lockedCloseRate ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
+                {member.lockedCloseRate ? "固定" : "自動"}
+              </button>
             </div>
-            <input
-              type="number"
-              min={0}
-              value={member.targetAppointments}
-              onChange={(event) => onAppointmentChange(member.name, event.target.value)}
-              className="h-9 rounded-lg border border-orange-300/22 bg-black/42 px-3 text-base font-black text-white outline-none focus:border-orange-200"
-            />
-            <RateStepper member={member} onRateChange={(value) => onRateChange(member.name, value)} compact />
-            <div className="rounded-lg border border-cyan-300/14 bg-cyan-400/6 px-2.5 py-1.5">
-              <p className="text-lg font-black text-white">{formatNumber(plannedSeatCount)}</p>
+
+            <div className="grid grid-cols-[110px_minmax(180px,1fr)_96px_96px] items-end gap-3">
+              <label className="block min-w-0">
+                <span className="mb-1 block text-[10px] font-black text-orange-100/55">配分アポ</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={member.targetAppointments}
+                  onChange={(event) => onAppointmentChange(member.name, event.target.value)}
+                  className="h-10 w-full rounded-lg border border-orange-300/22 bg-black/42 px-3 text-lg font-black text-white outline-none focus:border-orange-200"
+                />
+              </label>
+
+              <div className="min-w-0">
+                <span className="mb-1 block text-[10px] font-black text-orange-100/55">成約率</span>
+                <RateStepper member={member} onRateChange={(value) => onRateChange(member.name, value)} compact />
+              </div>
+
+              <CompactMetric label="予測着座" value={formatNumber(plannedSeatCount)} />
+              <CompactMetric label="必要成約" value={formatNumber(expectedClosedCount)} />
             </div>
-            <div className="rounded-lg border border-cyan-300/14 bg-cyan-400/6 px-2.5 py-1.5">
-              <p className="text-lg font-black text-white">{formatNumber(expectedClosedCount)}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onToggleLock(member.name)}
-              className={`ml-auto inline-flex h-8 items-center gap-1 rounded-lg border px-2 text-[11px] font-black ${
-                member.lockedCloseRate
-                  ? "border-amber-300/45 bg-amber-300/16 text-amber-100"
-                  : "border-white/12 bg-white/[0.05] text-white/68"
-              }`}
-            >
-              {member.lockedCloseRate ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
-              {member.lockedCloseRate ? "固定" : "自動"}
-            </button>
-          </div>
+          </article>
         );
       })}
     </div>
@@ -801,7 +809,7 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
           <div className="mt-4 rounded-2xl border border-white/10 bg-black/16 p-4">
             <PanelTitle step="4" title="メンバー調整" note="成約率は - / + か直接入力。固定中の人は自動調整されません。" />
             <div className="mt-4 hidden xl:block">
-              <DesktopMemberGoalTable
+              <DesktopMemberGoalGrid
                 members={goalDraft.members}
                 seatRate={seatRate}
                 onAppointmentChange={updateMemberAppointment}
