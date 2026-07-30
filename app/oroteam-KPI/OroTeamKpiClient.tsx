@@ -175,22 +175,6 @@ function StatPill({ label, value, tone = "neutral" }: { label: string; value: st
   );
 }
 
-function MiniStat({ label, value, sub, tone = "neutral" }: { label: string; value: string; sub?: string; tone?: "neutral" | "calc" | "alert" }) {
-  const toneClass = {
-    neutral: "border-white/10 bg-black/25",
-    calc: "border-cyan-300/20 bg-cyan-400/8",
-    alert: "border-orange-300/25 bg-orange-400/10",
-  }[tone];
-
-  return (
-    <div className={`rounded-xl border p-3 ${toneClass}`}>
-      <p className="text-[11px] font-black uppercase text-white/42">{label}</p>
-      <p className="mt-1 text-2xl font-black text-white">{value}</p>
-      {sub ? <p className="mt-1 text-xs leading-4 text-white/48">{sub}</p> : null}
-    </div>
-  );
-}
-
 function NumberInput({
   label,
   value,
@@ -257,34 +241,80 @@ function MemberGoalCard({
   onRateChange: (value: string) => void;
   onToggleLock: () => void;
 }) {
+  const plannedSeatCount = plannedSeats(member, seatRate);
+  const expectedClosedCount = expectedClosed(member, seatRate);
+  const changeRateBy = (delta: number) => onRateChange(String(clamp(member.minCloseRate + delta, 0, 100)));
+
   return (
-    <article className="rounded-2xl border border-white/10 bg-[#100806] p-4 shadow-lg shadow-black/20">
-      <div className="flex items-center justify-between gap-3 border-b border-white/8 pb-3">
-        <h3 className="text-2xl font-black text-white">{member.name}</h3>
+    <article className="rounded-2xl border border-white/10 bg-[#100806] p-3 shadow-lg shadow-black/20">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="min-w-0 truncate text-lg font-black text-white">{member.name}</h3>
         <button
           type="button"
           onClick={onToggleLock}
-          className={`inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-black ${
+          className={`inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-xs font-black ${
             member.lockedCloseRate
               ? "border-amber-300/45 bg-amber-300/16 text-amber-100"
               : "border-white/12 bg-white/[0.05] text-white/68"
           }`}
         >
-          {member.lockedCloseRate ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
+          {member.lockedCloseRate ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
           {member.lockedCloseRate ? "固定中" : "自動"}
         </button>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <NumberInput label="配分アポ" value={member.targetAppointments} onChange={onAppointmentChange} />
-        <NumberInput label="成約率" value={member.minCloseRate} suffix="%" onChange={onRateChange} />
-      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-[112px_1fr_112px_112px] sm:items-end">
+        <label className="block">
+          <span className="mb-1 block text-[10px] font-black text-orange-100/55">配分アポ</span>
+          <input
+            type="number"
+            min={0}
+            value={member.targetAppointments}
+            onChange={(event) => onAppointmentChange(event.target.value)}
+            className="h-10 w-full rounded-xl border border-orange-300/24 bg-black/42 px-3 text-lg font-black text-white outline-none focus:border-orange-200"
+          />
+        </label>
 
-      <div className="mt-3 rounded-2xl border border-cyan-300/16 bg-cyan-400/6 p-3">
-        <p className="mb-2 text-[11px] font-black uppercase text-cyan-100/58">自動計算</p>
-        <div className="grid grid-cols-2 gap-2">
-          <MiniStat label="予測着座" value={formatNumber(plannedSeats(member, seatRate))} tone="calc" />
-          <MiniStat label="必要成約" value={formatNumber(expectedClosed(member, seatRate))} tone="calc" />
+        <div>
+          <span className="mb-1 block text-[10px] font-black text-orange-100/55">成約率</span>
+          <div className="grid grid-cols-[38px_1fr_38px] gap-2">
+            <button
+              type="button"
+              onClick={() => changeRateBy(-1)}
+              className="h-10 rounded-xl border border-white/10 bg-white/[0.05] text-lg font-black text-white/80"
+              aria-label={`${member.name}の成約率を下げる`}
+            >
+              -
+            </button>
+            <div className="flex h-10 items-center rounded-xl border border-orange-300/24 bg-black/42 px-2 focus-within:border-orange-200">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={member.minCloseRate}
+                onChange={(event) => onRateChange(event.target.value)}
+                className="min-w-0 flex-1 bg-transparent text-center text-xl font-black text-white outline-none"
+              />
+              <span className="text-xs font-black text-orange-100/70">%</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => changeRateBy(1)}
+              className="h-10 rounded-xl border border-white/10 bg-white/[0.05] text-lg font-black text-white/80"
+              aria-label={`${member.name}の成約率を上げる`}
+            >
+              +
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-cyan-300/16 bg-cyan-400/6 px-3 py-2">
+          <p className="text-[10px] font-black text-cyan-100/55">予測着座</p>
+          <p className="mt-0.5 text-lg font-black text-white">{formatNumber(plannedSeatCount)}</p>
+        </div>
+        <div className="rounded-xl border border-cyan-300/16 bg-cyan-400/6 px-3 py-2">
+          <p className="text-[10px] font-black text-cyan-100/55">必要成約</p>
+          <p className="mt-0.5 text-lg font-black text-white">{formatNumber(expectedClosedCount)}</p>
         </div>
       </div>
     </article>
@@ -296,26 +326,26 @@ function MemberResultCard({ member, maxRemaining }: { member: OroTeamMemberKpi; 
   const width = maxRemaining > 0 ? Math.min(100, Math.max(0, (member.remainingClosed / maxRemaining) * 100)) : 0;
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-[#130d0b]/90 p-4 shadow-xl shadow-black/25">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+    <article className="rounded-2xl border border-white/10 bg-[#130d0b]/90 p-3 shadow-xl shadow-black/25">
+      <div className="grid gap-3 lg:grid-cols-[190px_1fr] lg:items-center">
+        <div className="min-w-0">
           <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${state.className}`}>{state.label}</span>
-          <h2 className="mt-2 text-2xl font-black text-white">{member.name}</h2>
+          <h2 className="mt-2 truncate text-xl font-black text-white">{member.name}</h2>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:min-w-[520px]">
-          <MiniStat label="予約" value={formatNumber(member.currentAppointments)} sub={`配分 ${formatNumber(member.targetAppointments)}`} />
-          <MiniStat label="着座" value={formatNumber(member.actualSeated)} sub={`予測 ${formatNumber(member.projectedSeated)}`} tone="calc" />
-          <MiniStat label="成約" value={formatNumber(member.actualClosed)} sub={`必要 ${formatNumber(member.requiredClosed)}`} />
-          <MiniStat label="残り" value={formatNumber(member.remainingClosed)} sub={formatPercent(member.currentCloseRate)} tone={member.remainingClosed > 0 ? "alert" : "calc"} />
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <StatPill label="予約/配分" value={`${formatNumber(member.currentAppointments)} / ${formatNumber(member.targetAppointments)}`} />
+          <StatPill label="着座/予測" value={`${formatNumber(member.actualSeated)} / ${formatNumber(member.projectedSeated)}`} />
+          <StatPill label="成約/必要" value={`${formatNumber(member.actualClosed)} / ${formatNumber(member.requiredClosed)}`} />
+          <StatPill label="残り/率" value={`${formatNumber(member.remainingClosed)} / ${formatPercent(member.currentCloseRate)}`} tone={member.remainingClosed > 0 ? "warn" : "good"} />
         </div>
       </div>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
         <div className="h-full rounded-full bg-gradient-to-r from-red-500 to-orange-300" style={{ width: `${width}%` }} />
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        <MiniStat label="今日" value={formatNumber(member.pace.today)} />
-        <MiniStat label="今週" value={formatNumber(member.pace.thisWeek)} />
-        <MiniStat label="月末まで" value={formatNumber(member.pace.month)} />
+      <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold text-white/55">
+        <span className="rounded-full bg-white/[0.05] px-2.5 py-1">今日 {formatNumber(member.pace.today)}</span>
+        <span className="rounded-full bg-white/[0.05] px-2.5 py-1">今週 {formatNumber(member.pace.thisWeek)}</span>
+        <span className="rounded-full bg-white/[0.05] px-2.5 py-1">月末 {formatNumber(member.pace.month)}</span>
       </div>
     </article>
   );
@@ -603,8 +633,8 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
           </div>
 
           <div className="mt-4 rounded-2xl border border-white/10 bg-black/16 p-4">
-            <PanelTitle step="4" title="メンバー調整" note="主に成約率を触る場所。固定中の人は自動調整されません。" />
-            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <PanelTitle step="4" title="メンバー調整" note="成約率は - / + か直接入力。固定中の人は自動調整されません。" />
+            <div className="mt-4 grid gap-2">
               {goalDraft.members.map((member) => (
                 <MemberGoalCard
                   key={member.name}
