@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   ArrowRight,
   CalendarDays,
+  Check,
+  Copy,
   Flame,
   Gauge,
   Lock,
@@ -102,6 +104,55 @@ function withMemberPlanTotals(draft: GoalDraft, seatRate: number): GoalDraft {
       closeRate: preview.projectedSeated ? Math.round((draft.teamTargets.closed / preview.projectedSeated) * 100) : draft.teamTargets.closeRate,
     },
   };
+}
+
+function buildComparisonPrompt(data: OroTeamKpiData, draft: GoalDraft, seatRate: number) {
+  const preview = goalPreview(draft, seatRate);
+  const draftMembers = new Map(draft.members.map((member) => [member.name, member]));
+  const memberLines = data.members
+    .map((member) => {
+      const setting = draftMembers.get(member.name);
+      const targetAppointments = setting?.targetAppointments ?? member.targetAppointments;
+      const minCloseRate = setting?.minCloseRate ?? member.minCloseRate;
+      const locked = setting?.lockedCloseRate ? "固定" : "自動";
+      const projectedSeats = setting ? plannedSeats(setting, seatRate) : member.projectedSeated;
+      const requiredClosed = setting ? expectedClosed(setting, seatRate) : member.requiredClosed;
+      const appointmentGap = member.currentAppointments - targetAppointments;
+      const closeGap = member.actualClosed - requiredClosed;
+      return [
+        `- ${member.name}`,
+        `設定: 配分アポ${formatNumber(targetAppointments)}件 / 最低成約率${minCloseRate}% / ロック${locked} / 予測着座${formatNumber(projectedSeats)}件 / 必要成約${formatNumber(requiredClosed)}件`,
+        `現状: 予約${formatNumber(member.currentAppointments)}件 / 実着座${formatNumber(member.actualSeated)}件 / 実成約${formatNumber(member.actualClosed)}件 / 実成約率${formatPercent(member.currentCloseRate)} / 保留${formatNumber(member.hold)}件 / 成約予定${formatNumber(member.pending)}件`,
+        `差分: 予約${signed(appointmentGap)}件 / 成約${signed(closeGap)}件 / 残り必要成約${formatNumber(Math.max(0, requiredClosed - member.actualClosed))}件 / 今日${formatNumber(member.pace.today)}件 / 今週${formatNumber(member.pace.thisWeek)}件 / 月末${formatNumber(member.pace.month)}件`,
+      ].join("\n  ");
+    })
+    .join("\n");
+
+  return [
+    "以下はOROチームKPIの設定値と現状値です。数字を比較して、チーム目標達成に向けた課題、優先順位、今日やるべきこと、今週やるべきこと、メンバーごとの改善案を簡潔に出してください。",
+    "",
+    "特に見たい観点:",
+    "- 設定した目標に対して現状が足りているか",
+    "- 誰がチーム目標を押し上げているか、誰が下げているか",
+    "- 残り成約数を達成するために今日/今週で必要な成約数",
+    "- アポ配分や成約率設定を見直すべきメンバー",
+    "- 固定ロックされているメンバーを前提にした現実的な打ち手",
+    "",
+    `対象月: ${data.selectedMonthLabel}`,
+    `データ更新: ${new Date(data.updatedAt).toLocaleString("ja-JP")}`,
+    `着座率設定: ${seatRate}%`,
+    "",
+    "チーム全体:",
+    `- 目標設定: アポ${formatNumber(draft.teamTargets.appointments)}件 / 着座${formatNumber(draft.teamTargets.seated)}件 / 成約${formatNumber(draft.teamTargets.closed)}件 / 全体成約率${draft.teamTargets.closeRate}%`,
+    `- 現状: 予約${formatNumber(data.totals.currentAppointments)}件 / 実着座${formatNumber(data.totals.actualSeated)}件 / 実成約${formatNumber(data.totals.actualClosed)}件 / 達成率${formatPercent(data.totals.targetAchievementRate)}`,
+    `- 予測: 配分アポ合計${formatNumber(preview.targetAppointments)}件 / 予測着座${formatNumber(preview.projectedSeated)}件 / 予測成約${formatNumber(preview.projectedClosed)}件 / 計画成約率${formatPercent(preview.overallRate)}`,
+    `- 差分: 予約${signed(data.totals.currentAppointments - draft.teamTargets.appointments)}件 / 予測着座${signed(preview.projectedSeated - draft.teamTargets.seated)}件 / 予測成約${signed(preview.projectedClosed - draft.teamTargets.closed)}件 / 現状残り成約${formatNumber(data.totals.remainingClosedToTarget)}件`,
+    "",
+    "メンバー別:",
+    memberLines,
+    "",
+    "このデータをもとに、結論、ボトルネック、今日の必要アクション、今週の必要アクション、メンバー別の指示案の順番で出してください。",
+  ].join("\n");
 }
 
 function statusLabel(member: OroTeamMemberKpi) {
@@ -522,6 +573,7 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
   const [savingGoals, setSavingGoals] = useState(false);
   const [lastError, setLastError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
+  const [copyMessage, setCopyMessage] = useState("");
   const latestGoalDraftRef = useRef(goalDraft);
 
   useEffect(() => {
@@ -559,6 +611,7 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
   }, [month, seatRate, goalDirty]);
 
   const preview = useMemo(() => goalPreview(goalDraft, seatRate), [goalDraft, seatRate]);
+  const comparisonPrompt = useMemo(() => buildComparisonPrompt(data, goalDraft, seatRate), [data, goalDraft, seatRate]);
   const maxRemaining = useMemo(() => Math.max(1, ...data.members.map((member) => member.remainingClosed)), [data.members]);
   const sortedMembers = useMemo(
     () => [...data.members].sort((a, b) => b.remainingClosed - a.remainingClosed || b.requiredClosed - a.requiredClosed),
@@ -685,6 +738,30 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
     void persistGoals(goalDraft);
   };
 
+  const copyComparisonPrompt = async () => {
+    setCopyMessage("");
+    setLastError("");
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(comparisonPrompt);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = comparisonPrompt;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setCopyMessage("比較プロンプトをコピーしました");
+      window.setTimeout(() => setCopyMessage(""), 2500);
+    } catch (error) {
+      setLastError(error instanceof Error ? error.message : "コピーに失敗しました");
+    }
+  };
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#080403] text-white">
       <CanvasHeatBackdrop />
@@ -766,6 +843,14 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
             <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
               <button
                 type="button"
+                onClick={copyComparisonPrompt}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-cyan-200/22 bg-cyan-300/10 px-5 text-sm font-black text-cyan-50 shadow-lg shadow-cyan-950/20 transition hover:border-cyan-100/40 hover:bg-cyan-300/16"
+              >
+                {copyMessage ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copyMessage ? "コピー済み" : "比較プロンプト"}
+              </button>
+              <button
+                type="button"
                 onClick={saveGoals}
                 disabled={savingGoals}
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-orange-200/30 bg-gradient-to-r from-red-600 to-orange-500 px-5 text-sm font-black text-white shadow-lg shadow-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
@@ -780,6 +865,7 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
             </div>
           </div>
           {saveMessage ? <p className="mt-3 text-sm font-bold text-amber-100">{saveMessage}</p> : null}
+          {copyMessage ? <p className="mt-2 text-sm font-bold text-cyan-100">{copyMessage}</p> : null}
 
           <div className="mt-5 grid gap-4 xl:grid-cols-[360px_1fr]">
             <div className="rounded-2xl border border-cyan-300/18 bg-[#071113] p-4">
