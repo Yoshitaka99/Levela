@@ -109,6 +109,9 @@ function withMemberPlanTotals(draft: GoalDraft, seatRate: number): GoalDraft {
 function buildComparisonPrompt(data: OroTeamKpiData, draft: GoalDraft, seatRate: number) {
   const preview = goalPreview(draft, seatRate);
   const draftMembers = new Map(draft.members.map((member) => [member.name, member]));
+  const actualTeamCloseRate = data.totals.actualSeated
+    ? (data.totals.actualClosed / data.totals.actualSeated) * 100
+    : 0;
   const memberLines = data.members
     .map((member) => {
       const setting = draftMembers.get(member.name);
@@ -119,39 +122,40 @@ function buildComparisonPrompt(data: OroTeamKpiData, draft: GoalDraft, seatRate:
       const requiredClosed = setting ? expectedClosed(setting, seatRate) : member.requiredClosed;
       const appointmentGap = member.currentAppointments - targetAppointments;
       const closeGap = member.actualClosed - requiredClosed;
-      return [
-        `- ${member.name}`,
-        `設定: 配分アポ${formatNumber(targetAppointments)}件 / 最低成約率${minCloseRate}% / ロック${locked} / 予測着座${formatNumber(projectedSeats)}件 / 必要成約${formatNumber(requiredClosed)}件`,
-        `現状: 予約${formatNumber(member.currentAppointments)}件 / 実着座${formatNumber(member.actualSeated)}件 / 実成約${formatNumber(member.actualClosed)}件 / 実成約率${formatPercent(member.currentCloseRate)} / 保留${formatNumber(member.hold)}件 / 成約予定${formatNumber(member.pending)}件`,
-        `差分: 予約${signed(appointmentGap)}件 / 成約${signed(closeGap)}件 / 残り必要成約${formatNumber(Math.max(0, requiredClosed - member.actualClosed))}件 / 今日${formatNumber(member.pace.today)}件 / 今週${formatNumber(member.pace.thisWeek)}件 / 月末${formatNumber(member.pace.month)}件`,
-      ].join("\n  ");
+      return `- ${member.name} | 設定アポ ${formatNumber(targetAppointments)} | 現在予約 ${formatNumber(member.currentAppointments)} | 予約差 ${signed(appointmentGap)} | 予測着座 ${formatNumber(projectedSeats)} | 実着座 ${formatNumber(member.actualSeated)} | 設定成約率 ${minCloseRate}% | 実成約率 ${formatPercent(member.currentCloseRate)} | 必要成約 ${formatNumber(requiredClosed)} | 実成約 ${formatNumber(member.actualClosed)} | 成約差 ${signed(closeGap)} | 残り ${formatNumber(Math.max(0, requiredClosed - member.actualClosed))} | 保留 ${formatNumber(member.hold)} | 成約予定 ${formatNumber(member.pending)} | 今日必要 ${formatNumber(member.pace.today)} | 今週必要 ${formatNumber(member.pace.thisWeek)} | ロック ${locked}`;
     })
     .join("\n");
 
   return [
-    "以下はOROチームKPIの設定値と現状値です。数字を比較して、チーム目標達成に向けた課題、優先順位、今日やるべきこと、今週やるべきこと、メンバーごとの改善案を簡潔に出してください。",
+    "以下のOROチームKPIデータを使い、設定値と現状値の差が一目で分かる高品質な日本語インフォグラフィック画像を1枚作成してください。文章レポートではなく、完成した画像を最終成果物として提示してください。",
     "",
-    "特に見たい観点:",
-    "- 設定した目標に対して現状が足りているか",
-    "- 誰がチーム目標を押し上げているか、誰が下げているか",
-    "- 残り成約数を達成するために今日/今週で必要な成約数",
-    "- アポ配分や成約率設定を見直すべきメンバー",
-    "- 固定ロックされているメンバーを前提にした現実的な打ち手",
+    "【出力仕様】",
+    "- 1440×1800px、4:5縦長、高解像度PNG。スマホで開いても文字と数字が読めること。",
+    "- 画像生成モデルに文字を描かせるだけでなく、可能ならHTML/CSS・Canvas・SVG等で正確に組版してから画像化すること。コードだけで終わらず、必ず完成画像を表示すること。",
+    "- 数値と日本語は下記データを一字一句正確に使い、推測・省略・別名への変換をしないこと。",
+    "- ダークチャコールを背景に、炎のような赤〜オレンジをアクセントにする。装飾は控えめで、業務ダッシュボードとして上品かつ攻撃的な印象にする。",
+    "- 設定値はオレンジ、現状値はシアン、達成・プラスは緑、不足・マイナスは赤、補足は白〜グレーで統一する。凡例を必ず付ける。",
+    "- グラデーションや発光は見出しと重要数値だけに使い、本文の可読性を最優先する。小さすぎる文字、長文、3D、人物写真、意味のない装飾は禁止。",
     "",
-    `対象月: ${data.selectedMonthLabel}`,
-    `データ更新: ${new Date(data.updatedAt).toLocaleString("ja-JP")}`,
-    `着座率設定: ${seatRate}%`,
+    "【レイアウト】",
+    `1. ヘッダー: 「ORO TEAM KPI / ${data.selectedMonthLabel}」と更新日時「${new Date(data.updatedAt).toLocaleString("ja-JP")}`,
+    "2. 最上段: チーム全体の最重要4指標を大きなカードで表示する。各カードは設定→現状→差分が横目線で追える構造にする。",
+    "3. 中段: 目標・現状・予測の比較を、短いラベルと太い数字で整理する。成約目標までの進捗バーも付ける。",
+    "4. 下段: メンバーを2列カードで並べる。各カードは「名前」「予約 現状/設定」「着座 実績/予測」「成約 実績/必要」「成約率 実績/設定」「残り」「今日/今週必要」「ロック状態」だけを端的に表示する。",
+    "5. 最下部: 「結論」「今日の優先行動」「今週の優先行動」を各3項目以内、1項目20文字程度で表示する。数字から断定できない理由は書かず、事実と必要件数を優先する。",
     "",
-    "チーム全体:",
-    `- 目標設定: アポ${formatNumber(draft.teamTargets.appointments)}件 / 着座${formatNumber(draft.teamTargets.seated)}件 / 成約${formatNumber(draft.teamTargets.closed)}件 / 全体成約率${draft.teamTargets.closeRate}%`,
-    `- 現状: 予約${formatNumber(data.totals.currentAppointments)}件 / 実着座${formatNumber(data.totals.actualSeated)}件 / 実成約${formatNumber(data.totals.actualClosed)}件 / 達成率${formatPercent(data.totals.targetAchievementRate)}`,
-    `- 予測: 配分アポ合計${formatNumber(preview.targetAppointments)}件 / 予測着座${formatNumber(preview.projectedSeated)}件 / 予測成約${formatNumber(preview.projectedClosed)}件 / 計画成約率${formatPercent(preview.overallRate)}`,
-    `- 差分: 予約${signed(data.totals.currentAppointments - draft.teamTargets.appointments)}件 / 予測着座${signed(preview.projectedSeated - draft.teamTargets.seated)}件 / 予測成約${signed(preview.projectedClosed - draft.teamTargets.closed)}件 / 現状残り成約${formatNumber(data.totals.remainingClosedToTarget)}件`,
+    "【チーム全体データ】",
+    `- 対象月: ${data.selectedMonthLabel}`,
+    `- 着座率設定: ${seatRate}%`,
+    `- 目標: アポ ${formatNumber(draft.teamTargets.appointments)}件 / 着座 ${formatNumber(draft.teamTargets.seated)}件 / 成約 ${formatNumber(draft.teamTargets.closed)}件 / 成約率 ${draft.teamTargets.closeRate}%`,
+    `- 現状: 予約 ${formatNumber(data.totals.currentAppointments)}件 / 実着座 ${formatNumber(data.totals.actualSeated)}件 / 実成約 ${formatNumber(data.totals.actualClosed)}件 / 実成約率 ${formatPercent(actualTeamCloseRate)} / 目標達成率 ${formatPercent(data.totals.targetAchievementRate)}`,
+    `- 予測: 配分アポ ${formatNumber(preview.targetAppointments)}件 / 予測着座 ${formatNumber(preview.projectedSeated)}件 / 予測成約 ${formatNumber(preview.projectedClosed)}件 / 計画成約率 ${formatPercent(preview.overallRate)}`,
+    `- 差分: 予約 ${signed(data.totals.currentAppointments - draft.teamTargets.appointments)}件 / 予測着座 ${signed(preview.projectedSeated - draft.teamTargets.seated)}件 / 予測成約 ${signed(preview.projectedClosed - draft.teamTargets.closed)}件 / 現状残り成約 ${formatNumber(data.totals.remainingClosedToTarget)}件`,
     "",
-    "メンバー別:",
+    "【メンバー別データ】",
     memberLines,
     "",
-    "このデータをもとに、結論、ボトルネック、今日の必要アクション、今週の必要アクション、メンバー別の指示案の順番で出してください。",
+    "最重要条件: 画像を見た人が3秒で「目標との差」「残り成約数」「誰を優先すべきか」を判断できること。情報を詰め込みすぎず、全メンバーの数値は落とさないこと。",
   ].join("\n");
 }
 
@@ -755,7 +759,7 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
         document.execCommand("copy");
         document.body.removeChild(textarea);
       }
-      setCopyMessage("比較プロンプトをコピーしました");
+      setCopyMessage("画像作成プロンプトをコピーしました");
       window.setTimeout(() => setCopyMessage(""), 2500);
     } catch (error) {
       setLastError(error instanceof Error ? error.message : "コピーに失敗しました");
@@ -847,7 +851,7 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-cyan-200/22 bg-cyan-300/10 px-5 text-sm font-black text-cyan-50 shadow-lg shadow-cyan-950/20 transition hover:border-cyan-100/40 hover:bg-cyan-300/16"
               >
                 {copyMessage ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                {copyMessage ? "コピー済み" : "比較プロンプト"}
+                {copyMessage ? "コピー済み" : "画像作成プロンプト"}
               </button>
               <button
                 type="button"
