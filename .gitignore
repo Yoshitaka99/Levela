@@ -44,8 +44,9 @@ next-env.d.ts
 .vercel
 .env*.local
 
-# local agent/tool state
-.claude/
+# local agent/tool state（スキルは共有資産なので追跡する）
+.claude/*
+!.claude/skills/
 
 # generated/private working files
 outputs/
