@@ -73,7 +73,7 @@ const RESERVATION_SLOT_SEAT_STATUSES = new Set([
   "【その場】日程調整→返信なし",
   "営業マン都合キャンセル",
 ]);
-const DATA_CACHE_TTL_MS = 60_000;
+const DATA_CACHE_TTL_MS = 30_000;
 
 type TeamSalesDataCacheEntry = {
   expiresAt: number;
@@ -1032,9 +1032,9 @@ export async function fetchTeamSalesData(
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
   const urls = [
-    TEAM_SALES_MIRROR_CSV_URL,
     process.env.TEAM_SALES_DASHBOARD_DATA_URL,
     SANITIZED_SOURCE_CSV_URL,
+    TEAM_SALES_MIRROR_CSV_URL,
     CUSTOMER_SHEET_CSV_URL,
   ].filter(Boolean) as string[];
   const errors: string[] = [];
