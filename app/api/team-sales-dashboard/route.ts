@@ -85,6 +85,7 @@ const dataCache = new Map<string, TeamSalesDataCacheEntry>();
 const JULY_LAUNCH_CUTOFF = { year: 2026, month: 7 };
 const AUGUST_LAUNCH_CUTOFF = { year: 2026, month: 8 };
 const CALENDAR_AUGUST_TEAM_CUTOFF = "2026-07-27";
+const SEMINAR_MONTH_CORRECTION_CUTOFF = "2026-08-01";
 
 const LEGACY_TEAM_DEFINITIONS: Record<string, string[]> = {
   [ALL_TEAMS]: [],
@@ -293,11 +294,29 @@ function getAppointmentSeminar(row: SourceRow) {
   return formatSeminarMonthLabel(parsedDate.year, parsedDate.month);
 }
 
+function getCorrectedSeminar(row: SourceRow) {
+  const seminar = getSeminar(row);
+  const parsedAppointmentDate = parseSheetDate(getAppointmentDate(row));
+  if (!parsedAppointmentDate) return seminar;
+
+  const appointmentDateKey = toDateKey(parsedAppointmentDate);
+  const appointmentSeminar = formatSeminarMonthLabel(parsedAppointmentDate.year, parsedAppointmentDate.month);
+  if (appointmentDateKey < SEMINAR_MONTH_CORRECTION_CUTOFF) return seminar || appointmentSeminar;
+
+  const parsedSeminar = parseSeminarLaunchMonth(seminar);
+  if (!parsedSeminar) return appointmentSeminar;
+  if (parsedSeminar.year !== parsedAppointmentDate.year || parsedSeminar.month !== parsedAppointmentDate.month) {
+    return appointmentSeminar;
+  }
+
+  return seminar || appointmentSeminar;
+}
+
 function getEffectiveSeminar(row: SourceRow, dateBasis: DateBasis = SEMINAR_DATE_BASIS) {
   if (dateBasis === APPOINTMENT_DATE_BASIS || dateBasis === CALENDAR_DATE_BASIS) {
     return getAppointmentSeminar(row) || getSeminar(row);
   }
-  return getSeminar(row);
+  return getCorrectedSeminar(row);
 }
 
 function parseSeminarLaunchMonth(seminar: string) {
