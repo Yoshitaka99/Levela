@@ -8,7 +8,6 @@ import {
   Check,
   Copy,
   Flame,
-  Gauge,
   Lock,
   LockOpen,
   RefreshCw,
@@ -182,35 +181,66 @@ function PanelTitle({ step, title, note }: { step: string; title: string; note?:
   );
 }
 
-function SummaryCard({
+function FlowMetric({
   icon,
   label,
-  value,
-  sub,
+  actual,
+  goal,
+  forecast,
+  forecastLabel,
+  difference,
+  progress,
   tone = "orange",
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string;
-  sub: string;
+  actual: string;
+  goal: string;
+  forecast: string;
+  forecastLabel: string;
+  difference: string;
+  progress: number;
   tone?: "orange" | "red" | "amber" | "cyan";
 }) {
   const toneClass = {
-    orange: "border-orange-300/30 bg-orange-500/10 text-orange-100",
-    red: "border-red-300/35 bg-red-500/12 text-red-100",
-    amber: "border-amber-300/35 bg-amber-300/10 text-amber-100",
-    cyan: "border-cyan-300/25 bg-cyan-400/8 text-cyan-100",
+    orange: "border-orange-300/28 from-orange-500/12",
+    red: "border-red-300/30 from-red-500/14",
+    amber: "border-amber-300/28 from-amber-300/12",
+    cyan: "border-cyan-300/25 from-cyan-400/10",
+  }[tone];
+
+  const barClass = {
+    orange: "from-orange-500 to-amber-200",
+    red: "from-red-500 to-orange-300",
+    amber: "from-amber-500 to-yellow-200",
+    cyan: "from-cyan-500 to-sky-200",
   }[tone];
 
   return (
-    <section className={`rounded-2xl border p-4 shadow-xl shadow-black/25 ${toneClass}`}>
+    <article className={`rounded-2xl border bg-gradient-to-br to-[#0d1114] p-4 shadow-xl shadow-black/25 ${toneClass}`}>
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] font-black uppercase text-white/48">{label}</p>
-        <div className="text-white/70">{icon}</div>
+        <p className="text-sm font-black text-white">{label}</p>
+        <div className="text-white/55">{icon}</div>
       </div>
-      <p className="mt-3 text-3xl font-black text-white sm:text-4xl">{value}</p>
-      <p className="mt-2 text-sm leading-5 text-white/58">{sub}</p>
-    </section>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div>
+          <p className="text-[11px] font-bold text-cyan-100/55">現状</p>
+          <p className="mt-1 text-3xl font-black text-cyan-50">{actual}</p>
+        </div>
+        <div className="border-l border-white/10 pl-3">
+          <p className="text-[11px] font-bold text-white/45">目標</p>
+          <p className="mt-1 text-3xl font-black text-white">{goal}</p>
+        </div>
+      </div>
+      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-black/55 ring-1 ring-white/8">
+        <div className={`h-full rounded-full bg-gradient-to-r ${barClass}`} style={{ width: `${clamp(progress, 0, 100)}%` }} />
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+        <span className="text-white/45">{forecastLabel}</span>
+        <span className="font-black text-white">{forecast}</span>
+        <span className={`font-black ${difference.startsWith("-") ? "text-red-200" : "text-emerald-200"}`}>差 {difference}</span>
+      </div>
+    </article>
   );
 }
 
@@ -537,31 +567,49 @@ function DesktopMemberGoalGrid({
   );
 }
 
-function MemberResultCard({ member, maxRemaining }: { member: OroTeamMemberKpi; maxRemaining: number }) {
+function MemberResultCard({ member }: { member: OroTeamMemberKpi }) {
   const state = statusLabel(member);
-  const width = maxRemaining > 0 ? Math.min(100, Math.max(0, (member.remainingClosed / maxRemaining) * 100)) : 0;
+  const completion = member.requiredClosed
+    ? Math.min(100, Math.max(0, (member.actualClosed / member.requiredClosed) * 100))
+    : member.actualClosed > 0
+      ? 100
+      : 0;
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-[#130d0b]/90 p-3 shadow-xl shadow-black/25">
-      <div className="grid gap-3 lg:grid-cols-[190px_1fr] lg:items-center">
+    <article className="rounded-2xl border border-white/10 bg-[#0d1114]/95 p-4 shadow-xl shadow-black/25">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${state.className}`}>{state.label}</span>
-          <h2 className="mt-2 truncate text-xl font-black text-white">{member.name}</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="truncate text-xl font-black text-white">{member.name}</h2>
+            <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${state.className}`}>{state.label}</span>
+          </div>
+          <p className="mt-1 text-xs text-white/40">現状 / 基準を横並びで比較</p>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <StatPill label="予約/配分" value={`${formatNumber(member.currentAppointments)} / ${formatNumber(member.targetAppointments)}`} />
-          <StatPill label="着座/予測" value={`${formatNumber(member.actualSeated)} / ${formatNumber(member.projectedSeated)}`} />
-          <StatPill label="成約/必要" value={`${formatNumber(member.actualClosed)} / ${formatNumber(member.requiredClosed)}`} />
-          <StatPill label="残り/率" value={`${formatNumber(member.remainingClosed)} / ${formatPercent(member.currentCloseRate)}`} tone={member.remainingClosed > 0 ? "warn" : "good"} />
+        <div className="shrink-0 text-right">
+          <p className="text-[10px] font-bold text-white/40">残り成約</p>
+          <p className={`text-3xl font-black ${member.remainingClosed > 0 ? "text-orange-200" : "text-emerald-200"}`}>
+            {formatNumber(member.remainingClosed)}
+          </p>
         </div>
       </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <StatPill label="予約 現在/配分" value={`${formatNumber(member.currentAppointments)} / ${formatNumber(member.targetAppointments)}`} />
+        <StatPill label="着座 実績/予測" value={`${formatNumber(member.actualSeated)} / ${formatNumber(member.projectedSeated)}`} />
+        <StatPill label="成約 実績/必要" value={`${formatNumber(member.actualClosed)} / ${formatNumber(member.requiredClosed)}`} />
+        <StatPill label="成約率 実績/設定" value={`${formatPercent(member.currentCloseRate)} / ${member.minCloseRate}%`} tone={member.currentCloseRate >= member.minCloseRate ? "good" : "warn"} />
+      </div>
+
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full rounded-full bg-gradient-to-r from-red-500 to-orange-300" style={{ width: `${width}%` }} />
+        <div className="h-full rounded-full bg-gradient-to-r from-red-500 via-orange-400 to-emerald-300" style={{ width: `${completion}%` }} />
       </div>
-      <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold text-white/55">
-        <span className="rounded-full bg-white/[0.05] px-2.5 py-1">今日 {formatNumber(member.pace.today)}</span>
-        <span className="rounded-full bg-white/[0.05] px-2.5 py-1">今週 {formatNumber(member.pace.thisWeek)}</span>
-        <span className="rounded-full bg-white/[0.05] px-2.5 py-1">月末 {formatNumber(member.pace.month)}</span>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-white/52">
+        <span>必要成約への進捗 {formatPercent(completion)}</span>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="rounded-full bg-white/[0.05] px-2 py-1">今日 {formatNumber(member.pace.today)}</span>
+          <span className="rounded-full bg-white/[0.05] px-2 py-1">今週 {formatNumber(member.pace.thisWeek)}</span>
+          <span className="rounded-full bg-white/[0.05] px-2 py-1">月末 {formatNumber(member.pace.month)}</span>
+        </div>
       </div>
     </article>
   );
@@ -616,13 +664,14 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
 
   const preview = useMemo(() => goalPreview(goalDraft, seatRate), [goalDraft, seatRate]);
   const comparisonPrompt = useMemo(() => buildComparisonPrompt(data, goalDraft, seatRate), [data, goalDraft, seatRate]);
-  const maxRemaining = useMemo(() => Math.max(1, ...data.members.map((member) => member.remainingClosed)), [data.members]);
   const sortedMembers = useMemo(
     () => [...data.members].sort((a, b) => b.remainingClosed - a.remainingClosed || b.requiredClosed - a.requiredClosed),
     [data.members],
   );
-  const targetProgress = Math.min(100, data.totals.targetAchievementRate);
-  const planTone = preview.closedGap >= 0 ? "good" : preview.closedGap >= -3 ? "warn" : "bad";
+  const remainingTeamClosed = Math.max(0, goalDraft.teamTargets.closed - data.totals.actualClosed);
+  const targetProgress = goalDraft.teamTargets.closed
+    ? Math.min(100, (data.totals.actualClosed / goalDraft.teamTargets.closed) * 100)
+    : 0;
 
   const persistGoals = useCallback(
     async (draftToSave: GoalDraft, automatic = false) => {
@@ -767,113 +816,141 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#080403] text-white">
+    <main className="relative min-h-screen overflow-hidden bg-[#07090b] text-white">
       <CanvasHeatBackdrop />
-      <div className="absolute inset-x-0 top-0 z-0 h-[520px] bg-[radial-gradient(ellipse_at_top,#7f1d1d_0%,#2a0904_42%,transparent_72%)] opacity-80" />
-      <div className="relative z-10 mx-auto flex w-full max-w-[1560px] flex-col gap-5 px-3 py-4 sm:gap-8 sm:px-6 lg:px-8">
-        <header className="overflow-hidden rounded-3xl border border-orange-300/20 bg-[#120805]/88 p-5 shadow-2xl shadow-red-950/40 backdrop-blur-xl sm:p-8">
-          <div className="grid gap-5 xl:grid-cols-[1fr_420px] xl:items-end">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-orange-400/10 px-3 py-1 text-xs font-bold uppercase text-orange-100">
-                <Flame className="h-4 w-4" />
-                ORO TEAM KPI
-              </div>
-              <h1 className="mt-4 text-4xl font-black text-white sm:text-6xl">
-                8月オロチーム
-                <span className="block bg-gradient-to-r from-red-300 via-orange-200 to-amber-100 bg-clip-text text-transparent">
-                  目標達成ボード
+      <div className="absolute inset-x-0 top-0 z-0 h-[420px] bg-[radial-gradient(ellipse_at_top,#7f1d1d_0%,#26100c_38%,transparent_72%)] opacity-75" />
+      <div className="relative z-10 mx-auto flex w-full max-w-[1560px] flex-col gap-4 px-3 py-3 sm:px-6 sm:py-5 lg:px-8">
+        <header className="rounded-2xl border border-white/10 bg-[#0b0d10]/92 p-4 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-orange-400/10 px-3 py-1 text-xs font-bold text-orange-100">
+                  <Flame className="h-4 w-4" />
+                  ORO TEAM KPI
+                </div>
+                <span className="rounded-full border border-cyan-300/20 bg-cyan-400/8 px-3 py-1 text-xs font-bold text-cyan-100/80">
+                  面談日基準
                 </span>
-              </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-orange-100/60 sm:text-base">
-                面談日ベースで予約、着座、成約を集計。目標値を動かすと、必要成約数と不足分を即時に確認できます。
-              </p>
-            </div>
-            <div className="hidden rounded-2xl border border-orange-300/20 bg-black/28 p-4 xl:block">
-              <p className="text-xs font-black uppercase text-orange-100/50">Command signal</p>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <StatPill label="残り成約" value={formatNumber(data.totals.remainingClosedToTarget)} tone={data.totals.remainingClosedToTarget > 0 ? "warn" : "good"} />
-                <StatPill label="計画差分" value={signed(preview.closedGap)} tone={planTone} />
-                <StatPill label="計画率" value={formatPercent(preview.overallRate)} />
               </div>
+              <h1 className="mt-3 text-3xl font-black text-white sm:text-4xl">
+                {data.selectedMonthLabel} オロチーム
+                <span className="ml-2 text-orange-200">目標進捗</span>
+              </h1>
+              <p className="mt-2 text-sm text-white/45">現状、月末計画、目標との差を同じ順番で表示しています。</p>
             </div>
-          </div>
-          {lastError ? (
-            <div className="mt-5 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-              {lastError}
-            </div>
-          ) : null}
-        </header>
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard
-            icon={<Target className="h-5 w-5" />}
-            label="実績 / 成約目標"
-            value={`${formatNumber(data.totals.actualClosed)} / ${formatNumber(data.totals.targetClosed)}`}
-            sub={`残り ${formatNumber(data.totals.remainingClosedToTarget)}件 / 達成率 ${formatPercent(data.totals.targetAchievementRate)}`}
-            tone="red"
-          />
-          <SummaryCard
-            icon={<CalendarDays className="h-5 w-5" />}
-            label="実績 / 予約"
-            value={formatNumber(data.totals.currentAppointments)}
-            sub={`配分 ${formatNumber(data.totals.targetAppointments)} / 差分 ${signed(data.totals.appointmentGap)}`}
-            tone="orange"
-          />
-          <SummaryCard
-            icon={<Users className="h-5 w-5" />}
-            label="予測 / 着座"
-            value={formatNumber(data.totals.projectedSeated)}
-            sub={`目標 ${formatNumber(data.totals.targetSeated)} / 差分 ${signed(data.totals.seatedGap)}`}
-            tone="amber"
-          />
-          <SummaryCard
-            icon={<Gauge className="h-5 w-5" />}
-            label="計画 / 必要成約"
-            value={formatNumber(data.totals.requiredClosedAtMemberRates)}
-            sub={`メンバー最低ライン合算 / 差分 ${signed(data.totals.actualClosed - data.totals.requiredClosedAtMemberRates)}`}
-            tone="cyan"
-          />
-        </section>
-
-        <section className="rounded-3xl border border-orange-300/20 bg-[#120705]/92 p-4 shadow-xl shadow-red-950/20 backdrop-blur-xl sm:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase text-orange-200/50">Goal control</p>
-              <h2 className="mt-1 text-2xl font-black">操作・目標値設定</h2>
-              <p className="mt-2 text-sm leading-6 text-white/50">
-                オレンジ枠は手入力、青枠は自動計算です。成約率を触ると、固定していないメンバーを自動調整します。
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
               <button
                 type="button"
                 onClick={copyComparisonPrompt}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-cyan-200/22 bg-cyan-300/10 px-5 text-sm font-black text-cyan-50 shadow-lg shadow-cyan-950/20 transition hover:border-cyan-100/40 hover:bg-cyan-300/16"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-cyan-200/22 bg-cyan-300/10 px-4 text-sm font-black text-cyan-50 transition hover:border-cyan-100/40 hover:bg-cyan-300/16"
               >
                 {copyMessage ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                {copyMessage ? "コピー済み" : "画像作成プロンプト"}
+                {copyMessage ? "コピー済み" : "画像用コピー"}
               </button>
               <button
                 type="button"
                 onClick={saveGoals}
                 disabled={savingGoals}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-orange-200/30 bg-gradient-to-r from-red-600 to-orange-500 px-5 text-sm font-black text-white shadow-lg shadow-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-orange-200/30 bg-gradient-to-r from-red-600 to-orange-500 px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Save className="h-4 w-4" />
                 {savingGoals ? "保存中" : "保存"}
               </button>
-              <div className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-sm font-bold text-orange-100">
-                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                {new Date(data.updatedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
+              <div className="col-span-2 flex h-9 items-center justify-center gap-2 rounded-xl border border-white/8 bg-white/[0.035] px-3 text-xs font-bold text-white/55 sm:h-10">
+                <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+                更新 {new Date(data.updatedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
               </div>
             </div>
           </div>
+          {lastError ? (
+            <div className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              {lastError}
+            </div>
+          ) : null}
           {saveMessage ? <p className="mt-3 text-sm font-bold text-amber-100">{saveMessage}</p> : null}
           {copyMessage ? <p className="mt-2 text-sm font-bold text-cyan-100">{copyMessage}</p> : null}
+        </header>
 
-          <div className="mt-5 grid gap-4 xl:grid-cols-[360px_1fr]">
-            <div className="rounded-2xl border border-cyan-300/18 bg-[#071113] p-4">
-              <PanelTitle step="1" title="表示条件" note="どの月を、何%着座想定で見るか。" />
+        <section className="grid gap-3 xl:grid-cols-[330px_1fr]">
+          <article className="rounded-2xl border border-orange-300/24 bg-[#101215]/95 p-5 shadow-2xl shadow-black/30">
+            <p className="text-xs font-black text-orange-200/60">最優先で見る数字</p>
+            <div className="mt-3 flex items-end gap-2">
+              <span className="text-6xl font-black text-orange-100">{formatNumber(remainingTeamClosed)}</span>
+              <span className="pb-1 text-xl font-black text-white">件</span>
+            </div>
+            <p className="mt-1 text-sm font-bold text-white/55">成約目標まで残り</p>
+            <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-black/60 ring-1 ring-white/10">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-red-500 via-orange-400 to-amber-200"
+                style={{ width: `${targetProgress}%` }}
+              />
+            </div>
+            <div className="mt-3 flex items-center justify-between text-xs font-bold">
+              <span className="text-cyan-100">実成約 {formatNumber(data.totals.actualClosed)}</span>
+              <span className="text-white/45">達成 {formatPercent(targetProgress)}</span>
+              <span className="text-white">目標 {formatNumber(goalDraft.teamTargets.closed)}</span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <StatPill label="月末計画" value={formatNumber(preview.projectedClosed)} tone={preview.closedGap >= 0 ? "good" : "bad"} />
+              <StatPill label="計画差" value={signed(preview.closedGap)} tone={preview.closedGap >= 0 ? "good" : "bad"} />
+            </div>
+          </article>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <FlowMetric
+              icon={<CalendarDays className="h-5 w-5" />}
+              label="予約"
+              actual={formatNumber(data.totals.currentAppointments)}
+              goal={formatNumber(goalDraft.teamTargets.appointments)}
+              forecast={formatNumber(preview.targetAppointments)}
+              forecastLabel="配分計画"
+              difference={signed(data.totals.currentAppointments - goalDraft.teamTargets.appointments)}
+              progress={goalDraft.teamTargets.appointments ? (data.totals.currentAppointments / goalDraft.teamTargets.appointments) * 100 : 0}
+              tone="orange"
+            />
+            <FlowMetric
+              icon={<Users className="h-5 w-5" />}
+              label="着座"
+              actual={formatNumber(data.totals.actualSeated)}
+              goal={formatNumber(goalDraft.teamTargets.seated)}
+              forecast={formatNumber(data.totals.projectedSeated)}
+              forecastLabel="現予約から予測"
+              difference={signed(data.totals.projectedSeated - goalDraft.teamTargets.seated)}
+              progress={goalDraft.teamTargets.seated ? (data.totals.actualSeated / goalDraft.teamTargets.seated) * 100 : 0}
+              tone="cyan"
+            />
+            <FlowMetric
+              icon={<Target className="h-5 w-5" />}
+              label="成約"
+              actual={formatNumber(data.totals.actualClosed)}
+              goal={formatNumber(goalDraft.teamTargets.closed)}
+              forecast={formatNumber(preview.projectedClosed)}
+              forecastLabel="月末計画"
+              difference={signed(preview.closedGap)}
+              progress={targetProgress}
+              tone="red"
+            />
+          </div>
+        </section>
+
+        <details className="group rounded-2xl border border-white/10 bg-[#0c0f12]/94 shadow-xl shadow-black/25">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 sm:px-5">
+            <div>
+              <p className="text-xs font-bold text-orange-200/50">GOAL CONTROL</p>
+              <h2 className="mt-1 text-xl font-black text-white">目標・メンバー設定</h2>
+              <p className="mt-1 text-sm text-white/42">必要な時だけ開いて変更。入力内容は自動保存されます。</p>
+            </div>
+            <span className="shrink-0 rounded-xl border border-orange-300/22 bg-orange-400/10 px-4 py-2 text-sm font-black text-orange-100">
+              <span className="group-open:hidden">設定を開く</span>
+              <span className="hidden group-open:inline">設定を閉じる</span>
+            </span>
+          </summary>
+
+          <div className="border-t border-white/8 p-4 sm:p-5">
+            <div className="grid gap-4 xl:grid-cols-[300px_1fr]">
+              <div className="rounded-2xl border border-cyan-300/18 bg-[#071416] p-4">
+                <PanelTitle step="1" title="表示条件" note="対象月と着座率を選択。" />
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                 <SelectBox
                   label="対象月"
@@ -910,18 +987,8 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
             </div>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-white/10 bg-black/22 p-4">
-            <PanelTitle step="3" title="計画サマリー" note="今の入力値から見た、月末の計画値です。" />
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <StatPill label="配分アポ合計" value={formatNumber(preview.targetAppointments)} />
-              <StatPill label="計画着座" value={formatNumber(preview.projectedSeated)} />
-              <StatPill label="計画成約" value={formatNumber(preview.projectedClosed)} tone={planTone} />
-              <StatPill label="目標差分" value={signed(preview.closedGap)} tone={planTone} />
-            </div>
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-white/10 bg-black/16 p-4">
-            <PanelTitle step="4" title="メンバー調整" note="成約率は - / + か直接入力。固定中の人は自動調整されません。" />
+          <div className="mt-4 rounded-2xl border border-white/10 bg-black/18 p-4">
+            <PanelTitle step="3" title="メンバー調整" note="配分アポと成約率だけを変更。固定中は自動調整されません。" />
             <div className="mt-4 hidden xl:block">
               <DesktopMemberGoalGrid
                 members={goalDraft.members}
@@ -944,31 +1011,10 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
               ))}
             </div>
           </div>
-        </section>
-
-        <section className="rounded-2xl border border-orange-300/20 bg-[#100908] p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase text-orange-200/50">Target heat</p>
-              <h2 className="mt-1 text-2xl font-black">チーム進捗</h2>
-            </div>
-            <div className="text-sm text-white/55">全体成約率基準の必要成約 {formatNumber(data.totals.requiredClosedAtTeamRate)}件</div>
           </div>
-          <div className="mt-5">
-            <div className="mb-2 flex justify-between text-xs text-white/45">
-              <span>成約目標達成率</span>
-              <span>{formatPercent(data.totals.targetAchievementRate)}</span>
-            </div>
-            <div className="h-4 overflow-hidden rounded-full bg-black/50 ring-1 ring-white/10">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-red-600 via-orange-400 to-amber-200"
-                style={{ width: `${targetProgress}%` }}
-              />
-            </div>
-          </div>
-        </section>
+        </details>
 
-        <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-3">
             <div className="flex items-end justify-between gap-3">
               <div>
@@ -977,9 +1023,11 @@ export function OroTeamKpiClient({ initialData }: { initialData: OroTeamKpiData 
               </div>
               <p className="text-sm text-white/45">{data.members.length}名</p>
             </div>
-            {sortedMembers.map((member) => (
-              <MemberResultCard key={member.name} member={member} maxRemaining={maxRemaining} />
-            ))}
+            <div className="grid gap-3 lg:grid-cols-2">
+              {sortedMembers.map((member) => (
+                <MemberResultCard key={member.name} member={member} />
+              ))}
+            </div>
           </div>
 
           <aside className="space-y-4">
