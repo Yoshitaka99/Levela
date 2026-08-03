@@ -534,7 +534,8 @@ export async function getOroTeamKpiData({
     const hold = memberRows.filter((row) => isHoldStatus(getStatus(row))).length;
     const currentAppointments = memberRows.length;
     const projectedSeated = Math.round(currentAppointments * (seatRate / 100));
-    const requiredClosed = Math.ceil(projectedSeated * (plan.minCloseRate / 100));
+    const plannedSeated = Math.round(plan.targetAppointments * (seatRate / 100));
+    const requiredClosed = Math.round(plannedSeated * (plan.minCloseRate / 100));
     const remainingClosed = Math.max(0, requiredClosed - actualClosed);
     const currentCloseRate = actualSeated ? (actualClosed / actualSeated) * 100 : 0;
 
