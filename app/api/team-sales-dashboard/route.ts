@@ -653,7 +653,21 @@ function resolveSelectedSeminars(options: string[], requestedSeminar?: string | 
     if (partialMatch) return [partialMatch];
   }
 
-  return [options.find((option) => option.includes(DEFAULT_SEMINAR_TEXT)) ?? options.find((option) => option !== ALL_SEMINARS) ?? DEFAULT_SEMINAR_TEXT];
+  return [getLatestSeminarOption(options) ?? options.find((option) => option.includes(DEFAULT_SEMINAR_TEXT)) ?? DEFAULT_SEMINAR_TEXT];
+}
+
+function getLatestSeminarOption(options: string[]) {
+  return options
+    .filter((option) => option !== ALL_SEMINARS)
+    .sort((a, b) => {
+      const aMonth = parseSeminarLaunchMonth(a);
+      const bMonth = parseSeminarLaunchMonth(b);
+      if (aMonth && bMonth) return aMonth.year - bMonth.year || aMonth.month - bMonth.month;
+      if (aMonth) return 1;
+      if (bMonth) return -1;
+      return a.localeCompare(b, "ja", { numeric: true });
+    })
+    .at(-1);
 }
 
 function resolveTeamForMember(member: string, teamDefinitions: Record<string, string[]>) {
