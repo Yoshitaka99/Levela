@@ -653,21 +653,50 @@ function resolveSelectedSeminars(options: string[], requestedSeminar?: string | 
     if (partialMatch) return [partialMatch];
   }
 
-  return [getLatestSeminarOption(options) ?? options.find((option) => option.includes(DEFAULT_SEMINAR_TEXT)) ?? DEFAULT_SEMINAR_TEXT];
+  return [getDefaultSeminarOption(options) ?? options.find((option) => option.includes(DEFAULT_SEMINAR_TEXT)) ?? DEFAULT_SEMINAR_TEXT];
 }
 
-function getLatestSeminarOption(options: string[]) {
-  return options
+function getDefaultSeminarOption(options: string[]) {
+  const selectableOptions = options
     .filter((option) => option !== ALL_SEMINARS)
-    .sort((a, b) => {
-      const aMonth = parseSeminarLaunchMonth(a);
-      const bMonth = parseSeminarLaunchMonth(b);
-      if (aMonth && bMonth) return aMonth.year - bMonth.year || aMonth.month - bMonth.month;
-      if (aMonth) return 1;
-      if (bMonth) return -1;
-      return a.localeCompare(b, "ja", { numeric: true });
+    .sort(compareSeminarOptions);
+
+  const currentMonth = getCurrentTokyoMonth();
+  const currentMonthOption = selectableOptions.find((option) => {
+    const parsed = parseSeminarLaunchMonth(option);
+    return parsed?.year === currentMonth.year && parsed.month === currentMonth.month;
+  });
+  if (currentMonthOption) return currentMonthOption;
+
+  const latestPastOrCurrent = selectableOptions
+    .filter((option) => {
+      const parsed = parseSeminarLaunchMonth(option);
+      if (!parsed) return false;
+      return parsed.year < currentMonth.year || (parsed.year === currentMonth.year && parsed.month <= currentMonth.month);
     })
     .at(-1);
+  return latestPastOrCurrent ?? selectableOptions.at(-1);
+}
+
+function compareSeminarOptions(a: string, b: string) {
+  const aMonth = parseSeminarLaunchMonth(a);
+  const bMonth = parseSeminarLaunchMonth(b);
+  if (aMonth && bMonth) return aMonth.year - bMonth.year || aMonth.month - bMonth.month;
+  if (aMonth) return 1;
+  if (bMonth) return -1;
+  return a.localeCompare(b, "ja", { numeric: true });
+}
+
+function getCurrentTokyoMonth() {
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "numeric",
+  }).formatToParts(new Date());
+  return {
+    year: Number(parts.find((part) => part.type === "year")?.value ?? new Date().getFullYear()),
+    month: Number(parts.find((part) => part.type === "month")?.value ?? new Date().getMonth() + 1),
+  };
 }
 
 function resolveTeamForMember(member: string, teamDefinitions: Record<string, string[]>) {
