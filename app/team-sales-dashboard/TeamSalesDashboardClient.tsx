@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdSourceFilter, CustomerManagementRow, DateBasis, MemberWeeklyKpis, ReasonCount, TeamMemberKpi, TeamSalesDashboardData, TrafficFilter } from "./data";
+import { SalesDrillExportDialog } from "./SalesDrillExportDialog";
 
 type TabKey = "overview" | "appointments" | "members" | "reasons" | "alerts";
 type SortKey = "projectedRate" | "closeRate" | "seatRate" | "reservationSlots" | "seated" | "closed" | "projected" | "lost" | "hold";
@@ -1865,6 +1866,12 @@ export function TeamSalesDashboardClient({
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
               更新
             </button>
+            <SalesDrillExportDialog
+              selectedTeam={selectedTeam}
+              selectedTraffic={selectedTraffic}
+              selectedAdSource={selectedAdSource}
+              initialAnchorDate={selectedDateBasis === "calendar" ? selectedEndDate : undefined}
+            />
           </div>
         </div>
 
