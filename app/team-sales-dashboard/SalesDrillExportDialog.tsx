@@ -231,7 +231,7 @@ export function SalesDrillExportDialog({
               className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-rose-300 px-4 text-sm font-bold text-slate-950 transition hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {status === "loading" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ClipboardCopy className="h-4 w-4" />}
-              {status === "loading" ? "集計中" : status === "copied" ? "コピーしました" : "事実数値を一括コピー"}
+              {status === "loading" ? "集計中" : status === "copied" ? "コピーしました" : "成約数・成約率をコピー"}
             </button>
             {status === "error" ? <p className="mt-3 text-sm text-rose-200">{errorMessage}</p> : null}
           </section>

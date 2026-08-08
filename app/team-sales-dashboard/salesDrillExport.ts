@@ -7,31 +7,11 @@ export type SalesDrillDateRange = {
   endDate: string;
 };
 
-type KpiSummary = Pick<
-  TeamMemberKpi,
-  | "leads"
-  | "seated"
-  | "closed"
-  | "tokushinClosed"
-  | "basicClosed"
-  | "pending"
-  | "hold"
-  | "holdClosed"
-  | "holdLost"
-  | "alert"
->;
+type KpiSummary = Pick<TeamMemberKpi, "seated" | "closed">;
 
 const EMPTY_SUMMARY: KpiSummary = {
-  leads: 0,
   seated: 0,
   closed: 0,
-  tokushinClosed: 0,
-  basicClosed: 0,
-  pending: 0,
-  hold: 0,
-  holdClosed: 0,
-  holdLost: 0,
-  alert: 0,
 };
 
 function parseIsoDate(value: string) {
@@ -82,16 +62,8 @@ export function getSalesDrillComparisonRanges(unit: SalesDrillComparisonUnit, an
 }
 
 function addSummary(target: KpiSummary, source: TeamMemberKpi) {
-  target.leads += source.leads;
   target.seated += source.seated;
   target.closed += source.closed;
-  target.tokushinClosed += source.tokushinClosed;
-  target.basicClosed += source.basicClosed;
-  target.pending += source.pending;
-  target.hold += source.hold;
-  target.holdClosed += source.holdClosed;
-  target.holdLost += source.holdLost;
-  target.alert += source.alert;
   return target;
 }
 
@@ -101,10 +73,6 @@ function summarizeMembers(members: TeamMemberKpi[]) {
 
 function rate(numerator: number, denominator: number) {
   return denominator ? (numerator / denominator) * 100 : 0;
-}
-
-function holdBase(summary: KpiSummary) {
-  return summary.holdClosed + summary.holdLost + summary.hold;
 }
 
 function formatPercent(value: number) {
@@ -122,39 +90,14 @@ function formatRateDelta(current: number, previous: number) {
 }
 
 function formatSummary(summary: KpiSummary) {
-  const resolvedHold = holdBase(summary);
-  return [
-    `予約${summary.leads}件`,
-    `着座${summary.seated}件`,
-    `着座率${formatPercent(rate(summary.seated, summary.leads))}`,
-    `成約${summary.closed}件（特進${summary.tokushinClosed}件・ベーシック${summary.basicClosed}件）`,
-    `実成約率${formatPercent(rate(summary.closed, summary.seated))}`,
-    `成約予定${summary.pending}件`,
-    `予定込み成約率${formatPercent(rate(summary.closed + summary.pending, summary.seated))}`,
-    `未決着保留${summary.hold}件`,
-    `保留→成約${summary.holdClosed}件/${resolvedHold}件（${formatPercent(rate(summary.holdClosed, resolvedHold))}）`,
-    `要確認${summary.alert}件`,
-  ].join("、");
+  return `成約数${summary.closed}件、成約率${formatPercent(rate(summary.closed, summary.seated))}`;
 }
 
 function formatSummaryDelta(current: KpiSummary, previous: KpiSummary) {
-  return [
-    `予約${formatCountDelta(current.leads, previous.leads)}`,
-    `着座${formatCountDelta(current.seated, previous.seated)}`,
-    `着座率${formatRateDelta(rate(current.seated, current.leads), rate(previous.seated, previous.leads))}`,
-    `成約${formatCountDelta(current.closed, previous.closed)}`,
-    `実成約率${formatRateDelta(rate(current.closed, current.seated), rate(previous.closed, previous.seated))}`,
-    `成約予定${formatCountDelta(current.pending, previous.pending)}`,
-    `予定込み成約率${formatRateDelta(
-      rate(current.closed + current.pending, current.seated),
-      rate(previous.closed + previous.pending, previous.seated),
-    )}`,
-    `未決着保留${formatCountDelta(current.hold, previous.hold)}`,
-    `保留→成約率${formatRateDelta(
-      rate(current.holdClosed, holdBase(current)),
-      rate(previous.holdClosed, holdBase(previous)),
-    )}`,
-  ].join("、");
+  return `成約数${formatCountDelta(current.closed, previous.closed)}、成約率${formatRateDelta(
+    rate(current.closed, current.seated),
+    rate(previous.closed, previous.seated),
+  )}`;
 }
 
 function normalizeMemberName(name: string) {
@@ -180,12 +123,6 @@ function formatTraffic(data: TeamSalesDashboardData) {
     return data.selectedAdSource === "all" ? "広告のみ（全広告）" : `広告のみ（${data.selectedAdSource.split(",").join(" / ")}）`;
   }
   return "全流入";
-}
-
-function formatUpdatedAt(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", hour12: false });
 }
 
 export function buildSalesDrillFactText({
@@ -236,34 +173,23 @@ export function buildSalesDrillFactText({
     `集計基準: 面談日`,
     `対象: ${currentData.selectedTeam}`,
     `流入条件: ${formatTraffic(currentData)}`,
-    `対象メンバー: ${members.length}名`,
-    `データ更新: ${formatUpdatedAt(currentData.updatedAt)}`,
     "",
     "【全体KPI】",
-    `今回: ${formatSummary(currentTotal)}`,
-    `前期間: ${formatSummary(previousTotal)}`,
-    `前期間比: ${formatSummaryDelta(currentTotal, previousTotal)}`,
+    `今回 ${formatSummary(currentTotal)} / 前期間 ${formatSummary(previousTotal)} / 差分 ${formatSummaryDelta(currentTotal, previousTotal)}`,
     "",
     "【チーム比較】",
     ...teamNames.map((team, index) => {
       const current = currentTeams.get(team) ?? { ...EMPTY_SUMMARY };
       const previous = previousTeams.get(team) ?? { ...EMPTY_SUMMARY };
-      return `${index + 1}. ${team}\n今回: ${formatSummary(current)}\n前期間: ${formatSummary(previous)}\n差分: ${formatSummaryDelta(current, previous)}`;
+      return `${index + 1}. ${team}: 今回 ${formatSummary(current)} / 前期間 ${formatSummary(previous)} / 差分 ${formatSummaryDelta(current, previous)}`;
     }),
     "",
     "【個人比較】",
     ...members.map((member, index) => {
       const current = member.current ? addSummary({ ...EMPTY_SUMMARY }, member.current) : { ...EMPTY_SUMMARY };
       const previous = member.previous ? addSummary({ ...EMPTY_SUMMARY }, member.previous) : { ...EMPTY_SUMMARY };
-      return `${index + 1}. ${member.name}（${member.team}）\n今回: ${formatSummary(current)}\n前期間: ${formatSummary(previous)}\n差分: ${formatSummaryDelta(current, previous)}`;
+      return `${index + 1}. ${member.name}（${member.team}）: 今回 ${formatSummary(current)} / 前期間 ${formatSummary(previous)} / 差分 ${formatSummaryDelta(current, previous)}`;
     }),
-    "",
-    "【計算定義】",
-    "着座率=着座数÷予約数",
-    "実成約率=成約数÷着座数",
-    "予定込み成約率=（成約数+成約予定数）÷着座数",
-    "保留→成約率=保留→成約数÷（保留→成約数+保留→失注数+未決着保留数）",
-    "率の差分はポイント（pt）、件数の差分は件で表記。分母0件の率は0.0%として表記。",
   ];
 
   return lines.join("\n");
