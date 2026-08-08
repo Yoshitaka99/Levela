@@ -239,6 +239,30 @@ function formatDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function getTokyoWallClock(value: string) {
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return new Date(2000, 0, 1);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(instant);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return new Date(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second),
+  );
+}
+
 function parseIsoDate(value?: string | null) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const [year, month, day] = value.split("-").map(Number);
@@ -1381,7 +1405,7 @@ export function TeamSalesDashboardClient({
     const memberCount = Math.max(data.members.length, 1);
     const numericGoal = Number(goalValue);
     const validGoal = Number.isFinite(numericGoal) && numericGoal > 0 ? numericGoal : 0;
-    const today = new Date();
+    const today = getTokyoWallClock(data.updatedAt);
     const todayKey = formatDateKey(today);
     const periodEnd = parsePeriodEndDate(selectedDateBasis, selectedSeminar, selectedEndDate);
     const remainingDays = Math.max(1, Math.ceil((periodEnd.getTime() - today.getTime()) / 86_400_000) + 1);
@@ -1423,7 +1447,7 @@ export function TeamSalesDashboardClient({
       todayGap,
       progressRate,
     };
-  }, [data.customerRows, data.members.length, goalMode, goalValue, selectedDateBasis, selectedEndDate, selectedSeminar, totals.closed, totals.leads, totals.seated]);
+  }, [data.customerRows, data.members.length, data.updatedAt, goalMode, goalValue, selectedDateBasis, selectedEndDate, selectedSeminar, totals.closed, totals.leads, totals.seated]);
 
   const filteredMembers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
