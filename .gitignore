@@ -44,8 +44,10 @@ next-env.d.ts
 .vercel
 .env*.local
 
-# local agent/tool state
-.claude/
+# local agent/tool state (shared skills are tracked)
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 
 # generated/private working files
 outputs/
