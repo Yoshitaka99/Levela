@@ -19,6 +19,8 @@ const SANITIZED_SOURCE_QUERY =
 const SANITIZED_SOURCE_CSV_URL = `https://docs.google.com/spreadsheets/d/1kkL_gysoXKq0Kh8ttFeMmG6pljzv1iwum2k2DxvJ96s/gviz/tq?tqx=out:csv&gid=2051214579&tq=${encodeURIComponent(SANITIZED_SOURCE_QUERY)}`;
 const TEAM_SALES_MIRROR_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1a3WimNtSLyepfTZ3YxZmy3XAaV6eIG_8C-BdoAd4aIA/gviz/tq?tqx=out:csv&sheet=KPI_MIRROR&headers=1";
+const TEAM_SALES_HISTORY_CSV_URL =
+  "https://docs.google.com/spreadsheets/d/1a3WimNtSLyepfTZ3YxZmy3XAaV6eIG_8C-BdoAd4aIA/gviz/tq?tqx=out:csv&sheet=KPI_HISTORY&headers=1";
 
 const DEFAULT_SEMINAR_TEXT = "5月セミナー";
 const ALL_SEMINARS = "全期間";
@@ -51,6 +53,8 @@ const EXCLUDED_SEAT_STATUSES = new Set([
   "無効アポ",
 ]);
 const DATA_CACHE_TTL_MS = 60_000;
+const HISTORY_CACHE_TTL_MS = 10 * 60_000;
+const CURRENT_DATA_START = { year: 2026, month: 7, day: 1 } as const;
 
 type TeamSalesDataCacheEntry = {
   expiresAt: number;
@@ -58,6 +62,7 @@ type TeamSalesDataCacheEntry = {
 };
 
 const dataCache = new Map<string, TeamSalesDataCacheEntry>();
+let historyRowsCache: { expiresAt: number; rows: SourceRow[] } | null = null;
 
 const IMAGE_TEAM_DEFINITIONS: Record<string, string[]> = {
   [ALL_TEAMS]: [],
@@ -121,6 +126,28 @@ function parseCsv(text: string) {
     });
     return entry;
   });
+}
+
+async function fetchCsvRows(url: string) {
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: { accept: "text/csv,*/*" },
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!response.ok) throw new Error(`${url}: ${response.status}`);
+
+  const text = await response.text();
+  if (text.trim().startsWith("#")) throw new Error(`${url}: ${text.trim().slice(0, 80)}`);
+  return parseCsv(text) as SourceRow[];
+}
+
+async function fetchHistoryRows() {
+  if (historyRowsCache && historyRowsCache.expiresAt > Date.now()) return historyRowsCache.rows;
+
+  const rows = await fetchCsvRows(TEAM_SALES_HISTORY_CSV_URL);
+  historyRowsCache = { rows, expiresAt: Date.now() + HISTORY_CACHE_TTL_MS };
+  return rows;
 }
 
 function getValue(row: SourceRow, index: number, fallbackHeader?: string, aliases: string[] = []) {
@@ -209,6 +236,15 @@ function parseSheetDate(value: string) {
   }
 
   return null;
+}
+
+function isCurrentPeriodRow(row: SourceRow) {
+  const date = parseSheetDate(getAppointmentDate(row));
+  if (!date) return true;
+
+  if (date.year !== CURRENT_DATA_START.year) return date.year > CURRENT_DATA_START.year;
+  if (date.month !== CURRENT_DATA_START.month) return date.month > CURRENT_DATA_START.month;
+  return date.day >= CURRENT_DATA_START.day;
 }
 
 function getAppointmentSeminar(row: SourceRow) {
@@ -321,8 +357,14 @@ function isClosedStatus(status: string) {
 
 function normalizeContractPlan(plan: string) {
   const normalized = plan.trim();
-  if (normalized.includes("コミット")) return "tokushin";
-  if (normalized.includes("プレプラ") || normalized.includes("プレミアムプラス")) return "basic";
+  if (normalized.includes("コミット") || normalized.includes("特進")) return "tokushin";
+  if (
+    normalized.includes("プレプラ") ||
+    normalized.includes("プレミアムプラス") ||
+    normalized.includes("ベーシック")
+  ) {
+    return "basic";
+  }
   return "";
 }
 
@@ -721,29 +763,22 @@ export async function fetchTeamSalesData(
 
   for (const url of [...new Set(urls)]) {
     try {
-      const response = await fetch(url, {
-        cache: "no-store",
-        headers: { accept: "text/csv,*/*" },
-        signal: AbortSignal.timeout(15000),
-      });
-
-      if (!response.ok) {
-        errors.push(`${url}: ${response.status}`);
-        continue;
-      }
-
-      const text = await response.text();
-      if (text.trim().startsWith("#")) {
-        errors.push(`${url}: ${text.trim().slice(0, 80)}`);
-        continue;
-      }
-
-      const rows = parseCsv(text);
+      const rows = await fetchCsvRows(url);
       const hasExpectedHeaders = rows.some(
         (row) => getValue(row, 1, "担当者名").trim() && getValue(row, 2, "セミナー").trim(),
       );
       if (rows.length && hasExpectedHeaders) {
-        const data = aggregateRows(rows as SourceRow[], requestedSeminar, requestedTeam, requestedTraffic, requestedAdSource);
+        let combinedRows = rows;
+        try {
+          const historyRows = await fetchHistoryRows();
+          combinedRows = [...historyRows, ...rows.filter(isCurrentPeriodRow)];
+        } catch (historyError) {
+          errors.push(
+            `history: ${historyError instanceof Error ? historyError.message : "Unknown history fetch error"}`,
+          );
+        }
+
+        const data = aggregateRows(combinedRows, requestedSeminar, requestedTeam, requestedTraffic, requestedAdSource);
         dataCache.set(cacheKey, { data, expiresAt: Date.now() + DATA_CACHE_TTL_MS });
         return data;
       }
