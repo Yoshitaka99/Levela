@@ -24,7 +24,6 @@ const TEAM_SALES_MIRROR_CSV_URL =
 const TEAM_SALES_HISTORY_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1a3WimNtSLyepfTZ3YxZmy3XAaV6eIG_8C-BdoAd4aIA/gviz/tq?tqx=out:csv&sheet=KPI_HISTORY&headers=1";
 
-const DEFAULT_SEMINAR_TEXT = "5月セミナー";
 const ALL_SEMINARS = "全期間";
 const SEMINAR_SEPARATOR = ",";
 const ALL_TEAMS = "全チーム";
@@ -529,7 +528,7 @@ function resolveTrafficFilter(value?: string | null): TrafficFilter {
 
 function resolveDateBasis(value?: string | null): DateBasis {
   if (value === CALENDAR_DATE_BASIS) return CALENDAR_DATE_BASIS;
-  return value === APPOINTMENT_DATE_BASIS ? APPOINTMENT_DATE_BASIS : SEMINAR_DATE_BASIS;
+  return value === SEMINAR_DATE_BASIS ? SEMINAR_DATE_BASIS : APPOINTMENT_DATE_BASIS;
 }
 
 function resolveAdSourceFilter(value?: string | null): AdSourceFilter {
@@ -677,7 +676,18 @@ function resolveSelectedSeminars(options: string[], requestedSeminar?: string | 
     if (partialMatch) return [partialMatch];
   }
 
-  return [options.find((option) => option.includes(DEFAULT_SEMINAR_TEXT)) ?? options.find((option) => option !== ALL_SEMINARS) ?? DEFAULT_SEMINAR_TEXT];
+  const now = new Date();
+  const currentMonth = options.find((option) => {
+    const parsed = parseSeminarLaunchMonth(option);
+    return parsed?.year === now.getFullYear() && parsed.month === now.getMonth() + 1;
+  });
+  const latestMonth = options
+    .filter((option) => option !== ALL_SEMINARS)
+    .map((option) => ({ option, parsed: parseSeminarLaunchMonth(option) }))
+    .filter((entry): entry is { option: string; parsed: { year: number; month: number } } => Boolean(entry.parsed))
+    .sort((a, b) => b.parsed.year - a.parsed.year || b.parsed.month - a.parsed.month)[0]?.option;
+
+  return [currentMonth ?? latestMonth ?? options.find((option) => option !== ALL_SEMINARS) ?? ALL_SEMINARS];
 }
 
 function resolveTeamForMember(member: string, teamDefinitions: Record<string, string[]>) {
@@ -1043,9 +1053,9 @@ export async function fetchTeamSalesData(
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
   const urls = [
-    TEAM_SALES_MIRROR_CSV_URL,
-    process.env.TEAM_SALES_DASHBOARD_DATA_URL,
     SANITIZED_SOURCE_CSV_URL,
+    process.env.TEAM_SALES_DASHBOARD_DATA_URL,
+    TEAM_SALES_MIRROR_CSV_URL,
     CUSTOMER_SHEET_CSV_URL,
   ].filter(Boolean) as string[];
   const errors: string[] = [];
@@ -1077,6 +1087,12 @@ export async function fetchTeamSalesData(
           requestedStartDate,
           requestedEndDate,
         );
+        data.source =
+          url === SANITIZED_SOURCE_CSV_URL
+            ? "source"
+            : url === TEAM_SALES_MIRROR_CSV_URL
+              ? "mirror"
+              : "sheet";
         dataCache.set(cacheKey, { data, expiresAt: Date.now() + DATA_CACHE_TTL_MS });
         return data;
       }

@@ -83,7 +83,7 @@ export type CustomerManagementRow = {
 
 export type TeamSalesDashboardData = {
   updatedAt: string;
-  source: "sheet" | "fallback";
+  source: "source" | "mirror" | "sheet" | "fallback";
   selectedSeminar: string;
   selectedTeam: string;
   selectedTraffic: TrafficFilter;
@@ -111,7 +111,7 @@ export const defaultTeamSalesDashboardData: TeamSalesDashboardData = {
   selectedTeam: "全チーム",
   selectedTraffic: "all",
   selectedAdSource: "all",
-  selectedDateBasis: "seminar",
+  selectedDateBasis: "appointment",
   selectedStartDate: "",
   selectedEndDate: "",
   seminars: ["全期間", "5月セミナー"],

@@ -78,7 +78,7 @@ export default async function TeamSalesDashboardPage({
   const initialTeam = Array.isArray(params.team) ? params.team[0] : params.team;
   const initialTraffic = pickParam(params.traffic, validTraffic, "all");
   const initialAdSource = pickAdSourceParam(params.adSource);
-  const initialDateBasis = pickParam(params.dateBasis, validDateBasis, "seminar");
+  const initialDateBasis = pickParam(params.dateBasis, validDateBasis, "appointment");
   const initialStartDate = Array.isArray(params.startDate) ? params.startDate[0] : params.startDate;
   const initialEndDate = Array.isArray(params.endDate) ? params.endDate[0] : params.endDate;
   const initialSeatCountFilter = pickParam(params.seatCount, validSeatCountFilters, "all");

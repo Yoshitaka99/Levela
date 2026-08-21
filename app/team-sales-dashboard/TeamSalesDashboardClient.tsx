@@ -1186,10 +1186,13 @@ export function TeamSalesDashboardClient({
   const [sortKey, setSortKey] = useState<SortKey>(initialSort);
   const [query, setQuery] = useState(initialQuery ?? "");
   const [selectedSeminar, setSelectedSeminar] = useState(initialSeminar ?? initialData.selectedSeminar);
+  const [multiSelectSeminars, setMultiSelectSeminars] = useState(
+    splitSeminars(initialSeminar ?? initialData.selectedSeminar).length > 1,
+  );
   const [selectedTeam, setSelectedTeam] = useState(initialTeam ?? initialData.selectedTeam);
   const [selectedTraffic, setSelectedTraffic] = useState<TrafficFilter>(initialTraffic ?? initialData.selectedTraffic);
   const [selectedAdSource, setSelectedAdSource] = useState<AdSourceFilter>(initialAdSource ?? initialData.selectedAdSource);
-  const [selectedDateBasis, setSelectedDateBasis] = useState<DateBasis>(initialDateBasis ?? initialData.selectedDateBasis ?? "seminar");
+  const [selectedDateBasis, setSelectedDateBasis] = useState<DateBasis>(initialDateBasis ?? initialData.selectedDateBasis ?? "appointment");
   const [selectedStartDate, setSelectedStartDate] = useState(initialStartDate ?? initialData.selectedStartDate ?? initialRange.startDate);
   const [selectedEndDate, setSelectedEndDate] = useState(initialEndDate ?? initialData.selectedEndDate ?? initialRange.endDate);
   const [seatCountFilter, setSeatCountFilter] = useState<SeatCountFilter>(initialSeatCountFilter);
@@ -1533,7 +1536,7 @@ export function TeamSalesDashboardClient({
     if (nextTeam) params.set("team", nextTeam);
     if (nextTraffic !== "all") params.set("traffic", nextTraffic);
     if (nextTraffic === "ad" && nextAdSource !== "all") params.set("adSource", nextAdSource);
-    if (nextDateBasis !== "seminar") params.set("dateBasis", nextDateBasis);
+    if (nextDateBasis !== "appointment") params.set("dateBasis", nextDateBasis);
     if (nextDateBasis === "calendar") {
       if (nextStartDate) params.set("startDate", nextStartDate);
       if (nextEndDate) params.set("endDate", nextEndDate);
@@ -1581,6 +1584,8 @@ export function TeamSalesDashboardClient({
 
     if (nextSeminar === ALL_SEMINARS_LABEL) {
       nextSelection = [ALL_SEMINARS_LABEL];
+    } else if (!multiSelectSeminars) {
+      nextSelection = [nextSeminar];
     } else {
       const withoutAll = currentSelection.filter((seminar) => seminar !== ALL_SEMINARS_LABEL);
       nextSelection = withoutAll.includes(nextSeminar)
@@ -1720,7 +1725,13 @@ export function TeamSalesDashboardClient({
                     : "全て"}
               </span>
               <span className="rounded-full border border-teal-300/25 bg-teal-300/10 px-2 py-0.5 text-xs text-teal-100">
-                {data.source === "sheet" ? "顧客管理シート連携中" : "フォールバック"}
+                {data.source === "source"
+                  ? "元シート直結"
+                  : data.source === "mirror"
+                    ? "ミラー予備で連携中"
+                    : data.source === "sheet"
+                      ? "顧客管理シート連携中"
+                      : "フォールバック"}
               </span>
             </div>
             <h1 className="mt-3 max-w-full break-words text-3xl font-semibold leading-tight tracking-normal text-white sm:text-4xl">
@@ -1772,7 +1783,7 @@ export function TeamSalesDashboardClient({
                 />
               </div>
             ) : null}
-            <div className="flex min-h-10 w-full max-w-full flex-wrap gap-1.5 rounded-md border border-teal-300/25 bg-slate-950 p-1 sm:w-[360px]">
+            <div className="flex min-h-10 w-full max-w-full flex-wrap items-center gap-1.5 rounded-md border border-teal-300/25 bg-slate-950 p-1 sm:w-[420px]">
               {data.seminars.map((seminar) => {
                 const selected = selectedSeminarValues.includes(seminar);
                 return (
@@ -1790,6 +1801,15 @@ export function TeamSalesDashboardClient({
                   </button>
                 );
               })}
+              <label className="ml-auto inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded border border-white/10 px-2 text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={multiSelectSeminars}
+                  onChange={(event) => setMultiSelectSeminars(event.target.checked)}
+                  className="h-3.5 w-3.5 accent-teal-300"
+                />
+                複数選択
+              </label>
             </div>
             <select
               value={selectedTeam}
@@ -1835,7 +1855,7 @@ export function TeamSalesDashboardClient({
               <input type="hidden" name="sort" value={sortKey} />
               <input type="hidden" name="seminar" value={selectedSeminar} />
               <input type="hidden" name="team" value={selectedTeam} />
-              {selectedDateBasis !== "seminar" ? <input type="hidden" name="dateBasis" value={selectedDateBasis} /> : null}
+              {selectedDateBasis !== "appointment" ? <input type="hidden" name="dateBasis" value={selectedDateBasis} /> : null}
               {selectedDateBasis === "calendar" && selectedStartDate ? <input type="hidden" name="startDate" value={selectedStartDate} /> : null}
               {selectedDateBasis === "calendar" && selectedEndDate ? <input type="hidden" name="endDate" value={selectedEndDate} /> : null}
               {selectedTeam === ALL_TEAMS_LABEL && seatCountFilter !== "all" ? <input type="hidden" name="seatCount" value={seatCountFilter} /> : null}
