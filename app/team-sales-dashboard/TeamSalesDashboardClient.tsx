@@ -2066,8 +2066,10 @@ export function TeamSalesDashboardClient({
                         実成約 {formatPercent(member.closeRate)} / 予定込 {formatPercent(member.projectedRate)}
                       </span>
                     </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-400 sm:grid-cols-4">
-                      <span>予約 {member.leads}</span>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-400 sm:grid-cols-[1.8fr_repeat(3,minmax(0,1fr))]">
+                      <span className="whitespace-nowrap">
+                        予約 {member.leads} <span className="text-[11px] text-cyan-200">(未アポ {member.futureAppointments})</span>
+                      </span>
                       <span>着座 {member.seated}</span>
                       <span>成約 {member.closed}</span>
                       <span>予定 {member.pending}</span>
@@ -2094,7 +2096,7 @@ export function TeamSalesDashboardClient({
                 <SmallMetric label="予定込み成約率" value={formatPercent(selected.projectedRate)} />
                 <SmallMetric label="実成約率" value={formatPercent(selected.closeRate)} />
                 <SmallMetric label="保留→成約率" value={formatPercent(selected.holdConversionRate)} />
-                <SmallMetric label="予約枠数" value={`${selected.leads}件`} />
+                <SmallMetric label="予約枠数" value={`${selected.leads}件 (未アポ ${selected.futureAppointments}件)`} />
                 <SmallMetric label="着座率" value={formatPercent(selected.seatRate)} />
                 <SmallMetric label="成約予定" value={`${selected.pending}件`} />
                 <SmallMetric label="成約内訳" value={formatPlanBreakdown(selected)} />

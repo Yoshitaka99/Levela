@@ -570,6 +570,25 @@ function isTodayOrFutureAppointment(row: SourceRow) {
   return appointmentDate >= today;
 }
 
+function getAppointmentTimestamp(row: SourceRow) {
+  const value = getAppointmentDate(row);
+  const parsedDate = parseSheetDate(value);
+  if (!parsedDate) return null;
+
+  const time = value.match(/(\d{1,2}):(\d{2})/);
+  const hour = time ? Number(time[1]) : 23;
+  const minute = time ? Number(time[2]) : 59;
+  return Date.UTC(parsedDate.year, parsedDate.month - 1, parsedDate.day, hour - 9, minute);
+}
+
+function isFutureUnheldAppointment(row: SourceRow, now = Date.now()) {
+  const appointmentAt = getAppointmentTimestamp(row);
+  if (appointmentAt === null || appointmentAt <= now) return false;
+
+  const status = getStatus(row);
+  return !isClosedStatus(status) && !isLostStatus(status) && !status.includes("クーリングオフ");
+}
+
 function isSeated(seat: string) {
   const normalized = seat.trim();
   return normalized === "着座" || normalized === "着席" || normalized.endsWith("→着座");
@@ -840,6 +859,7 @@ function aggregateRows(
 
   const members: TeamMemberKpi[] = memberGroups.map((group) => {
     const memberRows = scopedRows.filter((row) => getMemberKeyForRow(row, selectedDateBasis, selectedStartDate) === group.key);
+    const displayMemberRows = scopedDisplayRows.filter((row) => getMemberKeyForRow(row, selectedDateBasis, selectedStartDate) === group.key);
     const lostReasons = new Map<string, number>();
     const holdReasons = new Map<string, number>();
     const holdReasonDates = new Map<string, Set<string>>();
@@ -886,6 +906,7 @@ function aggregateRows(
     });
 
     const leads = memberRows.length;
+    const futureAppointments = displayMemberRows.filter((row) => isFutureUnheldAppointment(row)).length;
     const projected = closed + pending;
     const resolvedHold = holdClosed + holdLost + hold;
 
@@ -894,6 +915,7 @@ function aggregateRows(
       name: group.name,
       team: group.team,
       leads,
+      futureAppointments,
       reservationSlots,
       seated,
       seatRate: leads ? (seated / leads) * 100 : 0,
