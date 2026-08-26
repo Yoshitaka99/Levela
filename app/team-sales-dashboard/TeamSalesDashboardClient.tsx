@@ -5,6 +5,8 @@ import {
   BarChart3,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   CircleDot,
   Filter,
   RefreshCw,
@@ -2207,9 +2209,18 @@ function WeeklyAppointmentCalendar({
 }) {
   const [selectedBucket, setSelectedBucket] = useState("");
   const [expandedBuckets, setExpandedBuckets] = useState<Set<string>>(() => new Set());
-  const weekStart = useMemo(() => getWeekStart(), []);
-  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
-  const weekEnd = useMemo(() => addDays(weekStart, 7), [weekStart]);
+  const [rangeStartValue, setRangeStartValue] = useState(() => formatDateKey(getWeekStart()));
+  const [rangeEndValue, setRangeEndValue] = useState(() => formatDateKey(addDays(getWeekStart(), 6)));
+  const rangeStart = useMemo(() => parseIsoDate(rangeStartValue) ?? getWeekStart(), [rangeStartValue]);
+  const rangeEnd = useMemo(() => {
+    const parsed = parseIsoDate(rangeEndValue) ?? addDays(rangeStart, 6);
+    return parsed < rangeStart ? rangeStart : parsed;
+  }, [rangeEndValue, rangeStart]);
+  const rangeDays = useMemo(() => {
+    const dayCount = Math.floor((rangeEnd.getTime() - rangeStart.getTime()) / 86_400_000) + 1;
+    return Array.from({ length: dayCount }, (_, index) => addDays(rangeStart, index));
+  }, [rangeEnd, rangeStart]);
+  const rangeEndExclusive = useMemo(() => addDays(rangeEnd, 1), [rangeEnd]);
   const visibleMemberKeys = useMemo(() => new Set(members.map((member) => memberSelectionValue(member))), [members]);
   const firstLetterCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -2232,7 +2243,7 @@ function WeeklyAppointmentCalendar({
       .filter((row) => visibleMemberKeys.has(makeClientMemberKey(row.team, row.member)))
       .map((row, index) => {
         const startsAt = parseAppointmentDate(row.appointmentDate);
-        if (!startsAt || startsAt < weekStart || startsAt >= weekEnd) return null;
+        if (!startsAt || startsAt < rangeStart || startsAt >= rangeEndExclusive) return null;
         if (isExcludedCalendarRow(row, startsAt)) return null;
         const state = getAppointmentTone(row, startsAt);
         const dayKey = formatDateKey(startsAt);
@@ -2252,7 +2263,7 @@ function WeeklyAppointmentCalendar({
       })
       .filter((appointment): appointment is CalendarAppointment => Boolean(appointment))
       .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime() || a.member.localeCompare(b.member, "ja"));
-  }, [firstLetterCounts, memberColorMap, rows, visibleMemberKeys, weekEnd, weekStart]);
+  }, [firstLetterCounts, memberColorMap, rangeEndExclusive, rangeStart, rows, visibleMemberKeys]);
 
   const appointmentsByBucket = useMemo(() => {
     const map = new Map<string, CalendarAppointment[]>();
@@ -2276,7 +2287,7 @@ function WeeklyAppointmentCalendar({
 
   const selectedAppointments =
     (selectedBucket ? appointmentsByBucket.get(selectedBucket) : undefined) ?? appointments.slice(0, 8);
-  const weekLabel = `${formatDayLabel(weekStart)} - ${formatDayLabel(addDays(weekStart, 6))}`;
+  const rangeLabel = `${formatDayLabel(rangeStart)} - ${formatDayLabel(rangeEnd)}`;
   const now = new Date();
   const summary = {
     total: appointments.length,
@@ -2299,6 +2310,37 @@ function WeeklyAppointmentCalendar({
       return next;
     });
   };
+  const setAppointmentRange = (nextStart: Date, nextEnd: Date) => {
+    const normalizedEnd = nextEnd < nextStart ? nextStart : nextEnd;
+    const maxEnd = addDays(nextStart, 30);
+    const cappedEnd = normalizedEnd > maxEnd ? maxEnd : normalizedEnd;
+    setRangeStartValue(formatDateKey(nextStart));
+    setRangeEndValue(formatDateKey(cappedEnd));
+    setSelectedBucket("");
+    setExpandedBuckets(new Set());
+  };
+  const shiftAppointmentRange = (direction: -1 | 1) => {
+    const dayCount = rangeDays.length;
+    setAppointmentRange(addDays(rangeStart, dayCount * direction), addDays(rangeEnd, dayCount * direction));
+  };
+  const resetAppointmentRange = () => {
+    const currentWeekStart = getWeekStart();
+    setAppointmentRange(currentWeekStart, addDays(currentWeekStart, 6));
+  };
+  const changeRangeStart = (value: string) => {
+    const nextStart = parseIsoDate(value);
+    if (!nextStart) return;
+    setAppointmentRange(nextStart, rangeEnd < nextStart ? nextStart : rangeEnd);
+  };
+  const changeRangeEnd = (value: string) => {
+    const nextEnd = parseIsoDate(value);
+    if (!nextEnd) return;
+    setAppointmentRange(rangeStart > nextEnd ? nextEnd : rangeStart, nextEnd);
+  };
+  const calendarGridStyle = {
+    gridTemplateColumns: `72px repeat(${rangeDays.length}, minmax(124px, 1fr))`,
+  };
+  const calendarMinWidth = 72 + rangeDays.length * 124;
 
   return (
     <section className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -2306,15 +2348,64 @@ function WeeklyAppointmentCalendar({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-white">週間アポカレンダー</h2>
-            <p className="mt-1 text-sm text-slate-400">面談日をもとに、今週月曜から日曜までのアポを表示します。</p>
+            <p className="mt-1 text-sm text-slate-400">面談日をもとに、指定した期間のアポを表示します。</p>
           </div>
           <span className="rounded-md border border-teal-300/25 bg-teal-300/10 px-3 py-1 text-sm font-semibold text-teal-100">
-            {weekLabel}
+            {rangeLabel}
           </span>
         </div>
 
+        <div className="mt-4 flex flex-col gap-2 rounded-md border border-white/10 bg-slate-950/35 p-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <label className="min-w-0 flex-1 text-xs text-slate-400 sm:max-w-[190px]">
+            開始日
+            <input
+              type="date"
+              value={rangeStartValue}
+              onChange={(event) => changeRangeStart(event.target.value)}
+              className="mt-1 h-10 w-full rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-white outline-none focus:border-teal-300/50"
+            />
+          </label>
+          <label className="min-w-0 flex-1 text-xs text-slate-400 sm:max-w-[190px]">
+            終了日
+            <input
+              type="date"
+              value={rangeEndValue}
+              onChange={(event) => changeRangeEnd(event.target.value)}
+              className="mt-1 h-10 w-full rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-white outline-none focus:border-teal-300/50"
+            />
+          </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => shiftAppointmentRange(-1)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
+              aria-label="前の期間"
+              title="前の期間"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={resetAppointmentRange}
+              className="h-10 rounded-md border border-teal-300/25 bg-teal-300/10 px-3 text-sm font-semibold text-teal-100 hover:bg-teal-300/15"
+            >
+              今週
+            </button>
+            <button
+              type="button"
+              onClick={() => shiftAppointmentRange(1)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
+              aria-label="次の期間"
+              title="次の期間"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+          <span className="pb-2 text-xs text-slate-500">{rangeDays.length}日間 / 最大31日</span>
+        </div>
+
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-          <SmallMetric label="今週アポ" value={`${summary.total}件`} />
+          <SmallMetric label="期間アポ" value={`${summary.total}件`} />
           <SmallMetric label="実施済み" value={`${summary.done}件`} />
           <SmallMetric label="未来アポ" value={`${summary.future}件`} />
           <SmallMetric label="成約" value={`${summary.closed}件`} />
@@ -2335,19 +2426,19 @@ function WeeklyAppointmentCalendar({
         </div>
 
         <div className="mt-4 overflow-x-auto rounded-lg border border-white/10">
-          <div className="min-w-[980px]">
-            <div className="grid bg-slate-900 text-xs font-medium text-slate-400" style={{ gridTemplateColumns: "72px repeat(7, minmax(0, 1fr))" }}>
+          <div style={{ minWidth: `${calendarMinWidth}px` }}>
+            <div className="grid bg-slate-900 text-xs font-medium text-slate-400" style={calendarGridStyle}>
               <div className="border-r border-white/10 px-3 py-3">時間</div>
-              {weekDays.map((day) => (
+              {rangeDays.map((day) => (
                 <div key={formatDateKey(day)} className="border-r border-white/10 px-3 py-3 last:border-r-0">
                   {formatDayLabel(day)}
                 </div>
               ))}
             </div>
             {hours.map((hour) => (
-              <div key={hour} className="grid border-t border-white/10" style={{ gridTemplateColumns: "72px repeat(7, minmax(0, 1fr))" }}>
+              <div key={hour} className="grid border-t border-white/10" style={calendarGridStyle}>
                 <div className="border-r border-white/10 bg-slate-950/45 px-3 py-3 text-xs font-semibold text-slate-400">{hour}</div>
-                {weekDays.map((day) => {
+                {rangeDays.map((day) => {
                   const dayKey = formatDateKey(day);
                   const bucketKey = `${dayKey}:${hour}`;
                   const bucketAppointments = appointmentsByBucket.get(bucketKey) ?? [];
@@ -2436,7 +2527,7 @@ function WeeklyAppointmentCalendar({
             </div>
           )) : (
             <p className="rounded-md border border-white/10 bg-slate-950/35 px-3 py-4 text-sm text-slate-400">
-              今週表示できるアポはありません。
+              指定期間に表示できるアポはありません。
             </p>
           )}
         </div>
