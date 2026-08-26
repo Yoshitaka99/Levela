@@ -2276,6 +2276,24 @@ function WeeklyAppointmentCalendar({
     return map;
   }, [appointments]);
 
+  const futureAppointmentCountByMember = useMemo(() => {
+    const counts = new Map<string, number>();
+    const now = new Date();
+    appointments.forEach((appointment) => {
+      const status = appointment.status.trim();
+      const isFutureUnheld =
+        appointment.startsAt > now &&
+        !isClosedStatusLabel(status) &&
+        !status.includes("失注") &&
+        !status.includes("クーリングオフ");
+      if (!isFutureUnheld) return;
+
+      const memberKey = makeClientMemberKey(appointment.team, appointment.member);
+      counts.set(memberKey, (counts.get(memberKey) ?? 0) + 1);
+    });
+    return counts;
+  }, [appointments]);
+
   const hours = useMemo(() => {
     if (!appointments.length) return Array.from({ length: 13 }, (_, index) => `${String(index + 9).padStart(2, "0")}:00`);
     const minHour = Math.min(...appointments.map((appointment) => appointment.startsAt.getHours()));
@@ -2415,14 +2433,21 @@ function WeeklyAppointmentCalendar({
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          {members.map((member) => (
-            <span key={memberSelectionValue(member)} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 px-2.5 py-1 text-xs text-slate-300">
-              <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[11px] font-bold ${memberColorMap.get(memberSelectionValue(member)) ?? memberColorClasses[0]}`}>
-                {getMemberInitial(member.name, firstLetterCounts)}
+          {members.map((member) => {
+            const memberKey = makeClientMemberKey(member.team, member.name);
+            const futureAppointmentCount = futureAppointmentCountByMember.get(memberKey) ?? 0;
+            return (
+              <span key={memberSelectionValue(member)} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 px-2.5 py-1 text-xs text-slate-300">
+                <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[11px] font-bold ${memberColorMap.get(memberSelectionValue(member)) ?? memberColorClasses[0]}`}>
+                  {getMemberInitial(member.name, firstLetterCounts)}
+                </span>
+                <span className="font-medium text-slate-200">{member.name}</span>
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${futureAppointmentCount > 0 ? "bg-cyan-300/10 text-cyan-100" : "bg-white/[0.04] text-slate-500"}`}>
+                  未アポ {futureAppointmentCount}
+                </span>
               </span>
-              {member.name}
-            </span>
-          ))}
+            );
+          })}
         </div>
 
         <div className="mt-4 overflow-x-auto rounded-lg border border-white/10">
