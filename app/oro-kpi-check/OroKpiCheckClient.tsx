@@ -287,7 +287,7 @@ export function OroKpiCheckClient({ initialData, initialMonth }: Props) {
             <div>
               <p className="text-xs font-bold tracking-[0.16em] text-slate-400">PASTE & CHECK</p>
               <h2 className="mt-1 text-xl font-black">みんなの報告を貼り付け</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-500">投稿順や全角コロン、予定数の括弧表記が混ざっていても照合できます。</p>
+              <p className="mt-1 text-sm leading-6 text-slate-500">投稿順や全角コロン、予定数の括弧表記、Discordの「@氏名」表示が混ざっていても照合できます。</p>
             </div>
             <textarea
               value={reportText}

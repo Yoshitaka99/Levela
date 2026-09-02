@@ -40,7 +40,28 @@ function splitHeadingSections(text: string): ReportSection[] {
   });
 }
 
-function findMemberSection(text: string, sections: ReportSection[], member: OroKpiMember, memberMentions: string[]) {
+function findPlainMemberMarker(text: string, member: OroKpiMember, fromIndex = 0) {
+  const names = [member.fullName, member.displayName]
+    .map(normalizeName)
+    .sort((a, b) => b.length - a.length);
+  const linePattern = /^.*$/gm;
+  linePattern.lastIndex = fromIndex;
+
+  for (const match of text.matchAll(linePattern)) {
+    const rawLine = match[0].trim().replace(/^#{1,6}\s*/, "");
+    const line = normalizeName(rawLine).replace(/^@/, "");
+    const isMemberLine = names.some((name) => {
+      if (line === name) return true;
+      const suffix = line.slice(name.length);
+      return line.startsWith(name) && /^(?:さん)?(?:—|–|-|・|今日|昨日|\d)/.test(suffix);
+    });
+    if (isMemberLine) return match.index ?? -1;
+  }
+
+  return -1;
+}
+
+function findMemberSection(text: string, sections: ReportSection[], member: OroKpiMember, members: OroKpiMember[]) {
   const expectedNames = [member.displayName, member.fullName].map(normalizeName);
   const headingSection = sections.find((section) => {
     const heading = normalizeName(section.heading);
@@ -50,12 +71,26 @@ function findMemberSection(text: string, sections: ReportSection[], member: OroK
 
   const normalized = normalizeText(text);
   const start = normalized.indexOf(member.discordMention);
-  if (start < 0) return null;
+  if (start >= 0) {
+    const nextMention = members.map((candidate) => normalized.indexOf(candidate.discordMention, start + member.discordMention.length))
+      .filter((index) => index >= 0)
+      .sort((a, b) => a - b)[0];
+    const nextName = members.map((candidate) => findPlainMemberMarker(normalized, candidate, start + member.discordMention.length))
+      .filter((index) => index >= 0)
+      .sort((a, b) => a - b)[0];
+    const ends = [nextMention, nextName].filter((index): index is number => index !== undefined).sort((a, b) => a - b);
+    return normalized.slice(start, ends[0] ?? normalized.length);
+  }
 
-  const nextMention = memberMentions.map((mention) => normalized.indexOf(mention, start + member.discordMention.length))
+  const nameStart = findPlainMemberMarker(normalized, member);
+  if (nameStart < 0) return null;
+  const nextMarkers = members.flatMap((candidate) => [
+    normalized.indexOf(candidate.discordMention, nameStart + 1),
+    findPlainMemberMarker(normalized, candidate, nameStart + 1),
+  ])
     .filter((index) => index >= 0)
-    .sort((a, b) => a - b)[0];
-  return normalized.slice(start, nextMention ?? normalized.length);
+    .sort((a, b) => a - b);
+  return normalized.slice(nameStart, nextMarkers[0] ?? normalized.length);
 }
 
 function readNumber(text: string, pattern: RegExp) {
@@ -85,10 +120,9 @@ function roundDifference(value: number) {
 
 export function compareOroReport(data: OroKpiCheckData, reportText: string): MemberDifference[] {
   const sections = splitHeadingSections(reportText);
-  const memberMentions = data.members.map((member) => member.discordMention);
 
   return data.members.reduce<MemberDifference[]>((membersWithDifferences, member) => {
-    const section = findMemberSection(reportText, sections, member, memberMentions);
+    const section = findMemberSection(reportText, sections, member, data.members);
     if (!section) {
       membersWithDifferences.push({
         key: member.key,
