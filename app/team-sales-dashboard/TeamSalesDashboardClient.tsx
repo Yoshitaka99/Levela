@@ -100,6 +100,10 @@ const adSourceFilters: { key: AdSourceFilter; label: string }[] = [
   { key: "meta_ad_Suea", label: "meta_ad_Suea" },
   { key: "Meta_ad_aw", label: "Meta_ad_aw" },
   { key: "meta_ad_in-house", label: "meta_ad_in-house" },
+  { key: "Meta_agency_enoyan", label: "Meta_agency_enoyan" },
+  { key: "Meta_agency_FIZ", label: "Meta_agency_FIZ" },
+  { key: "Meta_agency_Suea", label: "Meta_agency_Suea" },
+  { key: "Meta_inhouse", label: "Meta_inhouse" },
 ];
 
 function splitAdSources(value?: string) {

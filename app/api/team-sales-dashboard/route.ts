@@ -37,7 +37,21 @@ const ALL_AD_SOURCES: AdSourceFilter = "all";
 const AD_SOURCE_X = "x";
 const AD_SOURCE_META = "meta";
 const AD_SOURCE_SEPARATOR = ",";
-const META_AD_SOURCES = new Set(["meta_ad", "Meta_ad", "meta_ad_Suea_aw", "meta_ad_in-house_aw", "meta_ad_Suea", "Meta_ad_aw", "meta_ad_in-house"]);
+const META_AD_SOURCES = new Set([
+  "meta_ad",
+  "Meta_ad",
+  "meta_ad_Suea_aw",
+  "meta_ad_in-house_aw",
+  "meta_ad_Suea",
+  "Meta_ad_aw",
+  "meta_ad_in-house",
+  "Meta_agency_enoyan",
+  "Meta_agency_FIZ",
+  "Meta_agency_Suea",
+  "Meta_inhouse",
+]);
+const X_AD_SOURCES = new Set(["X_agency_tomioka"]);
+const GENERIC_AD_SOURCES = new Set(["sponsored_hikaruchannel_001", "sponsored_fcchannel_001", "media_ayamama_r"]);
 const VALID_AD_SOURCES = new Set([ALL_AD_SOURCES, AD_SOURCE_X, AD_SOURCE_META, ...META_AD_SOURCES]);
 const SALES_AGENCY_TEAM = "営業代行チーム";
 
@@ -506,8 +520,8 @@ function getTrafficText(row: SourceRow) {
 
 function getAdSource(row: SourceRow) {
   const traffic = getTrafficText(row);
-  if (/(^|[^a-z])x[_-]?ad/i.test(traffic) || /x[_-]?ad/i.test(traffic)) return AD_SOURCE_X;
   const inflow = getInflow(row).trim();
+  if (/(^|[^a-z])x[_-]?ad/i.test(traffic) || /x[_-]?ad/i.test(traffic) || X_AD_SOURCES.has(inflow)) return AD_SOURCE_X;
   if (META_AD_SOURCES.has(inflow)) return inflow;
   return "";
 }
@@ -517,7 +531,8 @@ function isMetaAdSource(source: string) {
 }
 
 function isAdTraffic(row: SourceRow) {
-  return /ad/i.test(getTrafficText(row)) || Boolean(getAdSource(row));
+  const inflow = getInflow(row).trim();
+  return /ad/i.test(getTrafficText(row)) || Boolean(getAdSource(row)) || GENERIC_AD_SOURCES.has(inflow);
 }
 
 function resolveTrafficFilter(value?: string | null): TrafficFilter {
