@@ -16,6 +16,8 @@ npm run dev
 - `.env.local` や `.env*` はコミットしない。
 - 変更後は `npm run lint` と `npm run build` を確認する。
 - Next.js アプリ。主要コードは `app/`、静的ファイルは `public/`。
+- 動画制作は `video/`（Remotion、独立プロジェクト）。詳細は `docs/remotion-video-setup.md`。
+  Remotion スキルは `.agents/skills/` にあり、`.claude/skills/` からリンクしている。
 
 ## iPhone からの使い方
 
