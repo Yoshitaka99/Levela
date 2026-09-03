@@ -35,6 +35,19 @@ function getTokyoCurrentMonth() {
   return `${year}-${month}`;
 }
 
+function getTokyoToday() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === "year")?.value ?? "2026";
+  const month = parts.find((part) => part.type === "month")?.value ?? "09";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+  return `${year}-${month}-${day}`;
+}
+
 export function normalizeOroKpiMonth(value?: string | null) {
   const fallback = getTokyoCurrentMonth();
   if (!value || !/^\d{4}-\d{2}$/.test(value)) return fallback;
@@ -48,6 +61,19 @@ function getMonthLabels(month: string) {
   return {
     report: `${monthNumber}月商談`,
     seminar: `${String(year).slice(-2)}年${monthNumber}月セミナー`,
+  };
+}
+
+function getRealtimeMonthRange(month: string) {
+  const year = Number(month.slice(0, 4));
+  const monthNumber = Number(month.slice(5, 7));
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  const monthEnd = `${month}-${String(lastDay).padStart(2, "0")}`;
+  const today = getTokyoToday();
+
+  return {
+    startDate: `${month}-01`,
+    endDate: today < monthEnd ? today : monthEnd,
   };
 }
 
@@ -110,7 +136,16 @@ function buildOfficialText(monthLabel: string, members: OroKpiMember[], totals: 
 export async function loadOroKpiCheckData(rawMonth?: string | null): Promise<OroKpiCheckData> {
   const month = normalizeOroKpiMonth(rawMonth);
   const labels = getMonthLabels(month);
-  const dashboard = await fetchTeamSalesData(labels.seminar, "全チーム", "all", "all", "appointment");
+  const range = getRealtimeMonthRange(month);
+  const dashboard = await fetchTeamSalesData(
+    "全期間",
+    "全チーム",
+    "all",
+    "all",
+    "calendar",
+    range.startDate,
+    range.endDate,
+  );
 
   if (!dashboard) throw new Error("KPIデータを取得できませんでした");
 
@@ -149,4 +184,3 @@ export async function loadOroKpiCheckData(rawMonth?: string | null): Promise<Oro
     officialText: buildOfficialText(labels.report, members, totals),
   };
 }
-

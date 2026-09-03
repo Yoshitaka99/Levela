@@ -253,7 +253,8 @@ export function OroKpiCheckClient({ initialData, initialMonth }: Props) {
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
-            <span className="rounded-full bg-slate-100 px-3 py-1.5">面談日基準</span>
+            <span className="rounded-full bg-slate-100 px-3 py-1.5">月初〜本日</span>
+            <span className="rounded-full bg-slate-100 px-3 py-1.5">未来の面談は除外</span>
             <span className="rounded-full bg-slate-100 px-3 py-1.5">おろチーム10名</span>
             <span className="rounded-full bg-slate-100 px-3 py-1.5">率は整数切り捨て</span>
             <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">{data?.source === "fallback" || !data ? "データ未取得" : "顧客管理シート連携中"}</span>
