@@ -22,6 +22,7 @@ export type TeamMemberKpi = {
   leads: number;
   futureAppointments: number;
   reservationSlots: number;
+  consumed: number;
   seated: number;
   seatRate: number;
   closed: number;
@@ -45,6 +46,7 @@ export type WeeklyKpi = {
   seminar: string;
   label: string;
   leads: number;
+  consumed: number;
   seated: number;
   closed: number;
   pending: number;

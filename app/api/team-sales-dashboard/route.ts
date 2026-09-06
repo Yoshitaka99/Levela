@@ -63,14 +63,17 @@ const EXCLUDED_MEMBER_KEYWORDS = [
   "SnsClub",
 ];
 
-const EXCLUDED_RAW_MEMBERS = new Set(["中島 絵美"]);
-const EXCLUDED_EXACT_MEMBERS = new Set(["池上翔太", "有川薫", "中村珠梨"]);
+// 個人単位の除外はLevela集計ダッシュボードに合わせて撤廃（中村珠梨・有川薫は復帰、池上翔太・中島絵美も本家が除外していないため計上する）。
+// 運営アカウント(EXCLUDED_MEMBER_KEYWORDS)のみ担当者別の成績表を汚さないよう除外を維持する。
+const EXCLUDED_RAW_MEMBERS = new Set<string>([]);
+const EXCLUDED_EXACT_MEMBERS = new Set<string>([]);
 const EXCLUDED_SEAT_STATUSES = new Set([
   "担当者変更",
   "重複予約",
   "無効アポ",
 ]);
-const EXCLUDED_INTERVIEW_STATUSES = new Set(["MLM失注"]);
+// Levela集計ダッシュボードはMLM失注を面談母数から外さないので、こちらも除外しない。
+const EXCLUDED_INTERVIEW_STATUSES = new Set<string>([]);
 const RESERVATION_SLOT_SEAT_STATUSES = new Set([
   "着座",
   "着席",
@@ -87,6 +90,16 @@ const RESERVATION_SLOT_SEAT_STATUSES = new Set([
   "【その場】日程調整済",
   "【その場】日程調整→返信なし",
   "営業マン都合キャンセル",
+]);
+// 未消化(実施結果が確定していない)とみなす着席ステータス。着座率の分母から外す。
+const NOT_CONSUMED_SEAT_STATUSES = new Set([
+  "担当者変更",
+  "無効アポ",
+  "重複予約",
+  "リスケ/再日程調整中",
+  "【その場】リスケ/再日程調整中",
+  "日程調整済",
+  "【その場】日程調整済",
 ]);
 const DATA_CACHE_TTL_MS = 60_000;
 const HISTORY_CACHE_TTL_MS = 10 * 60_000;
@@ -650,8 +663,18 @@ function isFutureUnheldAppointment(row: SourceRow, now = Date.now()) {
 }
 
 function isSeated(seat: string) {
-  const normalized = seat.trim();
-  return normalized === "着座" || normalized === "着席" || normalized.endsWith("→着座");
+  return seat.trim() === "着座";
+}
+
+// 消化済み面談 = 着席ステータスが記入済みで、かつ未実施系でないもの。着座率の分母。
+function isConsumedInterview(seat: string) {
+  const normalized = normalizeKpiStatusLabel(seat);
+  return Boolean(normalized) && !NOT_CONSUMED_SEAT_STATUSES.has(normalized);
+}
+
+// 成約(着金) = ステータスが成約系、かつ着金日が入力済み。着金日が空欄のものは成約に数えない。
+function isPaidClosedStatus(status: string, paymentDate: string) {
+  return isClosedStatus(status) && Boolean(paymentDate.trim());
 }
 
 function getSeminarOptions(rows: SourceRow[], dateBasis: DateBasis) {
@@ -737,10 +760,10 @@ function buildWeeklyKpisBy(rows: SourceRow[], getLabel: (row: SourceRow) => { ke
     const week = getLabel(row);
     const status = getStatus(row);
     const seat = getSeat(row);
-    const isClosed = isClosedStatus(status);
+    const paymentDate = getPaymentDate(row);
+    const isClosed = isPaidClosedStatus(status, paymentDate);
     const isPending = isPendingStatus(status);
     const isHold = isHoldStatus(status);
-    const paymentDate = getPaymentDate(row);
     const current =
       weeklyMap.get(week.key) ??
       ({
@@ -748,6 +771,7 @@ function buildWeeklyKpisBy(rows: SourceRow[], getLabel: (row: SourceRow) => { ke
         seminar: week.seminar,
         label: week.label,
         leads: 0,
+        consumed: 0,
         seated: 0,
         closed: 0,
         pending: 0,
@@ -762,6 +786,7 @@ function buildWeeklyKpisBy(rows: SourceRow[], getLabel: (row: SourceRow) => { ke
       } satisfies WeeklyAccumulator);
 
     current.leads += 1;
+    if (isConsumedInterview(seat)) current.consumed += 1;
     if (isSeated(seat)) current.seated += 1;
     if (isClosed) current.closed += 1;
     if (isPending) current.pending += 1;
@@ -776,12 +801,13 @@ function buildWeeklyKpisBy(rows: SourceRow[], getLabel: (row: SourceRow) => { ke
       seminar: week.seminar,
       label: week.label,
       leads: week.leads,
+      consumed: week.consumed,
       seated: week.seated,
       closed: week.closed,
       pending: week.pending,
       hold: week.hold,
       paid: week.paid,
-      seatRate: week.leads ? (week.seated / week.leads) * 100 : 0,
+      seatRate: week.consumed ? (week.seated / week.consumed) * 100 : 0,
       closeRate: week.seated ? (week.closed / week.seated) * 100 : 0,
       projectedRate: week.seated ? ((week.closed + week.pending) / week.seated) * 100 : 0,
       holdRate: week.leads ? (week.hold / week.leads) * 100 : 0,
@@ -862,8 +888,8 @@ function aggregateRows(
       !isExcludedMember(member) &&
       matchesPeriod &&
       matchesTrafficFilter(row, selectedTraffic, selectedAdSource) &&
-      !isExcludedFromInterviewBase(seat, status) &&
-      !isBlankReservationSlot(row)
+      !isExcludedFromInterviewBase(seat, status)
+      // 着席もステータスも空欄の枠は、Levela集計ダッシュボードと同じく「実施予定(未消化)」として面談母数に含める。
     );
   });
 
@@ -935,6 +961,7 @@ function aggregateRows(
     const holdReasons = new Map<string, number>();
     const holdReasonDates = new Map<string, Set<string>>();
     let reservationSlots = 0;
+    let consumed = 0;
     let seated = 0;
     let closed = 0;
     let tokushinClosed = 0;
@@ -955,12 +982,17 @@ function aggregateRows(
       const contractPlan = normalizeContractPlan(getContractPlan(row));
 
       if (isReservationSlot(seat)) reservationSlots += 1;
+      if (isConsumedInterview(seat)) consumed += 1;
       if (isSeated(seat)) seated += 1;
       if (isClosedStatus(status)) {
-        closed += 1;
-        if (contractPlan === "tokushin") tokushinClosed += 1;
-        if (contractPlan === "basic") basicClosed += 1;
-        if (!paymentDate) alert += 1;
+        // 着金日が未入力の成約は本家と同じく成約数に数えず、アラートとしてだけ拾う。
+        if (paymentDate) {
+          closed += 1;
+          if (contractPlan === "tokushin") tokushinClosed += 1;
+          if (contractPlan === "basic") basicClosed += 1;
+        } else {
+          alert += 1;
+        }
       }
       if (isPendingStatus(status)) pending += 1;
       if (isHoldStatus(status)) {
@@ -988,8 +1020,9 @@ function aggregateRows(
       leads,
       futureAppointments,
       reservationSlots,
+      consumed,
       seated,
-      seatRate: leads ? (seated / leads) * 100 : 0,
+      seatRate: consumed ? (seated / consumed) * 100 : 0,
       closed,
       tokushinClosed,
       basicClosed,

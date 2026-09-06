@@ -455,7 +455,7 @@ function ManagerGoalPanel({
   onSaveGoal: () => void;
   projection: GoalProjection;
   currentRate: number;
-  totals: { leads: number; seated: number; closed: number; pending: number; hold: number; alert: number };
+  totals: { leads: number; consumed: number; seated: number; closed: number; pending: number; hold: number; alert: number };
 }) {
   const selectedGoalOption = goalModeOptions.find((option) => option.key === goalMode) ?? goalModeOptions[0];
   const monthOptions = seminars.filter((seminar) => seminar !== ALL_SEMINARS_LABEL);
@@ -1300,18 +1300,20 @@ export function TeamSalesDashboardClient({
         (sum, member) => ({
           leads: sum.leads + member.leads,
           reservationSlots: sum.reservationSlots + member.reservationSlots,
+          consumed: sum.consumed + member.consumed,
           seated: sum.seated + member.seated,
           closed: sum.closed + member.closed,
           pending: sum.pending + member.pending,
           hold: sum.hold + member.hold,
           alert: sum.alert + member.alert,
         }),
-        { leads: 0, reservationSlots: 0, seated: 0, closed: 0, pending: 0, hold: 0, alert: 0 },
+        { leads: 0, reservationSlots: 0, consumed: 0, seated: 0, closed: 0, pending: 0, hold: 0, alert: 0 },
       ),
     [data.members],
   );
 
-  const seatRate = totals.leads ? (totals.seated / totals.leads) * 100 : 0;
+  // 着座率の分母はLevela集計ダッシュボードと同じく「消化済み面談」。未記入の枠は未消化として分母に入れない。
+  const seatRate = totals.consumed ? (totals.seated / totals.consumed) * 100 : 0;
   const closeRate = totals.seated ? (totals.closed / totals.seated) * 100 : 0;
   const projectedRate = totals.seated ? ((totals.closed + totals.pending) / totals.seated) * 100 : 0;
 
@@ -1405,7 +1407,7 @@ export function TeamSalesDashboardClient({
     }).length;
     const averageAppointmentsPerMember = data.members.length ? totals.leads / data.members.length : 0;
     const projectedLeadBase = Math.max(totals.leads + futureAppointments, Math.ceil(averageAppointmentsPerMember * memberCount), totals.leads);
-    const expectedSeatRate = totals.leads ? totals.seated / totals.leads : 0.65;
+    const expectedSeatRate = totals.consumed ? totals.seated / totals.consumed : 0.65;
     const expectedSeated = Math.max(totals.seated, Math.round(projectedLeadBase * expectedSeatRate));
     const targetClosed =
       goalMode === "perMember"
@@ -1431,7 +1433,7 @@ export function TeamSalesDashboardClient({
       todayGap,
       progressRate,
     };
-  }, [data.customerRows, data.members.length, goalMode, goalValue, selectedDateBasis, selectedEndDate, selectedSeminar, totals.closed, totals.leads, totals.seated]);
+  }, [data.customerRows, data.members.length, goalMode, goalValue, selectedDateBasis, selectedEndDate, selectedSeminar, totals.closed, totals.consumed, totals.leads, totals.seated]);
 
   const filteredMembers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -1983,7 +1985,7 @@ export function TeamSalesDashboardClient({
           <>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
           <MetricTile label="予約枠数" value={`${totals.leads}`} sub="条件適用後" tone="cyan" icon={CalendarDays} />
-          <MetricTile label="実際の着座" value={`${totals.seated}`} sub={`予約 ${totals.leads} 件 / 着座率 ${formatPercent(seatRate)}`} tone="cyan" icon={Users} />
+          <MetricTile label="実際の着座" value={`${totals.seated}`} sub={`消化済み ${totals.consumed} 件 / 着座率 ${formatPercent(seatRate)}`} tone="cyan" icon={Users} />
           <MetricTile label="成約数" value={`${totals.closed}`} sub={`着座 ${totals.seated} 件中`} tone="teal" icon={CheckCircle2} />
           <MetricTile label="実成約率" value={formatPercent(closeRate)} sub={`成約 ${totals.closed} 件 / 着座 ${totals.seated} 件`} tone="teal" icon={BarChart3} />
           <MetricTile label="成約予定" value={`${totals.pending}`} sub={`予定込み成約率 ${formatPercent(projectedRate)}`} tone="amber" icon={TrendingUp} />
